@@ -1,0 +1,3 @@
+yt-dlp==2026.8.19
+funasr==1.4.16
+kaldi-native-fbank
