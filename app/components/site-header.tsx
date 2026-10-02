@@ -1,5 +1,52 @@
+"use client";
+
 import Link from "next/link";
+import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { useLanguage } from "@/lib/language-context";
 
 export default function SiteHeader() {
-  return <header className="header"><Link href="/" className="brand"><span className="brand-icon">声</span>Audio Studio</Link><nav aria-label="Main navigation"><Link href="/">Studio</Link><Link href="/history">History</Link><Link href="/tools">Tools</Link><Link href="/reprocess">Reprocess</Link><Link href="/rules">Community Rules</Link><Link href="/settings">Settings</Link><Link href="/license">License</Link></nav></header>;
+  const { t } = useLanguage();
+  const pathname = usePathname();
+
+  const navLinks = [
+    { href: "/", label: t.nav.studio },
+    { href: "/history", label: t.nav.history },
+    { href: "/tools", label: t.nav.tools },
+    { href: "/reprocess", label: t.nav.reprocess },
+    { href: "/rules", label: t.nav.rules },
+    { href: "/settings", label: t.nav.settings },
+    { href: "/license", label: t.nav.license },
+  ];
+
+  return (
+    <header className="header">
+      <Link href="/" className="brand" aria-label="Audio Studio Home">
+        <Image
+          src="/arsneonci-logo.png"
+          alt="Ars Neonci Logo"
+          width={36}
+          height={36}
+          className="brand-logo"
+          priority
+        />
+        <span>Audio Studio</span>
+      </Link>
+      <nav aria-label="Main navigation" className="site-nav">
+        {navLinks.map((link) => {
+          const isActive = pathname === link.href;
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={isActive ? "active" : undefined}
+              aria-current={isActive ? "page" : undefined}
+            >
+              {link.label}
+            </Link>
+          );
+        })}
+      </nav>
+    </header>
+  );
 }

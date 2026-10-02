@@ -12,18 +12,13 @@ import SiteHeader from "@/app/components/site-header";
 import Link from 'next/link';
 import {useNotice} from '@/app/components/use-notice';
 import WorkflowActions from '@/app/components/workflow-actions';
+import { useLanguage } from "@/lib/language-context";
 
-const labels: Record<Job["status"], string> = {
-  CANCELLED:"Đã dừng (phiên cũ)",PAUSED:"Đã dừng tạm",PARTIAL:"Một phần",DELETING:"Đang xóa",
-  QUEUED: "Đang chờ", DOWNLOADING: "Đang tải audio", VAD: "Đang tách lời nói",
-  TRANSCRIBING: "Đang nhận dạng", MERGING: "Đang ghép bản chép", COMPLETED: "Hoàn tất", FAILED: "Lỗi",
-  TRANSCRIPTION_COMPLETED: "Đã chép tiếng Trung", TRANSLATING: "Đang dịch tiếng Việt", TRANSLATION_COMPLETED: "Đã dịch",
-  MODERATING: "Đang thay thế từ", MODERATION_COMPLETED: "Đã duyệt bản dịch", TTS_GENERATING: "Đang tạo giọng Việt",
-};
 const duration = (ms: number) => ms ? `${Math.floor(ms / 3600000)}h ${String(Math.floor(ms / 60000) % 60).padStart(2, "0")}m` : "—";
 type ResourceWarning={reasons:string[];ram_available_gib:number;required_available_gib:number;cpu_percent:number;existing_workflows:number;estimate_basis:string};
 
 export default function Home() {
+  const { language, t } = useLanguage();
   const license = useLicense();
   const [url, setUrl] = useState("");
   const [voice,setVoice]=useState("");
@@ -65,7 +60,7 @@ export default function Home() {
       }
       if (!response.ok) throw new Error(data.error || "Không tạo được job.");
       setPendingConvert(null);setUrl(""); await refresh();
-      setMessage('Đã xếp hàng workflow. Các workflow được xử lý lần lượt; Auto sẽ chờ nếu chưa đủ RAM.');
+      setMessage(t.home.queuedNotice);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Không tạo được job."); }
     finally { setBusy(false); }
   }
@@ -87,43 +82,49 @@ export default function Home() {
     else localStorage.removeItem("audio-studio-job");
   }
 
+  const getStatusLabel = (job: Job) => {
+    if (job.delete_requested) return t.home.deletingWorkflow;
+    if (job.pause_requested) return t.home.stoppingAfterTask;
+    return t.statusLabels[job.status] || job.status;
+  };
+
   return <main className="studio">
     <SiteHeader /><LicenseBanner />
     <section className="hero">
-      <div className="eyebrow">TIẾNG TRUNG → TIẾNG VIỆT</div>
-      <h1>Tạo Audio Việt Nam<br />từ Video Audio Trung Quốc</h1>
-      <p>Chép lời, dịch tiếng Việt, thay thế từ theo rules của bạn và tạo giọng đọc. Theo dõi từng bước và tải kết quả ngay trong Studio.</p>
-      <form onSubmit={start} className="convert-form"><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /><button type="submit" disabled={busy || !license.allowed}>{busy ? "Đang kiểm tra…" : "Convert"} ↗</button></form>
+      <div className="eyebrow">{t.home.eyebrow}</div>
+      <h1>{t.home.title1}<br />{t.home.title2}</h1>
+      <p>{t.home.description}</p>
+      <form onSubmit={start} className="convert-form"><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /><button type="submit" disabled={busy || !license.allowed}>{busy ? t.home.checking : t.home.convert} ↗</button></form>
       <VoiceSelect value={voice} onChange={setVoice} />
       {message && <p className="alert" role="alert">{message}</p>}
       {resourceWarning&&<section role="alert" className="alert">
-        <h3>Chưa đủ tài nguyên dự phòng để chạy thêm cùng lúc</h3>
-        <p>Có {resourceWarning.existing_workflows} workflow đang chạy hoặc chờ. Bộ kiểm tra không khởi động model.</p>
+        <h3>{t.home.resourceWarningTitle}</h3>
+        <p>{t.home.existingWorkflows.replace("{count}", String(resourceWarning.existing_workflows))}</p>
         <ul>{resourceWarning.reasons.map(reason=><li key={reason}>{reason}</li>)}</ul>
         <p>{resourceWarning.estimate_basis==='estimated'?'Dự toán RAM model tạm tính; chưa có benchmark thật. ':'Dự toán theo bộ nhớ model đã đo. '}Bạn có thể xếp hàng chờ; workflow vẫn xử lý lần lượt, không ép chạy song song.</p>
-        <button type="button" disabled={busy||!license.allowed||!pendingConvert} onClick={()=>{if(pendingConvert)void convert(pendingConvert,true);}}>Xếp hàng chờ</button>{' '}
-        <button type="button" disabled={busy} onClick={()=>{setResourceWarning(null);setPendingConvert(null);}}>Để sau</button>
+        <button type="button" disabled={busy||!license.allowed||!pendingConvert} onClick={()=>{if(pendingConvert)void convert(pendingConvert,true);}}>{t.home.queueWait}</button>{' '}
+        <button type="button" disabled={busy} onClick={()=>{setResourceWarning(null);setPendingConvert(null);}}>{t.home.dismiss}</button>
       </section>}
-      <div className="hero-foot"><span>01 · Transcription</span><span>02 · Translation</span><span>03 · Moderation</span><span>04 · Vietnamese voice</span></div>
+      <div className="hero-foot"><span>{t.home.step1}</span><span>{t.home.step2}</span><span>{t.home.step3}</span><span>{t.home.step4}</span></div>
     </section>
     <section className="jobs-section">
-      <div className="section-head"><div><span className="eyebrow">WORKSPACE</span><h2>Jobs <span className="count">{studioJobs.length}</span></h2><Link href="/history">Workflow hoàn tất → Lịch sử</Link></div><button className="refresh" onClick={() => void refresh()} type="button">↻ Làm mới</button></div>
-      <div className="table-wrap"><table><thead><tr><th>Name</th><th>Duration</th><th>Status</th><th>Progress</th><th>Created</th><th>Output</th><th>Thao tác</th></tr></thead><tbody>
+      <div className="section-head"><div><span className="eyebrow">{t.home.workspace}</span><h2>{t.home.jobs} <span className="count">{studioJobs.length}</span></h2><Link href="/history">{t.home.completedToHistory}</Link></div><button className="refresh" onClick={() => void refresh()} type="button">↻ {t.home.refresh}</button></div>
+      <div className="table-wrap"><table><thead><tr><th>{t.home.thName}</th><th>{t.home.thDuration}</th><th>{t.home.thStatus}</th><th>{t.home.thProgress}</th><th>{t.home.thCreated}</th><th>{t.home.thOutput}</th><th>{t.home.thActions}</th></tr></thead><tbody>
         {studioJobs.map((job) => <tr key={job.id}>
           <td className="name-cell"><strong title={job.name}>{job.name}</strong><small>Workflow #{runNumber(job.workflow_no)}</small></td>
           <td>{duration(job.duration_ms)}</td>
-          <td><span className={`status status-${job.status.toLowerCase()}`}><i />{job.delete_requested?'Đang hủy và xóa':job.pause_requested?'Đang dừng sau task hiện tại':labels[job.status]}</span>{job.error && <small className="error-detail" title={job.error}>{job.error}</small>}</td>
-          <td><div className="progress-row"><span>{percent(job.progress)}</span><div className="progress-track"><div style={{ width: `${percent(job.progress)}` }} /></div></div>{job.status === "VAD" && job.processed_ms ? <small>{duration(job.processed_ms)} / {duration(job.duration_ms)}</small> : job.chunks_total ? <small>{job.chunks_done || 0}/{job.chunks_total} đoạn</small> : null}</td>
-          <td>{new Date(job.created_at).toLocaleString("vi-VN")}</td>
-          <td className="output-cell"><button type="button" onClick={() => view(selected === job.id ? null : job.id)}>{selected === job.id ? "Đóng chi tiết" : "Chi tiết"}</button>
-            {job.status === "FAILED" && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>Thử lại ↻</button>}
-            {job.status === "COMPLETED" && job.workflow_version !== 2 && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>Tiếp tục dịch và đọc →</button>}</td>
+          <td><span className={`status status-${job.status.toLowerCase()}`}><i />{getStatusLabel(job)}</span>{job.error && <small className="error-detail" title={job.error}>{job.error}</small>}</td>
+          <td><div className="progress-row"><span>{percent(job.progress)}</span><div className="progress-track"><div style={{ width: `${percent(job.progress)}` }} /></div></div>{job.status === "VAD" && job.processed_ms ? <small>{duration(job.processed_ms)} / {duration(job.duration_ms)}</small> : job.chunks_total ? <small>{job.chunks_done || 0}/{job.chunks_total} {t.home.chunksUnit}</small> : null}</td>
+          <td>{new Date(job.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}</td>
+          <td className="output-cell"><button type="button" onClick={() => view(selected === job.id ? null : job.id)}>{selected === job.id ? t.home.closeDetails : t.home.details}</button>
+            {job.status === "FAILED" && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.retry} ↻</button>}
+            {job.status === "COMPLETED" && job.workflow_version !== 2 && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.continueTranslate} →</button>}</td>
           <td><WorkflowActions job={job} onChanged={refresh} onNotice={setMessage} canResume={license.allowed}/></td>
         </tr>)}
-      </tbody></table>{!studioJobs.length && <div className="empty"><span>◎</span><strong>Không có workflow đang xử lý</strong><p>Workflow hoàn tất được lưu trong <Link href="/history">Lịch sử</Link>. Nhập URL YouTube để bắt đầu.</p></div>}</div>
+      </tbody></table>{!studioJobs.length && <div className="empty"><span>◎</span><strong>{t.home.emptyTitle}</strong><p>{t.home.emptyDesc.replace("{history}", "")} <Link href="/history">History</Link>.</p></div>}</div>
       {studioJobs.filter(job => job.id === selected).map(job => <JobDetail key={job.id} job={job} onClose={() => view(null)} />)}
     </section>
     <RulesPanel moderating={jobs.some(job => job.status === "MODERATING")} />
-    <footer>Audio Studio <span>·</span> Chinese to Vietnamese</footer>
+    <footer>{t.home.footer}</footer>
   </main>;
 }
