@@ -1,12 +1,13 @@
 {
   "name": "audio-translates",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app lib"
+    "lint": "eslint app lib",
+    "package:windows": "python packaging/build_installer.py"
   },
   "dependencies": {
     "next": "16.3.8",

@@ -7,10 +7,18 @@ from unittest.mock import patch
 
 import numpy as np
 
-from pipeline import RATE, audio_piece, download, make_chunks, merge
+from pipeline import RATE, audio_piece, download, make_chunks, merge, validate_cookie_file
 
 
 class PipelineTests(unittest.TestCase):
+    def setUp(self):
+        license_patch = patch("license_gate.assert_allowed", return_value=True)
+        license_patch.start()
+        self.addCleanup(license_patch.stop)
+        session_patch = patch("youtube_session.cookies_for_download", return_value=None)
+        session_patch.start()
+        self.addCleanup(session_patch.stop)
+
     def test_downloader_requests_audio_only_without_conversion(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
             job_dir = Path(folder)
@@ -33,11 +41,49 @@ class PipelineTests(unittest.TestCase):
                     (job_dir / "source" / "audio.webm").write_bytes(b"audio")
                     return {"vcodec": "none", "title": "中文", "duration": 5}
 
-            with patch("yt_dlp.YoutubeDL", FakeYDL):
+            with patch.dict("os.environ", {"YTDLP_COOKIES_FILE": ""}), patch("yt_dlp.YoutubeDL", FakeYDL):
                 self.assertEqual(download(job_dir).name, "audio.webm")
             self.assertEqual(options_seen["format"], "bestaudio")
             self.assertNotIn("postprocessors", options_seen)
             self.assertEqual(options_seen["js_runtimes"], {"node": {}})
+            self.assertFalse(options_seen["no_warnings"])
+            self.assertNotIn("cookiesfrombrowser", options_seen)
+            self.assertNotIn("cookiefile", options_seen)
+
+    def test_youtube_errors_and_explicit_cookie_configuration(self):
+        from yt_dlp.utils import DownloadError
+
+        cases = [
+            ("Sign in to confirm you're not a bot", False, ".env.local"),
+            ("Sign in to confirm you're not a bot", True, "xuất lại cookie"),
+            ("HTTP Error 429: Too Many Requests", False, "HTTP 429"),
+            ("HTTP Error 429: Too Many Requests", True, "HTTP 429"),
+        ]
+        for message, use_cookies, expected in cases:
+            with self.subTest(message=message, cookies=use_cookies), tempfile.TemporaryDirectory() as folder:
+                job_dir = Path(folder)
+                (job_dir / "source").mkdir()
+                (job_dir / "job.json").write_text(json.dumps({"url": "https://youtu.be/1JzKgwOESoM"}), encoding="utf-8")
+                cookie_path = job_dir / "cookies.txt"
+                cookie_path.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfake-value\n", encoding="utf-8")
+                with patch.dict("os.environ", {"YTDLP_COOKIES_FILE": str(cookie_path) if use_cookies else ""}), patch("yt_dlp.YoutubeDL") as ydl:
+                    ydl.return_value.__enter__.return_value.extract_info.side_effect = DownloadError(message)
+                    with self.assertRaisesRegex(RuntimeError, expected):
+                        download(job_dir)
+                    options = ydl.call_args.args[0]
+                    self.assertEqual(options.get("cookiefile"), str(cookie_path) if use_cookies else None)
+                    self.assertNotIn("cookiesfrombrowser", options)
+
+    def test_cookie_validation_does_not_disclose_malformed_cookie_values(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "cookies.txt"
+            for content in ("SID=fake-secret-value", "# Netscape HTTP Cookie File\nSID=fake-secret-value"):
+                path.write_text(content, encoding="utf-8")
+                with self.assertRaises(ValueError) as raised:
+                    validate_cookie_file(path)
+                self.assertNotIn("fake-secret-value", str(raised.exception))
+            path.write_text("# Netscape HTTP Cookie File\n#HttpOnly_.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tfake-value\n", encoding="utf-8")
+            validate_cookie_file(path)
 
     def test_silence_chunks_and_forced_overlap(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:

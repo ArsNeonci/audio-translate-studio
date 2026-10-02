@@ -1,3 +1,13 @@
-yt-dlp==2026.8.19
+yt-dlp[default]==2026.8.19
+websockets>=15,<18
+numpy>=1.26,<3
+psutil>=5.9,<8
 funasr==1.4.16
 kaldi-native-fbank
+torch>=2.6
+transformers==4.57.3
+sentencepiece>=0.2
+soundfile>=0.13
+onnxruntime>=1.20
+sea-g2p>=0.9.1,<1
+soxr

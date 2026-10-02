@@ -1,16 +1,34 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess } from "node:child_process";
 import { closeSync, existsSync, openSync } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, writeFile, stat } from "node:fs/promises";
+import {transcriptionView, type TranscriptionStep} from './transcription-progress';
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { dataRoot, resultsRoot } from "@/lib/python";
+import {spawnSecurityCore} from "./security-core";
+import { pythonCommand } from "@/lib/rules";
+import { licenseDenial } from "@/lib/license";
 
-export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "COMPLETED" | "FAILED";
+export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING";
+export type Artifact = "zh" | "vi" | "moderated" | "voice";
+export type Stage = "transcription" | "translation" | "moderation" | "tts";
+export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS";
+export type StepError = { step: Step; error_code: string; error_message: string; error_type: string; recoverable_manually: boolean; failed_at: string; retry_count: number };
+export type StepState = { state: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED"; progress?: number | null; started_at?: string | null; completed_at?: string | null; duration_ms?: number | null; retry_count: number; attempt: number; output_manifest?: {status:string}[]; error?: StepError };
 export type Job = {
   id: string;
   url: string;
   name: string;
   status: Status;
-  progress: number;
+  progress: number | null;
+  workflow_no?: number;
+  selected_voice_id?: string;
+  storage_scope?: "workflows" | "tools";
+  tool_steps?: Step[];
+  started_at?: string | null;
+  completed_at?: string | null;
+  run_started_at?: string | null;
+  total_duration_ms?: number | null;
   duration_ms: number;
   created_at: string;
   error: string | null;
@@ -18,10 +36,21 @@ export type Job = {
   chunks_total?: number;
   rows?: number;
   processed_ms?: number;
+  workflow_version?: number;
+  active_stage?: Stage | "download" | null;
+  failed_stage?: Stage | "download" | null;
+  stages?: Partial<Record<Stage, { percent: number | null; done?: number; total?: number | null }>>;
+  artifacts?: Partial<Record<Artifact, boolean>>;
+  steps?: Record<Step, StepState>;
+  transcription_steps?: TranscriptionStep[];
+  asr_runtime?: {state:string;workers?:number;threads?:number;ram_available_gib?:number;required_available_gib?:number;thermal_available?:boolean;throttled?:boolean};
+  retry_step?: Step | null;
+  pause_requested?: boolean;
+  delete_requested?: boolean;
 };
 
-const root = path.join(process.cwd(), "data", "jobs");
-const worker = path.join(process.cwd(), "worker", "pipeline.py");
+const root = path.join(/*turbopackIgnore: true*/ dataRoot, "tmp");
+const legacyRoot = path.join(/*turbopackIgnore: true*/ dataRoot, "jobs");
 const shared = globalThis as typeof globalThis & {
   audioStudioActive?: Map<string, ChildProcess>;
   audioStudioScheduling?: boolean;
@@ -41,45 +70,83 @@ export function validYoutubeUrl(value: string): boolean {
 }
 
 export function jobDir(id: string): string | null {
-  return /^[0-9a-f-]{36}$/.test(id) ? path.join(root, id) : null;
+  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  const tool = path.join(/*turbopackIgnore: true*/ dataRoot, "tool-tmp", id);
+  if (existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ tool,"job.json"))) return tool;
+  const current = path.join(/*turbopackIgnore: true*/ root, id);
+  return !existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ current, "job.json")) && existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ legacyRoot, id, "job.json")) ? path.join(/*turbopackIgnore: true*/ legacyRoot, id) : current;
 }
 
 export async function getJob(id: string): Promise<Job | null> {
   const dir = jobDir(id);
   if (!dir) return null;
-  try { return JSON.parse(await readFile(path.join(dir, "job.json"), "utf8")) as Job; }
+  try {
+    const job = JSON.parse(await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, "job.json"), "utf8")) as Job;
+    const saved = job.workflow_no ? path.join(/*turbopackIgnore: true*/ resultsRoot,job.storage_scope||"workflows",String(job.workflow_no).padStart(6,"0")) : path.join(/*turbopackIgnore: true*/ resultsRoot,id);
+    const manifest = JSON.parse(await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ saved,"outputs.json"),"utf8").catch(()=>'{"files":[]}')) as {files:{type:string;step:string;status:string}[]};
+    const available=(type:string)=>manifest.files.some(f=>f.type===type&&f.status==="AVAILABLE");
+    if(job.steps)for(const step of Object.keys(job.steps) as Step[])job.steps[step].output_manifest=manifest.files.filter(f=>f.step===step).map(f=>({status:f.status}));
+    job.artifacts={zh:available("ZH_MD"),vi:available("VI_MD"),moderated:available("MODERATED_MD"),voice:available("VOICE_WAV")};
+    const working = path.join(/*turbopackIgnore: true*/ dir, 'working');
+    job.delete_requested=existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working,'delete-request.json'));
+    const stop=await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working,'cancel.signal'),'utf8').catch(()=>null);
+    job.pause_requested=!!stop&&JSON.parse(stop).mode==='pause'&&job.status!=='PAUSED';
+    const telemetry = await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working, 'transcription-progress.json'), 'utf8').catch(()=>null);
+    if (telemetry) job.transcription_steps = JSON.parse(telemetry).steps;
+    const runtime = await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working, 'asr-runtime.json'), 'utf8').catch(()=>null);
+    if (runtime) job.asr_runtime = JSON.parse(runtime);
+    if (!job.transcription_steps?.length) {
+      const [vad, chunks] = await Promise.all(['vad.done', 'chunks.json'].map(name => stat(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working, name)).then(value=>value.mtime.toISOString()).catch(()=>undefined)));
+      job.transcription_steps = transcriptionView(job, {vad, chunks});
+    }
+    return job;
+  }
   catch { return null; }
 }
 
-export async function listJobs(): Promise<Job[]> {
-  await mkdir(root, { recursive: true });
-  const entries = await readdir(root, { withFileTypes: true });
-  const jobs = await Promise.all(entries.filter((entry) => entry.isDirectory()).map((entry) => getJob(entry.name)));
-  return jobs.filter((job): job is Job => job !== null).sort((a, b) => b.created_at.localeCompare(a.created_at));
+export async function listJobs(includeTools=false): Promise<Job[]> {
+  const {ensureHistory}=await import("./history"); await ensureHistory();
+  await mkdir(/*turbopackIgnore: true*/ root, { recursive: true });
+  const entries = await readdir(/*turbopackIgnore: true*/ root, { withFileTypes: true });
+  const legacy = await readdir(/*turbopackIgnore: true*/ legacyRoot, { withFileTypes: true }).catch(() => []);
+  const tools = includeTools ? await readdir(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dataRoot,"tool-tmp"), {withFileTypes:true}).catch(()=>[]) : [];
+  const ids = new Set([...entries, ...legacy, ...tools].filter(entry => entry.isDirectory()).map(entry => entry.name));
+  const jobs = await Promise.all([...ids].map(getJob));
+  return jobs.filter((job): job is Job => job !== null && (includeTools || job.storage_scope !== "tools")).sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
 async function save(job: Job) {
   const dir = jobDir(job.id)!;
-  const temp = path.join(dir, "job.json.tmp");
-  await writeFile(temp, JSON.stringify(job, null, 2), "utf8");
+  const temp = path.join(/*turbopackIgnore: true*/ dir, `job.${randomUUID()}.json.tmp`);
+  const persisted = { ...job };
+  delete persisted.artifacts;
+  delete persisted.transcription_steps;
+  delete persisted.asr_runtime;
+  delete persisted.pause_requested;
+  delete persisted.delete_requested;
+  await writeFile(temp, JSON.stringify(persisted, null, 2), "utf8");
   const { rename } = await import("node:fs/promises");
-  await rename(temp, path.join(dir, "job.json"));
+  await rename(temp, path.join(/*turbopackIgnore: true*/ dir, "job.json"));
 }
 
-export async function createJob(url: string): Promise<Job> {
-  const id = randomUUID();
-  const job: Job = { id, url, name: new URL(url).searchParams.get("v") || "YouTube audio", status: "QUEUED",
-    progress: 0, duration_ms: 0, created_at: new Date().toISOString(), error: null };
-  await mkdir(path.join(root, id, "source"), { recursive: true });
-  await mkdir(path.join(root, id, "working"), { recursive: true });
-  await save(job);
-  void schedule();
-  return job;
+export async function createJob(url:string,voice?:string):Promise<Job>{
+  const {ensureHistory}=await import("./history");await ensureHistory();
+  const result=await pythonCommand<{status:number;job:Job;error?:string}>("manage.py",{action:"create",url,voice});
+  if(result.status!==200)throw new Error(result.error||"Cannot create workflow");
+  void schedule();return result.job;
 }
 
 export async function retryJob(id: string): Promise<Job | null> {
   const job = await getJob(id);
-  if (!job || job.status !== "FAILED") return null;
+  if (!job || (job.status !== "FAILED" && !(job.status === "COMPLETED" && job.workflow_version !== 2 && job.artifacts?.zh))) return null;
+  if (job.status === "FAILED" && job.steps) {
+    const step = (Object.keys(job.steps) as Step[]).find(key => job.steps?.[key].state === "FAILED");
+    if (!step) return null;
+    const result = await pythonCommand<{status: number}>("retry.py", { action: "retry", id, step, fresh:true });
+    if (result.status !== 202) return null;
+    void schedule();
+    return getJob(id);
+  }
   const next = { ...job, status: "QUEUED" as const, error: null };
   await save(next);
   void schedule();
@@ -87,43 +154,63 @@ export async function retryJob(id: string): Promise<Job | null> {
 }
 
 export async function schedule(): Promise<void> {
-  if (shared.audioStudioScheduling || active.size) return;
+  if (shared.audioStudioScheduling) return;
   shared.audioStudioScheduling = true;
   try {
-    const jobs = (await listJobs()).reverse();
-    const next = jobs.find((job) => job.status !== "COMPLETED" && job.status !== "FAILED");
+    const jobs = (await listJobs(true)).reverse();
+    for(const job of jobs.filter(job=>job.delete_requested))await pythonCommand("manage.py",{action:"finish_abort",id:job.id});
+    if(active.size)return;
+    const next = jobs.find((job) => !job.delete_requested&&!job.pause_requested&&!["COMPLETED","FAILED","CANCELLED","PAUSED","PARTIAL","DELETING"].includes(job.status));
     if (!next || active.has(next.id)) return;
+    if (await licenseDenial()) return;
     const dir = jobDir(next.id)!;
-    const logFd = openSync(path.join(dir, "working", "worker.log"), "a");
-    const python = process.env.PYTHON_BIN || (process.platform === "win32" ? "python" : "python3");
-    const modelCache = path.join(process.cwd(), "data", "model-cache");
+    const logFd = openSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, "working", "worker.log"), "a");
     let child: ChildProcess;
     try {
-      child = spawn(/*turbopackIgnore: true*/ python, [worker, dir], { cwd: process.cwd(), stdio: ["ignore", logFd, logFd], env: { ...process.env, MODELSCOPE_CACHE: process.env.MODELSCOPE_CACHE || modelCache } });
+      child = spawnSecurityCore({action:"workflow",job_dir:dir}, ["pipe", logFd, logFd]);
     } finally {
       closeSync(logFd);
     }
     active.set(next.id, child);
-    child.on("error", async (error) => {
+    let failure: Promise<void> | undefined;
+    child.on("error", () => {
+      failure = (async () => {
       const current = await getJob(next.id);
-      if (current) await save({ ...current, status: "FAILED", error: `Không chạy được Python worker: ${error.message}` });
+      if (current) await workerFailure(current, "PATH_MISSING", "Không chạy được Python worker. Kiểm tra PYTHON_BIN và .venv.");
+      })().catch(() => { console.error("Cannot persist worker failure; check disk space and permissions."); });
     });
-    child.on("close", async (code) => {
+    child.on("close", (code) => { void (async () => {
+      await failure;
       active.delete(next.id);
       const current = await getJob(next.id);
-      if (code !== 0 && current && current.status !== "FAILED" && current.status !== "COMPLETED" && current.status !== "QUEUED") {
-        await save({ ...current, status: "FAILED", error: `Worker dừng với exit code ${code}. Xem working/worker.log.` });
+      if(current?.delete_requested){await pythonCommand("manage.py",{action:"finish_abort",id:next.id});void schedule();return;}
+      if (code !== 0 && current && !["FAILED","COMPLETED","CANCELLED","PAUSED","DELETING"].includes(current.status)) {
+        await workerFailure(current, "STEP_FAILED", `Worker dừng với exit code ${code}. Xem working/worker.log.`);
       }
-      if (code === 0 && current && current.status !== "COMPLETED" && current.status !== "FAILED") {
+      if (code === 0 && current && !["COMPLETED","FAILED","QUEUED","CANCELLED","PAUSED","PARTIAL","DELETING"].includes(current.status)) {
         // An older worker still owns this job. Leave its status intact.
         return;
       }
       void schedule();
-    });
+    })().catch(() => { console.error("Cannot persist worker exit; check disk space and permissions."); }); });
+  } catch {
+    console.error("Cannot schedule worker; check data directory permissions and disk space.");
   } finally { shared.audioStudioScheduling = false; }
+}
+
+async function workerFailure(job: Job, code: string, message: string) {
+  const step = job.retry_step || (job.active_stage?.toUpperCase() as Step) || job.tool_steps?.[0] || "DOWNLOAD";
+  const steps = job.steps || Object.fromEntries(["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS"].map(key => [key, {state: "PENDING", attempt: 0, retry_count: 0}])) as Record<Step, StepState>;
+  const item = steps[step];
+  const error: StepError = {step, error_code: code, error_message: message, error_type: "WorkerProcessError", recoverable_manually: code === "PATH_MISSING", failed_at: new Date().toISOString(), retry_count: item.retry_count};
+  item.state = "FAILED"; item.error = error;
+  item.completed_at=error.failed_at;item.duration_ms=item.started_at?Math.max(0,Date.parse(error.failed_at)-Date.parse(item.started_at)):0;
+  const total=(job.total_duration_ms||0)+(job.run_started_at?Math.max(0,Date.parse(error.failed_at)-Date.parse(job.run_started_at)):0);
+  await save({...job, steps, status: "FAILED",completed_at:error.failed_at,run_started_at:null,total_duration_ms:total, active_stage: null, retry_step: null, failed_stage: step.toLowerCase() as Stage, error: message});
+  await appendFile(path.join(/*turbopackIgnore: true*/ jobDir(job.id)!, "errors.jsonl"), JSON.stringify({...error, attempt: item.attempt || 1, timestamp: error.failed_at, message}) + "\n", "utf8");
 }
 
 export function outputExists(id: string): boolean {
   const dir = jobDir(id);
-  return !!dir && existsSync(path.join(dir, "transcript.zh.md"));
+  return !!dir && existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, "transcript.zh.md"));
 }

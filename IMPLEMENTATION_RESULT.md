@@ -1,10 +1,19 @@
-# Implementation result
+﻿# IMPLEMENTATION_RESULT
 
-- **Architecture:** Next.js Studio → Job API → filesystem queue → Python worker → yt-dlp/FunASR adapters → `data/jobs/<job_id>/` outputs. No database or AI logic in React.
-- **Main files:** `app/page.tsx`, `app/api/jobs/**`, `lib/jobs.ts`, `worker/pipeline.py`, `worker/test_pipeline.py`.
-- **Run:** Install Python/PyTorch and FFmpeg; run `python -m pip install -r worker/requirements.txt`, `npm install`, set `PYTHON_BIN` if needed, then `npm run dev`. See `README.md`.
-- **Models/config:** FSMN-VAD streaming at 16 kHz/200 ms with 30 s maximum segment; Paraformer-zh + FSMN-VAD + ct-punc with `sentence_timestamp=True`, 30 s batch budget, CPU default. Forced continuous-speech cuts use 2.5 s overlap with global timestamp ownership.
-- **Dependencies:** Pinned official `yt-dlp==2026.8.19` and `funasr==1.4.16` packages (the supplied checkouts were used during development), `kaldi-native-fbank`, PyTorch, FFmpeg/ffprobe, Node.js/Next.js. ModelScope downloads model weights on first use into `data/model-cache/`.
-- **Workflow:** Audio-only download → streaming VAD → silence-aware chunks → bounded ASR/punctuation → global timestamp sort/dedup → UTF-8 JSONL and Markdown → web preview/download. Source/chunk checkpoints support retry and restart.
-- **Tests run:** `npm run lint`, `npx tsc --noEmit`, `npm run build`, 4 Python unit tests, API smoke test (`GET /api/jobs` = 200; invalid URL = 400). Real FunASR inference on its bundled 5.55 s Chinese sample completed through VAD, Paraformer and ct-punc, producing `{"start_ms":880,"end_ms":5195,"text":"欢迎大家来体验达摩院推出的语音识别模型。"}`. The normal Next.js API launched the worker, reported `COMPLETED`, returned the UTF-8 Markdown download, retried a checkpointed failed job, and preserved history after a server restart.
-- **Remaining limitations:** This network's YouTube request received HTTP 429 and a sign-in/bot challenge, so a live YouTube-to-model conversion could not be completed here without YouTube cookies or a different network. A 40-hour RAM measurement was not run. VAD must restart from the beginning if interrupted; ASR resumes per completed chunk. Timing and sentence boundaries ultimately depend on FunASR's model output. The single-host filesystem scheduler is intended for a persistent local server, not serverless or multiple hosts.
+Đã tích hợp vào pipeline/model/license hiện có.
+
+- **Workflow numbering:** registry SQLite cấp số tăng dần, không tái sử dụng sau delete; retry/resume/reprocess giữ số cũ.
+- **Naming:** helper duy nhất tạo tên output `000125-transcript.zh.md`, `000125-transcript.vi.jsonl`, `000125-voice.vi.wav` và các artifact liên quan.
+- **Progress:** bytes download, thời lượng ASR, segments translation/moderation/TTS; numeric bị giới hạn 0–100, UI `toFixed(2)`. Workload chưa biết hiển thị indeterminate. Overall là trung bình đều các stage, có giải thích trên UI.
+- **Timing:** timestamps và milliseconds cho stage/attempt; elapsed realtime; tổng thời gian xử lý cộng dồn qua các lần chạy, không tính thời gian chờ hàng đợi.
+- **Voice:** discover preset VieNeu từ source config và metadata model đã cache; hiện có 25 voices. Lưu `selected_voice_id`, truyền đúng vào adapter, persist last voice trong application preferences và fallback hợp lệ.
+- **Standalone tools:** `/tools` có Audio→Chinese, Chinese→Vietnamese, Vietnamese→Moderation, Vietnamese→Voice; dùng lại adapter/worker. Upload streaming, kiểm tra extension/MIME/content/container; TXT/MD/JSONL UTF-8 có giới hạn rõ trên UI.
+- **Tool history:** `results/tools/<number>` riêng với `results/workflows/<number>`; View/Play theo license, Download/Delete riêng. Studio và Reprocess không liệt kê tools.
+- **Hard delete:** confirmation chứa số workflow và cảnh báo không hoàn tác; xóa metadata, logs, outputs, checkpoints, temp và backup của đúng run. Kiểm tra scope/path/OS lock; giữ global counter, xóa registry row của run. Delete vẫn được phép khi EXPIRED.
+- **Reprocess:** `/reprocess`, chọn workflow/stage/voice; giữ predecessors, invalidate và rebuild stage được chọn cùng downstream, giữ số và tên file. Output STALE không được sử dụng như kết quả hiện hành.
+- **Cancel:** signal cooperative tới worker; stage CANCELLED, cleanup incomplete temp, giữ completed outputs. Có thể reprocess tiếp; không kill inference đột ngột.
+- **Atomic replacement:** validate temp, atomic file replacement, commit manifest rồi COMPLETED. PUBLISHING/STALE bị chặn; lỗi trước publish giữ bản đã xuất. Tích hợp Error/Fix Guide/Retry.
+- **Migration:** cấp số record cũ theo `created_at`, kiểm tra collision, backup metadata, copy có checksum/atomic rename. Không xóa legacy; khôi phục được cả history chỉ còn bản published.
+- **Validation:** build và lint PASS; 62 worker/management tests, 19 Admin/license tests, 9 UI-format assertions PASS. HTTP ACTIVE 64, RESTART 20, EXPIRED 20 assertions PASS; có NLLB/VieNeu thật, Cancel/resume, tải WAV 64 MiB có checksum, Range và traversal checks. Browser kiểm tra 25 voices, history tách scope và stage table. Dữ liệu kiểm tra cô lập trong `data/verification`.
+
+**Giới hạn:** Cancel chờ điểm kiểm tra an toàn sau lời gọi inference đang chạy. Timing cũ chưa được ghi không thể khôi phục và hiển thị “—”. Migration giữ backup legacy nên cần thêm dung lượng lưu trữ. Các kiểm tra AI thật dùng input ngắn; không chạy lại một video dài trong lượt này.

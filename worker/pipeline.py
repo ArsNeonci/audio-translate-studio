@@ -1,6 +1,6 @@
 """Bounded-memory YouTube Chinese transcription worker.
 
-The local FunASR checkout can be used with PYTHONPATH, or install FunASR with pip.
+FunASR is installed from worker/requirements.txt in the application environment.
 """
 
 import argparse
@@ -27,9 +27,8 @@ class JobBusy(Exception):
 
 
 def atomic_json(path, value):
-    temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temp, path)
+    from storage import atomic_json as durable_json
+    durable_json(path, value)
 
 
 @contextmanager
@@ -62,17 +61,59 @@ def job_lock(job_dir):
 
 
 def update(job_dir, **changes):
+    from license_gate import assert_allowed
+    assert_allowed(False)
     path = job_dir / "job.json"
     job = json.loads(path.read_text(encoding="utf-8"))
     job.update(changes)
+    from control import check_cancel
+    check_cancel(job_dir)
+    if job.get('workflow_version') == 2 and 'progress' in changes:
+        from storage import progress as stage_progress
+        stage = 'download' if changes.get('status',job.get('status')) == 'DOWNLOADING' else 'transcription'
+        changes.pop('progress',None)
+        job.update(changes)
+        atomic_json(path,job)
+        if stage == 'transcription':
+            status = changes.get('status',job.get('status'))
+            if status == 'VAD' or status == 'MERGING':
+                stage_progress(job_dir,stage,status,0,None)
+            elif status == 'TRANSCRIPTION_COMPLETED': stage_progress(job_dir,stage,status,1,1)
+            else: stage_progress(job_dir,stage,status,changes.get('processed_ms',job.get('processed_ms',0)),job.get('duration_ms'))
+        return job
     atomic_json(path, job)
     return job
 
 
 def source_file(job_dir):
     candidates = [p for p in (job_dir / "source").glob("audio.*")
-                  if p.is_file() and ".part" not in p.name and not p.name.endswith(".ytdl")]
+                  if p.is_file() and ".part" not in p.name and not p.name.endswith((".ytdl", ".tmp"))]
     return candidates[0] if candidates else None
+
+
+def validate_cookie_file(path):
+    """Reject malformed exports before yt-dlp can echo cookie values in warnings."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8-sig").splitlines()
+    except UnicodeError:
+        raise ValueError("File cookie phải dùng UTF-8 và định dạng Netscape cookies.txt.") from None
+    error = "File cookie không đúng định dạng Netscape cookies.txt. Hãy xuất lại cookie YouTube; không dán chuỗi Cookie từ trình duyệt."
+    if not lines or not re.match(r"^#(?: Netscape)? HTTP Cookie File", lines[0]):
+        raise ValueError(error)
+    count = 0
+    for line in lines[1:]:
+        if line.startswith("#HttpOnly_"):
+            line = line[len("#HttpOnly_"):]
+        elif not line.strip() or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if (len(fields) != 7 or fields[1] not in ("TRUE", "FALSE")
+                or fields[3] not in ("TRUE", "FALSE")
+                or fields[4] and not fields[4].isdigit()):
+            raise ValueError(error)
+        count += 1
+    if not count:
+        raise ValueError("File cookie chưa chứa cookie nào. Hãy xuất lại cookie YouTube.")
 
 
 def download(job_dir):
@@ -83,18 +124,23 @@ def download(job_dir):
     if existing:
         return existing
     job = update(job_dir, status="DOWNLOADING", progress=1, error=None)
+    from storage import progress
+    progress(job_dir,"download","DOWNLOADING",0,None)
     last_progress = -1
 
     def hook(state):
         nonlocal last_progress
         if state.get("status") != "downloading":
             return
-        total = state.get("total_bytes") or state.get("total_bytes_estimate")
+        from control import check_cancel
+        from storage import progress
+        check_cancel(job_dir)
+        total = state.get("total_bytes")
         downloaded = state.get("downloaded_bytes", 0)
-        pct = int(downloaded * 10 / total) if total else 1
+        pct = round(downloaded * 100 / total,2) if total else None
         if pct != last_progress:
             last_progress = pct
-            update(job_dir, progress=min(10, max(1, pct)))
+            progress(job_dir,"download","DOWNLOADING",downloaded,total)
 
     options = {
         "format": "bestaudio",
@@ -106,20 +152,34 @@ def download(job_dir):
         "fragment_retries": 10,
         "progress_hooks": [hook],
         "quiet": True,
-        "no_warnings": True,
+        "no_warnings": False,
     }
-    cookies_file = os.getenv("YTDLP_COOKIES_FILE")
+    from youtube_session import cookies_for_download
+    profile_cookies = cookies_for_download()
+    cookies_file = os.getenv("YTDLP_COOKIES_FILE") if profile_cookies is None else None
     if cookies_file:
         if not Path(cookies_file).is_file():
             raise FileNotFoundError(f"Không tìm thấy YTDLP_COOKIES_FILE: {cookies_file}")
+        validate_cookie_file(cookies_file)
         options["cookiefile"] = cookies_file
     try:
         with YoutubeDL(options) as ydl:
+            if profile_cookies is not None:
+                for cookie in profile_cookies:
+                    ydl.cookiejar.set_cookie(cookie)
             info = ydl.extract_info(job["url"], download=True)
     except DownloadError as exc:
         detail = str(exc)
-        if "Sign in to confirm" in detail or "HTTP Error 429" in detail:
-            raise RuntimeError("YouTube yêu cầu xác thực hoặc đang giới hạn truy cập từ mạng này. Hãy cấu hình YTDLP_COOKIES_FILE và thử lại.") from exc
+        if "HTTP Error 429" in detail:
+            raise RuntimeError("YouTube giới hạn số lượt truy cập (HTTP 429). Hãy chờ trước khi thử lại; kiểm tra VPN/proxy hoặc thử mạng khác nếu lỗi kéo dài.") from exc
+        if "sign in to confirm" in detail.lower():
+            if profile_cookies is not None:
+                from youtube_session import mark_auth_required
+                mark_auth_required()
+                raise RuntimeError("YouTube yêu cầu xác thực lại. Mở Settings → Kết nối YouTube, đăng nhập trong profile riêng rồi Retry DOWNLOAD. Không cần xuất cookie hoặc đóng gói lại app.") from None
+            if cookies_file:
+                raise RuntimeError("YouTube vẫn yêu cầu xác thực dù đã dùng cookie. Hãy xuất lại cookie YouTube từ phiên trình duyệt xem được video, cập nhật file rồi bấm Thử lại.") from exc
+            raise RuntimeError("YouTube yêu cầu xác thực. Mở Settings → Kết nối YouTube rồi đăng nhập. Hoặc xuất cookie dạng Netscape, đặt YTDLP_COOKIES_FILE trong .env.local và khởi động lại server.") from exc
         raise RuntimeError(f"Không tải được audio YouTube: {detail}") from exc
     if not info or info.get("vcodec") not in (None, "none"):
         raise RuntimeError("YouTube không cung cấp audio-only stream cho URL này.")
@@ -127,6 +187,7 @@ def download(job_dir):
     if not path:
         raise RuntimeError("yt-dlp không tạo được file audio.")
     update(job_dir, name=info.get("title") or job["name"], duration_ms=int((info.get("duration") or 0) * 1000), progress=10)
+    progress(job_dir,"download","DOWNLOADING",1,1)
     return path
 
 
@@ -189,6 +250,8 @@ def vad_pass(job_dir, source, total_ms):
         with spans_path.open("w", encoding="utf-8") as out:
             data = exact_read(process.stdout, FRAME_BYTES)
             while data:
+                from control import check_cancel
+                check_cancel(job_dir)
                 next_data = exact_read(process.stdout, FRAME_BYTES)
                 consumed += len(data) // 2
                 final = not next_data
@@ -208,6 +271,8 @@ def vad_pass(job_dir, source, total_ms):
                 if pct != last_progress:
                     last_progress = pct
                     update(job_dir, progress=pct, processed_ms=processed_ms)
+                    from transcription_progress import report
+                    report(job_dir, 1, processed_ms, total_ms)
                 data = next_data
             if pending_start is not None:
                 out.write(json.dumps([pending_start, consumed * 1000 // RATE]) + "\n")
@@ -232,13 +297,21 @@ def make_chunks(job_dir):
                 spans.append((start, end))
     spans.sort()
     groups = []
-    for start, end in spans:
+    for index, (start, end) in enumerate(spans):
+        from control import check_cancel
+        from transcription_progress import report
+        check_cancel(job_dir)
+        report(job_dir, 2, index, max(1, len(spans)) * 2)
         if groups and start - groups[-1][1] <= 700 and end - groups[-1][0] <= MAX_CHUNK_MS:
             groups[-1][1] = max(end, groups[-1][1])
         else:
             groups.append([start, end])
     chunks = []
     for i, (start, end) in enumerate(groups):
+        from control import check_cancel
+        from transcription_progress import report
+        check_cancel(job_dir)
+        report(job_dir, 2, len(groups) + i, max(1, len(groups)) * 2)
         before = groups[i - 1][1] if i else -100000
         after = groups[i + 1][0] if i + 1 < len(groups) else 10**15
         chunks.append({
@@ -280,15 +353,23 @@ def clean_text(text):
 
 
 def transcribe(job_dir, source, chunks):
+    if os.getenv('FUNASR_DEVICE', 'cpu') == 'cpu':
+        from asr_runtime import run
+        return run(job_dir, source, chunks)
+    return transcribe_serial(job_dir, source, chunks)
+
+
+def transcribe_serial(job_dir, source, chunks):
     from funasr import AutoModel
 
-    update(job_dir, status="TRANSCRIBING", progress=30, chunks_total=len(chunks))
+    update(job_dir, status="TRANSCRIBING", progress=0, processed_ms=0, chunks_total=len(chunks))
     if not chunks:
         return
     if all((job_dir / "working" / f"chunk-{index:06d}.json").exists() for index in range(len(chunks))):
-        update(job_dir, progress=95, chunks_done=len(chunks))
+        update(job_dir, progress=100, processed_ms=read_json_duration(job_dir), chunks_done=len(chunks))
         return
     model = AutoModel(model=model_reference("paraformer-zh"),
+                      ncpu=max(1, int(os.getenv('AI_NUM_THREADS', '4'))),
                       vad_model=model_reference("fsmn-vad"), punc_model=model_reference("ct-punc"),
                       vad_kwargs={"max_single_segment_time": MAX_CHUNK_MS},
                       device=os.getenv("FUNASR_DEVICE", "cpu"), disable_update=True,
@@ -298,9 +379,13 @@ def transcribe(job_dir, source, chunks):
     tail = b""
     try:
         for index, chunk in enumerate(chunks):
+            from control import check_cancel
+            check_cancel(job_dir)
             path = job_dir / "working" / f"chunk-{index:06d}.json"
             audio, cursor, tail = audio_piece(process.stdout, cursor, tail, chunk["start"], chunk["end"])
             if path.exists():
+                from transcription_progress import report
+                report(job_dir, 3, index + 1, len(chunks))
                 continue
             if not len(audio):
                 raise RuntimeError(f"Đoạn audio {index} trống.")
@@ -325,7 +410,9 @@ def transcribe(job_dir, source, chunks):
                     rows.append({"start_ms": max(0, start), "end_ms": max(start, end), "text": text})
             rows.sort(key=lambda row: (row["start_ms"], row["end_ms"]))
             atomic_json(path, rows)
-            update(job_dir, progress=30 + int(65 * (index + 1) / len(chunks)), chunks_done=index + 1)
+            from transcription_progress import report
+            report(job_dir, 3, index + 1, len(chunks))
+            update(job_dir, progress=30 + int(65 * (index + 1) / len(chunks)), chunks_done=index + 1, processed_ms=chunk["own_end"])
     finally:
         if process.poll() is None:
             process.kill()
@@ -343,10 +430,16 @@ def merge(job_dir, chunks):
     rows_written = 0
     with jsonl_tmp.open("w", encoding="utf-8", newline="\n") as canonical, md_tmp.open("w", encoding="utf-8", newline="\n") as markdown:
         ordered_chunks = []
+        total_rows = 0
         for index in range(len(chunks)):
             rows = json.loads((job_dir / "working" / f"chunk-{index:06d}.json").read_text(encoding="utf-8"))
+            total_rows += len(rows)
             ordered_chunks.append(iter(rows))
-        for row in heapq.merge(*ordered_chunks, key=lambda item: (item["start_ms"], item["end_ms"])):
+        for visited, row in enumerate(heapq.merge(*ordered_chunks, key=lambda item: (item["start_ms"], item["end_ms"]))):
+            from control import check_cancel
+            from transcription_progress import report
+            check_cancel(job_dir)
+            report(job_dir, 4, visited + 1, total_rows)
             start, end = row["start_ms"], row["end_ms"]
             shared_ms = max(0, min(previous_end, end) - max(previous_start, start))
             if previous_end > 0 and (end <= previous_end and start < previous_end - 500 or
@@ -363,9 +456,16 @@ def merge(job_dir, chunks):
             rows_written += 1
         if paragraph:
             markdown.write("".join(paragraph) + "\n")
+    from control import check_cancel
+    check_cancel(job_dir)
     os.replace(jsonl_tmp, job_dir / "transcript.jsonl")
     os.replace(md_tmp, job_dir / "transcript.zh.md")
-    update(job_dir, status="COMPLETED", progress=100, rows=rows_written, error=None)
+    # Keep the legacy alias for existing consumers, and publish the canonical name.
+    import shutil
+    zh_temp = job_dir / "transcript.zh.jsonl.tmp"
+    shutil.copyfile(job_dir / "transcript.jsonl", zh_temp)
+    os.replace(zh_temp, job_dir / "transcript.zh.jsonl")
+    update(job_dir, status="TRANSCRIPTION_COMPLETED", progress=100, rows=rows_written, error=None)
 
 
 def run(job_dir):
@@ -394,3 +494,7 @@ if __name__ == "__main__":
         update(args.job_dir, status="FAILED", error=f"{type(exc).__name__}: {exc}")
         print(f"Worker failed: {exc}", file=sys.stderr)
         raise
+
+
+def read_json_duration(job_dir):
+    return json.loads((job_dir/"job.json").read_text(encoding="utf-8")).get("duration_ms",0)
