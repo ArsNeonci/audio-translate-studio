@@ -29,6 +29,9 @@
 .DS_Store
 *.pem
 
+# Private administration source must never enter this public product repository.
+admin-system/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
@@ -69,3 +72,6 @@ __pycache__/
 /.next-security-phase1/
 /dist/
 /data/*.log
+
+# Verified offline translation weights (not source files)
+/models/
