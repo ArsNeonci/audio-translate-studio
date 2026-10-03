@@ -1,0 +1,185 @@
+/* Scoped overrides: Light keeps the original palette and layout unchanged. */
+:root[data-theme="dark"] {
+  --background: #070e1b;
+  --foreground: #f1f6ff;
+  --dark-surface: #0d1a2d;
+  --dark-raised: #11243b;
+  --dark-border: #294664;
+  --dark-muted: #afc0d6;
+  --dark-accent: #69b9ff;
+  --dark-primary: #1764ad;
+  color-scheme: dark;
+  scrollbar-color: #294664 #070e1b;
+}
+
+:root[data-theme="dark"] ::selection {
+  background: #22558a;
+  color: #fff;
+}
+
+:root[data-theme="dark"] a {
+  color: var(--dark-accent);
+}
+
+:root[data-theme="dark"] :is(.header, .hero, footer, .table-wrap, td,
+  .transcript-panel, .transcript-head, .job-detail, .artifact-card,
+  .rule-form fieldset, .step-errors, .step-state, .license-box,
+  .lang-switcher-card, .youtube-connection) {
+  border-color: var(--dark-border);
+}
+
+:root[data-theme="dark"] :is(.table-wrap, .transcript-panel, .job-detail,
+  .artifact-card, .rule-form fieldset, .step-errors, .license-box,
+  .lang-switcher-card, .youtube-connection, .voice-options) {
+  background: var(--dark-surface);
+}
+
+:root[data-theme="dark"] :is(.brand, .name-cell strong, .empty strong,
+  .transcript-body, .progress-row span, .rule-form legend, .rule-form label,
+  .license-box label, .history-filters label) {
+  color: var(--foreground);
+}
+
+:root[data-theme="dark"] :is(.header-note, .eyebrow, .hero p, .hero-foot,
+  .voice-description, td, small, .status, .empty, .stage-index,
+  .artifact-state, .artifact-card p, .section-description, .rules-empty,
+  .history-heading p, .history-pagination, footer, .lang-switcher-card p,
+  .lang-btn small, .youtube-connection ol, .youtube-connection details,
+  .file-picker-name) {
+  color: var(--dark-muted);
+}
+
+:root[data-theme="dark"] :is(th, .stage-card, .fix-guide pre, .count) {
+  background: var(--dark-raised);
+  color: var(--dark-muted);
+}
+
+:root[data-theme="dark"] :is(input, select, textarea,
+  .voice-select .voice-picker-toggle, .tool-form .file-picker) {
+  background: var(--dark-surface);
+  color: var(--foreground);
+  border-color: var(--dark-border);
+}
+
+:root[data-theme="dark"] :is(input, textarea)::placeholder {
+  color: var(--dark-muted);
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .license-box :is(input, select, textarea) {
+  background: var(--dark-raised) !important;
+  border-color: var(--dark-border) !important;
+  color: var(--foreground);
+}
+
+:root[data-theme="dark"] :is(input, select, textarea):focus,
+:root[data-theme="dark"] .license-box :is(input, select, textarea):focus {
+  border-color: var(--dark-accent) !important;
+  box-shadow: 0 0 0 3px rgb(105 185 255 / 18%) !important;
+}
+
+:root[data-theme="dark"] :is(button, a):focus-visible,
+:root[data-theme="dark"] .file-picker:focus-within {
+  outline: 2px solid var(--dark-accent);
+  outline-offset: 3px;
+}
+
+:root[data-theme="dark"] :is(button, .header nav a, .site-nav a,
+  .output-cell a, .history-actions a, .artifact-links a, .transcript-head a) {
+  background: var(--dark-raised);
+  color: var(--foreground);
+  border-color: var(--dark-border);
+}
+
+:root[data-theme="dark"] :is(.action-button, .convert-form button,
+  .tool-form button, .header nav a.active, .site-nav a.active) {
+  background: var(--dark-primary);
+  color: #fff;
+  border-color: #3684c9;
+}
+
+:root[data-theme="dark"] :is(button, .header nav a, .site-nav a,
+  .output-cell a, .history-actions a, .artifact-links a, .transcript-head a):hover:not(:disabled) {
+  background: #16395f !important;
+  color: #fff !important;
+  border-color: var(--dark-accent) !important;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 25%);
+}
+
+:root[data-theme="dark"] :is(.lang-btn.active, .tool-card.selected,
+  .voice-option:hover, .voice-option.selected) {
+  background: #143353;
+  border-color: var(--dark-accent);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+}
+
+:root[data-theme="dark"] .lang-btn.active strong {
+  color: var(--foreground);
+}
+
+:root[data-theme="dark"] .voice-options {
+  border-color: var(--dark-border);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 40%);
+}
+
+:root[data-theme="dark"] .voice-select .voice-option-name,
+:root[data-theme="dark"] .rule-actions .rule-icon {
+  background: transparent;
+  color: var(--dark-muted);
+  border: 0;
+}
+
+:root[data-theme="dark"] :is(.status-completed,
+  .artifact-card.ready .artifact-state, .empty span) {
+  color: var(--dark-accent);
+}
+
+:root[data-theme="dark"] :is(.connection-state, .connection-message, .license-banner) {
+  color: var(--dark-accent) !important;
+}
+
+:root[data-theme="dark"] :is(.progress-track, .stage-meter) {
+  background: #223b58;
+}
+
+:root[data-theme="dark"] :is(.progress-track div, .stage-meter div,
+  .status i, .status-completed i) {
+  background: var(--dark-accent);
+}
+
+:root[data-theme="dark"] :is(.alert, .error-detail, .status-failed) {
+  color: #ffaaa5 !important;
+}
+
+:root[data-theme="dark"] .status-failed i {
+  background: #ffaaa5;
+}
+
+:root[data-theme="dark"] :is(.lock-notice, .workflow-pause) {
+  background: #302817;
+  color: #f4d185;
+  border-color: #6c5632;
+}
+
+:root[data-theme="dark"] .workflow-resume {
+  background: #143353;
+  color: var(--dark-accent);
+  border-color: #3684c9;
+}
+
+:root[data-theme="dark"] .workflow-abort {
+  background: #351d2b;
+  color: #ffaaa5;
+  border-color: #764250;
+}
+
+:root[data-theme="dark"] .rule-actions .rule-icon-delete:hover:not(:disabled) {
+  background: #351d2b !important;
+  color: #ffaaa5 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="dark"] :is(button, a) {
+    transition: none;
+  }
+}

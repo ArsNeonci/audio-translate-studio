@@ -18,7 +18,7 @@ const duration = (ms: number) => ms ? `${Math.floor(ms / 3600000)}h ${String(Mat
 type ResourceWarning={reasons:string[];ram_available_gib:number;required_available_gib:number;cpu_percent:number;existing_workflows:number;estimate_basis:string};
 
 export default function Home() {
-  const { language, t } = useLanguage();
+  const { language, t , tr} = useLanguage();
   const license = useLicense();
   const [url, setUrl] = useState("");
   const [voice,setVoice]=useState("");
@@ -33,10 +33,10 @@ export default function Home() {
   const refresh = useCallback(async () => {
     try {
       const response = await fetch("/api/jobs", { cache: "no-store" });
-      if (!response.ok) throw new Error("Không tải được danh sách job.");
+      if (!response.ok) throw new Error(tr("Không tải được danh sách job."));
       setJobs((await response.json()).jobs);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Lỗi kết nối."); }
-  }, [setMessage]);
+    } catch (error) { setMessage(error instanceof Error ? error.message : tr("Lỗi kết nối.")); }
+  }, [setMessage,tr]);
 
   useEffect(() => {
     const initial = window.setTimeout(() => { setSelected(localStorage.getItem("audio-studio-job")); void refresh(); }, 0);
@@ -58,22 +58,22 @@ export default function Home() {
       if(data.code==='RESOURCE_WARNING'){
         setResourceWarning(data.assessment);setPendingConvert(input);return;
       }
-      if (!response.ok) throw new Error(data.error || "Không tạo được job.");
+      if (!response.ok) throw new Error(data.error || tr("Không tạo được job."));
       setPendingConvert(null);setUrl(""); await refresh();
       setMessage(t.home.queuedNotice);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Không tạo được job."); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : tr("Không tạo được job.")); }
     finally { setBusy(false); }
   }
 
   async function retry(id: string) {
-    if(!window.confirm('Chạy lại giai đoạn lỗi? Chỉ dữ liệu của giai đoạn này sẽ bị xóa; các bước trước được giữ nguyên.'))return;
+    if(!window.confirm(tr("Chạy lại giai đoạn lỗi? Chỉ dữ liệu của giai đoạn này sẽ bị xóa; các bước trước được giữ nguyên.")))return;
     setMessage("");
     try {
       const response = await fetch(`/api/jobs/${id}/retry`, { method: "POST" });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Không retry được job.");
+      if (!response.ok) throw new Error(data.error || tr("Không retry được job."));
       await refresh();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Không retry được job."); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : tr("Không retry được job.")); }
   }
 
   function view(id: string | null) {
@@ -100,8 +100,8 @@ export default function Home() {
       {resourceWarning&&<section role="alert" className="alert">
         <h3>{t.home.resourceWarningTitle}</h3>
         <p>{t.home.existingWorkflows.replace("{count}", String(resourceWarning.existing_workflows))}</p>
-        <ul>{resourceWarning.reasons.map(reason=><li key={reason}>{reason}</li>)}</ul>
-        <p>{resourceWarning.estimate_basis==='estimated'?'Dự toán RAM model tạm tính; chưa có benchmark thật. ':'Dự toán theo bộ nhớ model đã đo. '}Bạn có thể xếp hàng chờ; workflow vẫn xử lý lần lượt, không ép chạy song song.</p>
+        <ul>{resourceWarning.reasons.map(reason=><li key={reason}>{tr(reason)}</li>)}</ul>
+        <p>{resourceWarning.estimate_basis==='estimated'?tr("Dự toán RAM model tạm tính; chưa có benchmark thật. "):tr("Dự toán theo bộ nhớ model đã đo. ")}{tr("Bạn có thể xếp hàng chờ; workflow vẫn xử lý lần lượt, không ép chạy song song.")}</p>
         <button type="button" disabled={busy||!license.allowed||!pendingConvert} onClick={()=>{if(pendingConvert)void convert(pendingConvert,true);}}>{t.home.queueWait}</button>{' '}
         <button type="button" disabled={busy} onClick={()=>{setResourceWarning(null);setPendingConvert(null);}}>{t.home.dismiss}</button>
       </section>}
@@ -111,17 +111,17 @@ export default function Home() {
       <div className="section-head"><div><span className="eyebrow">{t.home.workspace}</span><h2>{t.home.jobs} <span className="count">{studioJobs.length}</span></h2><Link href="/history">{t.home.completedToHistory}</Link></div><button className="refresh" onClick={() => void refresh()} type="button">↻ {t.home.refresh}</button></div>
       <div className="table-wrap"><table><thead><tr><th>{t.home.thName}</th><th>{t.home.thDuration}</th><th>{t.home.thStatus}</th><th>{t.home.thProgress}</th><th>{t.home.thCreated}</th><th>{t.home.thOutput}</th><th>{t.home.thActions}</th></tr></thead><tbody>
         {studioJobs.map((job) => <tr key={job.id}>
-          <td className="name-cell"><strong title={job.name}>{job.name}</strong><small>Workflow #{runNumber(job.workflow_no)}</small></td>
+          <td className="name-cell"><strong title={job.name}>{job.name}</strong><small>{tr("Workflow #")}{runNumber(job.workflow_no)}</small></td>
           <td>{duration(job.duration_ms)}</td>
-          <td><span className={`status status-${job.status.toLowerCase()}`}><i />{getStatusLabel(job)}</span>{job.error && <small className="error-detail" title={job.error}>{job.error}</small>}</td>
+          <td><span className={`status status-${job.status.toLowerCase()}`}><i />{getStatusLabel(job)}</span>{job.error && <small className="error-detail" title={tr(job.error)}>{tr(job.error)}</small>}</td>
           <td><div className="progress-row"><span>{percent(job.progress)}</span><div className="progress-track"><div style={{ width: `${percent(job.progress)}` }} /></div></div>{job.status === "VAD" && job.processed_ms ? <small>{duration(job.processed_ms)} / {duration(job.duration_ms)}</small> : job.chunks_total ? <small>{job.chunks_done || 0}/{job.chunks_total} {t.home.chunksUnit}</small> : null}</td>
           <td>{new Date(job.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}</td>
           <td className="output-cell"><button type="button" onClick={() => view(selected === job.id ? null : job.id)}>{selected === job.id ? t.home.closeDetails : t.home.details}</button>
-            {job.status === "FAILED" && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.retry} ↻</button>}
-            {job.status === "COMPLETED" && job.workflow_version !== 2 && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.continueTranslate} →</button>}</td>
+            {job.status === "FAILED" && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.retry}</button>}
+            {job.status === "COMPLETED" && job.workflow_version !== 2 && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.continueTranslate}</button>}</td>
           <td><WorkflowActions job={job} onChanged={refresh} onNotice={setMessage} canResume={license.allowed}/></td>
         </tr>)}
-      </tbody></table>{!studioJobs.length && <div className="empty"><span>◎</span><strong>{t.home.emptyTitle}</strong><p>{t.home.emptyDesc.replace("{history}", "")} <Link href="/history">History</Link>.</p></div>}</div>
+      </tbody></table>{!studioJobs.length && <div className="empty"><span>◎</span><strong>{t.home.emptyTitle}</strong><p>{t.home.emptyDesc.replace("{history}", "")} <Link href="/history">{tr("History")}</Link>.</p></div>}</div>
       {studioJobs.filter(job => job.id === selected).map(job => <JobDetail key={job.id} job={job} onClose={() => view(null)} />)}
     </section>
     <RulesPanel moderating={jobs.some(job => job.status === "MODERATING")} />

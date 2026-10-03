@@ -7,7 +7,7 @@ import { useNotice } from "../components/use-notice";
 import { useLanguage } from "@/lib/language-context";
 
 export default function LicensePage() {
-  const { language, t } = useLanguage();
+  const { language, t, tr } = useLanguage();
   const [status, setStatus] = useState<LicenseStatus>({ status: "CHECKING" });
   const [machine, setMachine] = useState("");
   const [token, setToken] = useState("");
@@ -29,12 +29,12 @@ export default function LicensePage() {
         }
       })
       .catch(() => {
-        if (!disposed) setMessage(t.license.failedLoad);
+        if (!disposed) setMessage(t.license.cannotRead);
       });
     return () => {
       disposed = true;
     };
-  }, [setMessage, t.license.failedLoad]);
+  }, [setMessage, t.license.cannotRead]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -50,9 +50,9 @@ export default function LicensePage() {
       if (!response.ok) throw new Error(data.error || data.status);
       setStatus(data);
       setToken("");
-      setMessage(t.license.savedSuccess);
+      setMessage(t.license.savedNotice);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : t.license.failedImport);
+      setMessage(e instanceof Error ? e.message : t.license.saveFailed);
     } finally {
       setBusy(false);
     }
@@ -65,8 +65,8 @@ export default function LicensePage() {
         <div className="eyebrow">{t.license.eyebrow}</div>
         <h1>{t.license.title}</h1>
         <p role="status">
-          <strong>{status.status}</strong>
-          {status.sequence ? ` · Sequence ${status.sequence}` : ""}
+          <strong>{tr(status.status)}</strong>
+          {status.sequence ? ` · ${tr("Sequence")} ${status.sequence}` : ""}
           {status.expires_at
             ? ` · ${t.license.expires}: ${new Date(status.expires_at).toLocaleString(
                 language === "vi" ? "vi-VN" : "en-US"
@@ -85,15 +85,15 @@ export default function LicensePage() {
               onClick={() =>
                 void navigator.clipboard
                   .writeText(machine)
-                  .then(() => setMessage(t.license.copiedMachineId))
-                  .catch(() => setMessage(t.license.copyFallback))
+                  .then(() => setMessage(t.license.copied))
+                  .catch(() => setMessage(t.license.copyPrompt))
               }
             >
-              {t.license.copyBtn}
+              {t.license.copy}
             </button>
           </div>
 
-          <p>{t.license.adminInstruction}</p>
+          <p>{t.license.instructions}</p>
 
           <form onSubmit={submit}>
             <label htmlFor="license-action">{t.license.tokenType}</label>
@@ -103,10 +103,10 @@ export default function LicensePage() {
               onChange={(e) => setAction(e.target.value)}
             >
               <option value="activate">{t.license.activateFirst}</option>
-              <option value="renew">{t.license.renewOption}</option>
+              <option value="renew">{t.license.renew}</option>
             </select>
 
-            <label htmlFor="license-token">{t.license.tokenInputLabel}</label>
+            <label htmlFor="license-token">{t.license.tokenLabel}</label>
             <textarea
               id="license-token"
               required
@@ -116,7 +116,6 @@ export default function LicensePage() {
               spellCheck={false}
               rows={6}
               maxLength={34000}
-              placeholder={t.license.tokenPlaceholder}
             />
 
             <div className="license-actions">

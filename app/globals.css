@@ -7,6 +7,11 @@
   --foreground: #202720;
 }
 
+html {
+  /* Long and short routes reserve the same scrollbar space. */
+  scrollbar-gutter: stable;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -85,7 +90,7 @@ button {
 
 /* Standardized H1 matching History page size and font */
 h1, .history-heading h1 {
-  font-family: Georgia, serif !important;
+  font-family: Arial, Helvetica, sans-serif !important;
   font-size: clamp(28px, 4vw, 48px) !important;
   font-weight: 400 !important;
   line-height: 1.2 !important;
@@ -133,7 +138,9 @@ h1, .history-heading h1 {
   align-items: center;
   justify-content: center;
   font-size: 0.95rem;
-  font-weight: 600;
+  /* Keep every item at the same weight so changing the active route does not
+     alter a link's width or shift the rest of the navigation. */
+  font-weight: 700;
   letter-spacing: 0.01em;
   padding: 0.5rem 1rem;
   border-radius: 9999px;
@@ -158,7 +165,6 @@ h1, .history-heading h1 {
   background: #244b32;
   color: #ffffff;
   border-color: #173822;
-  font-weight: 700;
 }
 
 .header nav a.active:hover, .site-nav a.active:hover {
@@ -852,12 +858,75 @@ button:disabled {
   width: 145px;
 }
 
-.rule-actions button {
-  margin-right: 8px;
+.rule-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
 }
 
-.rule-actions button:last-child {
-  color: #9f5548;
+.rule-actions .rule-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  border: 0;
+  background: transparent;
+  color: #66736a;
+  border-radius: 6px;
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.rule-actions .rule-icon:hover:not(:disabled) {
+  color: #244b32 !important;
+  background: #eaf3e8 !important;
+}
+
+.rule-actions .rule-icon-delete:hover:not(:disabled) {
+  color: #bd352c !important;
+  background: #fbece9 !important;
+}
+
+.rule-icon:focus-visible, .file-picker:focus-within {
+  outline: 2px solid #244b32;
+  outline-offset: 3px;
+}
+
+.tool-form .file-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #8ca48f;
+  border-radius: 7px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.file-picker input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #66736a;
+}
+
+.connection-state {
+  font-weight: 600;
+  color: #244b32 !important;
 }
 
 .rules-empty {

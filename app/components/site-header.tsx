@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { useLanguage } from "@/lib/language-context";
 
 export default function SiteHeader() {
-  const { t } = useLanguage();
+  const { t, tr } = useLanguage();
   const pathname = usePathname();
 
   const navLinks = [
@@ -21,7 +21,7 @@ export default function SiteHeader() {
 
   return (
     <header className="header">
-      <Link href="/" className="brand" aria-label="Audio Studio Home">
+      <Link href="/" className="brand" aria-label={tr("Audio Studio Home")}>
         <Image
           src="/arsneonci-logo.png"
           alt="Ars Neonci Logo"
@@ -32,7 +32,7 @@ export default function SiteHeader() {
         />
         <span>Audio Studio</span>
       </Link>
-      <nav aria-label="Main navigation" className="site-nav">
+      <nav aria-label={tr("Main navigation")} className="site-nav">
         {navLinks.map((link) => {
           const isActive = pathname === link.href;
           return (

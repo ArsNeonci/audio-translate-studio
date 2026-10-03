@@ -1,4 +1,5 @@
 "use client";
+import { useLanguage } from "@/lib/language-context";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -14,6 +15,7 @@ export function useLicense() {
   return {...license, allowed: license.status === "ACTIVE"};
 }
 export default function LicenseBanner() {
+  const { tr } = useLanguage();
   const license = useLicense();
-  return <p className={license.allowed ? "license-banner" : "alert"}><span>License: {license.status}</span><span aria-hidden="true"> · </span><Link href="/license">Kích hoạt / Gia hạn</Link>{!license.allowed && " · Bạn vẫn có thể mở History và tải file đã tạo."}</p>;
+  return <p className={license.allowed ? "license-banner" : "alert"}><span>{tr("License:")} {tr(license.status)}</span><span aria-hidden="true"> · </span><Link href="/license">{tr("Kích hoạt / Gia hạn")}</Link>{!license.allowed && tr(" · Bạn vẫn có thể mở History và tải file đã tạo.")}</p>;
 }
