@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app lib",
+    "lint": "eslint app components lib",
     "check:i18n": "node scripts/check-i18n.cjs",
     "check:theme": "node scripts/check-theme.cjs",
     "package:windows": "python packaging/build_installer.py"

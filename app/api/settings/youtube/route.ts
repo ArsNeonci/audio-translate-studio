@@ -1,4 +1,4 @@
-import { pythonCommand } from "@/lib/rules";
+import { pythonCommand } from "@/lib/server/worker-client";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -1,4 +1,4 @@
-import { getHistoryJob } from "@/lib/history";
+import { getHistoryJob } from "@/lib/server/history";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(_request: Request, context: {params: Promise<{id: string}>}) {
@@ -8,5 +8,5 @@ export async function GET(_request: Request, context: {params: Promise<{id: stri
   } catch { return Response.json({error: "Không đọc được History."}, {status: 503}); }
 }
 
-import {managementResponse} from "@/lib/management";
+import {managementResponse} from "@/lib/server/management";
 export async function DELETE(request:Request,{params}:{params:Promise<{id:string}>}){return managementResponse(request,(await params).id,"delete");}

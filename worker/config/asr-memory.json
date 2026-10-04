@@ -1,0 +1,6 @@
+{
+  "start_free_gib": 3.0,
+  "extra_worker_gib": 2.0,
+  "max_workers": 0,
+  "pressure_reserve_gib": 1.5
+}

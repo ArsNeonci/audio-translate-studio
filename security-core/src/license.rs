@@ -80,8 +80,11 @@ pub fn verify(token: &str, root: &str, machine: &str) -> Result<(Payload, String
     if p.machine_id != machine { return Err("WRONG_MACHINE"); }
     Ok((p, c.public_key.clone()))
 }
+/// Local clocks and HTTPS `Date` headers disagree by a few seconds; an offline check
+/// followed by an online one must not look like a rollback. Real rollbacks are larger.
+pub const CLOCK_SKEW_SECONDS: i64 = 300;
 pub fn expiration(p: &Payload, now: i64, last: i64) -> Result<()> {
-    if now < last || now < timestamp(&p.activated_at)? { return Err("CLOCK_ROLLBACK"); }
+    if now + CLOCK_SKEW_SECONDS < last || now + CLOCK_SKEW_SECONDS < timestamp(&p.activated_at)? { return Err("CLOCK_ROLLBACK"); }
     if now >= timestamp(&p.expires_at)? { return Err("EXPIRED"); }
     Ok(())
 }

@@ -1,6 +1,6 @@
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
-import {previewRoot, voiceSamples} from '@/lib/voice-previews';
+import {previewRoot, voiceSamples} from '@/lib/server/voice-previews';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export async function GET(_request:Request, context:{params:Promise<{key:string}>}) {

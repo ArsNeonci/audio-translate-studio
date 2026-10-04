@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "calibrate": true,
+  "threads": 0,
+  "max_workers": 0,
+  "cpu_target": 85,
+  "temperature_limit": 85,
+  "reserve_gib": 1.5,
+  "initial_worker_gib": 1.5,
+  "min_gain": 0.10,
+  "observe_seconds": 10,
+  "memory_wait_seconds": 120,
+  "calibration_rounds": 2,
+  "cache_enabled": true,
+  "cache_max_gib": 1.0,
+  "cache_max_entries": 1000
+}

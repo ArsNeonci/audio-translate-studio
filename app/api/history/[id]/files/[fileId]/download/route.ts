@@ -1,5 +1,5 @@
-import { resolveHistoryFile } from "@/lib/history";
-import { savedFileResponse } from "@/lib/file-response";
+import { resolveHistoryFile } from "@/lib/server/history";
+import { savedFileResponse } from "@/lib/server/file-response";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request, context: {params: Promise<{id: string; fileId: string}>}) {

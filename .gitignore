@@ -75,3 +75,7 @@ __pycache__/
 
 # Verified offline translation weights (not source files)
 /models/
+/runtime/llama/
+/data/tts-cache/
+/data/logs/
+/data/settings/

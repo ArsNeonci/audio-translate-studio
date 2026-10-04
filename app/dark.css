@@ -183,3 +183,19 @@
     transition: none;
   }
 }
+
+:root[data-theme="dark"] .voice-select .voice-style-option {
+  background: var(--dark-raised);
+  color: var(--foreground);
+  border-color: var(--dark-border);
+}
+
+:root[data-theme="dark"] .voice-select .voice-style-option.selected {
+  background: var(--dark-primary);
+  color: #fff;
+  border-color: #3684c9;
+}
+
+:root[data-theme="dark"] .voice-style-description {
+  color: var(--dark-muted);
+}

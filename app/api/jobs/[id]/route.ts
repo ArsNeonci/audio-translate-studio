@@ -1,4 +1,4 @@
-import { getJob, schedule } from "@/lib/jobs";
+import { getJob, schedule } from "@/lib/server/jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

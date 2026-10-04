@@ -1,6 +1,6 @@
 # Audio Studio — YouTube → Chinese → Vietnamese voice
 
-Local Next.js Studio with a filesystem job queue and Python workers for FunASR, NLLB translation, replacement rules, and VieNeu-TTS. New jobs process in `data/tmp/<job_id>/` and persist final UTF-8 transcripts/Vietnamese audio in `RESULTS_ROOT/<job_id>/`; existing `data/jobs/` workspaces remain compatible.
+Local Next.js Studio with a filesystem job queue and Python workers for FunASR, Hy-MT2-1.8B Q8_0 GGUF translation, replacement rules, and VieNeu-TTS. New jobs process in `data/tmp/<job_id>/` and persist final UTF-8 transcripts/Vietnamese audio in `RESULTS_ROOT/<job_id>/`; existing `data/jobs/` workspaces remain compatible.
 
 ## Saved results and History
 
@@ -24,21 +24,23 @@ History uses only `job.json` and `outputs.json` indexes, a short cache of immedi
 
 API: `GET /api/history?search=...&status=COMPLETED&sort=newest&page=1`, `GET /api/history/<id>`, `GET /api/history/<id>/files/<fileId>?preview=1&offset=0`, `GET /api/history/<id>/files/<fileId>/download`. Preview reads at most 64 KiB per request and returns `next_offset`; complete downloads/audio are streamed with byte Range/206/416 support. Studio artifact APIs use the same persisted files, with no generated download copies.
 
-History acceptance: `python worker/verify_history_http.py --data data/verification/acceptance --pid <test-server-pid>` against the isolated server on port 3001. Restart that server, then use the same command with `--restart` instead of `--pid`. The script creates disposable large-file fixtures only under acceptance data.
+History acceptance: `python worker/dev/verify_history_http.py --data data/verification/acceptance --pid <test-server-pid>` against the isolated server on port 3001. Restart that server, then use the same command with `--restart` instead of `--pid`. The script creates disposable large-file fixtures only under acceptance data.
 
 ## Translation, moderation, and Vietnamese voice
 
 ### Node errors and retry
 
-Open **Chi tiết** for the five node states. A failed node offers **View Error**, **View Fix Guide** for recognized manual errors, and **Retry Step**. Fix the indicated dependency/path/config/cookie first, then retry. Commands in guides are displayed for you to run; the app does not execute them. Translation/TTS settings are frozen in `data/tmp/<id>/working/adapters.json` (legacy jobs: `data/jobs/<id>/working/adapters.json`); device/batch/model corrections for an existing job must use that file, while `.env.local` sets defaults for new jobs.
+Open **Chi tiết** for the five node states. A failed node offers **View Error**, **View Fix Guide** for recognized manual errors, and **Retry Step**. Fix the indicated dependency/path/config/cookie first, then retry. Commands in guides are displayed for you to run; the app does not execute them. Settings now offers **CPU / GPU** for TRANSCRIPTION 3/4, TRANSLATION and TTS. The choice is captured at workflow start and retained across retries; TRANSCRIPTION 4/4 merges text on CPU. See [Compute settings](docs/COMPUTE_SETTINGS.md) for backend requirements and the editable preference file. Translation/TTS model and batch settings remain in `working/adapters.json`; its device fields are derived from the workflow choice.
 
 Retry executes only the failed node, then continues pending successors. Completed predecessors, valid chunk/WAV checkpoints and source inputs are preserved. Cleanup removes only the failed node's temporary/corrupt outputs. Errors persist in `job.json` and sanitized `errors.jsonl`; reloading the page retains the node state.
 
-API: `GET /api/jobs/<id>/errors`, `GET /api/jobs/<id>/steps/<STEP>` (error + fix guide), `POST /api/jobs/<id>/steps/<STEP>` (retry, HTTP 202 or 409 for invalid state/lock). Step names are uppercase. Run `python -m unittest discover -s worker -p 'test_*.py' -v`; `worker/verify_error_http.py --data data/verification/acceptance` verifies the isolated server on port 3001.
+API: `GET /api/jobs/<id>/errors`, `GET /api/jobs/<id>/steps/<STEP>` (error + fix guide), `POST /api/jobs/<id>/steps/<STEP>` (retry, HTTP 202 or 409 for invalid state/lock). Step names are uppercase. Run `python -m unittest discover -s worker/tests -t worker -p "test_*.py" -v`; `worker/dev/verify_error_http.py --data data/verification/acceptance` verifies the isolated server on port 3001.
 
 New jobs run the full workflow automatically. For an existing Chinese-only job, click **Tiếp tục dịch và đọc →**. Set up **Community Moderation Rules** before continuing if replacements are wanted. Job detail shows separate progress and View/Download controls for each transcript, plus Play/Download for the Vietnamese WAV.
 
-The project automatically detects the supplied `../huggingface/hub/models--facebook--nllb-200-distilled-600M` snapshot and `../VieNeu-TTS-main/src`. Override `NLLB_MODEL_PATH` or `VIENEU_SOURCE` in `.env.local` if your folders differ. Existing checkpoints referencing the former nested VieNeu directory are resolved without rewriting their saved settings. NLLB uses `zho_Hans` → `vie_Latn` through official `AutoTokenizer` / `AutoModelForSeq2SeqLM.generate`; VieNeu uses its unchanged `Vieneu(mode="v3turbo")` / `infer_stream` API and the Hải Đăng preset. No voice cloning is required. CPU is the default; this machine has a CPU PyTorch build.
+Translation uses Tencent's `Hy-MT2-1.8B-Q8_0.gguf` offline with the local llama-server CPU runtime (embedded llama-cpp-python for GPU). Download with `.venv/Scripts/python.exe worker/tools/download_translation_model.py`; the script verifies the pinned size/SHA-256 and keeps only weights, model card, license and provenance in `models/Hy-MT2-1.8B-Q8_0/`. `HY_MT_MODEL_PATH` relocates the same model. No source clone or nested Git is needed. The adapter uses the official Hy-MT2 chat template and translation prompt, bounded source context and glossary. Old translation snapshots migrate at the next stage boundary; changed fingerprints prevent reuse of translations from the old model. Completed History remains available; use Reprocess TRANSLATION to regenerate existing Vietnamese outputs. See [translation setup](docs/TRANSLATION_LONG.md).
+
+VieNeu source is detected at `../VieNeu-TTS-main/src`; override `VIENEU_SOURCE` if needed. Legacy nested provider paths remain compatible. VieNeu uses its unchanged `Vieneu(mode="v3turbo")` / `infer_stream` API and the Hải Đăng preset. CPU is the default. Hy-MT2 waits for 3.5 GiB free RAM before loading. The default is one slot with calibration disabled, avoiding benchmark-related pauses; memory protection and durable checkpoints remain active.
 
 Install `worker/requirements.txt` in the project virtualenv. The adapters import the original VieNeu source without installing into or modifying that repo. VieNeu downloads its official v3 Turbo weights and required MOSS ONNX codec into `data/hf-cache/` on first use. These are dependencies of the selected VieNeu implementation. Each AI stage runs in a separate subprocess so its model memory is released before the next stage starts.
 
@@ -76,11 +78,11 @@ Moderation acquires the same OS file lock used by all CRUD operations, then take
 ### Verification of the extended workflow
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s worker -p "test_*.py" -v
+.\.venv\Scripts\python.exe -m unittest discover -s worker/tests -t worker -p "test_*.py" -v
 npm run lint
 npm run build
 # Real model smoke test; keeps test rules/jobs isolated from the Studio data:
-.\.venv\Scripts\python.exe worker/smoke_e2e.py
+.\.venv\Scripts\python.exe worker/dev/smoke_e2e.py
 ```
 
 For isolated HTTP/UI acceptance testing after the smoke test:
@@ -91,7 +93,7 @@ $env:AUDIO_DATA_DIR = (Resolve-Path data/verification/acceptance).Path
 npm run build
 node node_modules/next/dist/bin/next start --port 3001
 # In a second terminal at the project root:
-.\.venv\Scripts\python.exe worker/verify_http.py --data data/verification/acceptance
+.\.venv\Scripts\python.exe worker/dev/verify_http.py --data data/verification/acceptance
 ```
 
 Use a fresh terminal (without these test environment overrides) for normal `npm run dev`. The production server must retain access to `worker/`, the virtualenv, model folders and writable `data/`; this is a local persistent service, not a serverless deployment.
@@ -110,7 +112,7 @@ $env:PYTHON_BIN = (Resolve-Path .\.venv\Scripts\python.exe).Path
 npm run dev
 ```
 
-Open <http://localhost:3000>. On Linux/macOS, activate `.venv/bin/activate` and set `PYTHON_BIN` to the virtualenv's `python` path. The first conversion downloads `paraformer-zh`, `fsmn-vad`, and `ct-punc` weights from ModelScope into `data/model-cache/`. Set `FUNASR_DEVICE=cuda:0` if the installed PyTorch build supports CUDA; CPU is the default.
+Open <http://localhost:3000>. On Linux/macOS, activate `.venv/bin/activate` and set `PYTHON_BIN` to the virtualenv's `python` path. The first conversion downloads `paraformer-zh`, `fsmn-vad`, and `ct-punc` weights from ModelScope into `data/model-cache/`. Choose CPU/GPU in Settings; CPU is the default. Workflow device selection takes precedence over `FUNASR_DEVICE` and `VIENEU_DEVICE`.
 
 yt-dlp uses the installed Node.js runtime for YouTube JavaScript challenges. If YouTube requires sign-in for your network, you may set `YTDLP_COOKIES_FILE` to a Netscape-format cookie file before starting the server; the app never reads browser cookies automatically.
 
@@ -205,7 +207,7 @@ Tests: `.venv\Scripts\python.exe -m unittest discover -s packaging -p "test_secu
 ```powershell
 npm run lint
 npm run build
-python -m unittest discover -s worker -p "test_*.py" -v
+python -m unittest discover -s worker/tests -t worker -p "test_*.py" -v
 ```
 
 The tests cover yt-dlp's audio-only configuration, VAD chunk boundaries, PCM overlap, global ordering, duplicate suppression, and Chinese Unicode output. The full FunASR pipeline was also verified with the short Chinese WAV bundled in the supplied FunASR checkout. Live YouTube downloading depends on the network and YouTube access policy; a 429/sign-in challenge can require `YTDLP_COOKIES_FILE`.

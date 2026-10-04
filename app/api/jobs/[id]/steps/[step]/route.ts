@@ -1,6 +1,6 @@
-import { pythonCommand } from "@/lib/rules";
-import { schedule } from "@/lib/jobs";
-import { licenseDenial } from "@/lib/license";
+import { pythonCommand } from "@/lib/server/worker-client";
+import { schedule } from "@/lib/server/jobs";
+import { licenseDenial } from "@/lib/server/license";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 type Context = {params: Promise<{id: string; step: string}>};

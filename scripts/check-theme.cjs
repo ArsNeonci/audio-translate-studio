@@ -43,13 +43,13 @@ function harness(initial, blocked = false, writeBlocked = false) {
       removeEventListener: (event) => listeners.delete(event),
       dispatchEvent: (event) => listeners.get(event.type)?.(),
     },
-    require: (name) => name === 'react' ? react : name === './theme' ? theme : require(name),
+    require: (name) => name === 'react' ? react : name === '@/lib/theme/theme' ? theme : require(name),
   });
-  vm.runInContext(compile('lib/theme.ts'), scope);
+  vm.runInContext(compile('lib/theme/theme.ts'), scope);
   const theme = scope.exports;
   vm.runInContext(theme.themeBootstrap, scope);
   scope.exports = {};
-  vm.runInContext(compile('lib/theme-context.tsx'), scope);
+  vm.runInContext(compile('lib/theme/theme-context.tsx'), scope);
   const render = () => scope.exports.ThemeProvider({ children: null }).props.value;
   return { root, stored, listeners, render, theme,
     hydrate() { hydration = true; const result = render(); hydration = false; return result; },

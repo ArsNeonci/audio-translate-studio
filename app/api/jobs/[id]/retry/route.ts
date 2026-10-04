@@ -1,5 +1,5 @@
-import { retryJob } from "@/lib/jobs";
-import { licenseDenial } from "@/lib/license";
+import { retryJob } from "@/lib/server/jobs";
+import { licenseDenial } from "@/lib/server/license";
 
 export const runtime = "nodejs";
 

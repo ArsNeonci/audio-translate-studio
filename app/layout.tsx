@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./dark.css";
-import { LanguageProvider } from "@/lib/language-context";
-import { ThemeProvider } from "@/lib/theme-context";
-import { themeBootstrap } from "@/lib/theme";
+import { LanguageProvider } from "@/lib/i18n/language-context";
+import { ThemeProvider } from "@/lib/theme/theme-context";
+import { themeBootstrap } from "@/lib/theme/theme";
 
 export const metadata: Metadata = {
   title: "Audio Studio",

@@ -1,4 +1,4 @@
-import { rulesResponse } from "@/lib/rules";
+import { rulesResponse } from "@/lib/server/rules";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET() { return rulesResponse("list"); }

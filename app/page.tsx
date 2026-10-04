@@ -1,18 +1,18 @@
 "use client";
-import {useLicense} from "@/app/components/license-status";
-import LicenseBanner from "@/app/components/license-status";
+import {useLicense} from "@/components/license/license-status";
+import LicenseBanner from "@/components/license/license-status";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Job } from "@/lib/jobs";
-import JobDetail from "@/app/components/job-detail";
-import RulesPanel from "@/app/components/rules-panel";
-import VoiceSelect from "@/app/components/voice-select";
-import {percent,runNumber} from "@/lib/format";
-import SiteHeader from "@/app/components/site-header";
+import type { Job } from "@/lib/server/jobs";
+import JobDetail from "@/components/workflow/job-detail";
+import RulesPanel from "@/components/rules/rules-panel";
+import VoiceSelect from "@/components/voice/voice-select";
+import {percent,runNumber} from "@/lib/shared/format";
+import SiteHeader from "@/components/layout/site-header";
 import Link from 'next/link';
-import {useNotice} from '@/app/components/use-notice';
-import WorkflowActions from '@/app/components/workflow-actions';
-import { useLanguage } from "@/lib/language-context";
+import {useNotice} from '@/components/common/use-notice';
+import WorkflowActions from '@/components/workflow/workflow-actions';
+import { useLanguage } from "@/lib/i18n/language-context";
 
 const duration = (ms: number) => ms ? `${Math.floor(ms / 3600000)}h ${String(Math.floor(ms / 60000) % 60).padStart(2, "0")}m` : "—";
 type ResourceWarning={reasons:string[];ram_available_gib:number;required_available_gib:number;cpu_percent:number;existing_workflows:number;estimate_basis:string};
@@ -21,13 +21,13 @@ export default function Home() {
   const { language, t , tr} = useLanguage();
   const license = useLicense();
   const [url, setUrl] = useState("");
-  const [voice,setVoice]=useState("");
+  const [voice,setVoice]=useState(""),[style,setStyle]=useState("");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useNotice();
   const [selected, setSelected] = useState<string | null>(null);
   const [resourceWarning,setResourceWarning]=useState<ResourceWarning|null>(null);
-  const [pendingConvert,setPendingConvert]=useState<{url:string;voice?:string}|null>(null);
+  const [pendingConvert,setPendingConvert]=useState<{url:string;voice?:string;style?:string}|null>(null);
   const studioJobs=jobs.filter(job=>job.status!=='COMPLETED');
 
   const refresh = useCallback(async () => {
@@ -46,10 +46,10 @@ export default function Home() {
 
   async function start(event: React.FormEvent) {
     event.preventDefault();
-    await convert({url,voice:voice||undefined});
+    await convert({url,voice:voice||undefined,style:style||undefined});
   }
 
-  async function convert(input:{url:string;voice?:string},queue_only=false){
+  async function convert(input:{url:string;voice?:string;style?:string},queue_only=false){
     if(busy)return;
     setBusy(true); setMessage("");setResourceWarning(null);
     try {
@@ -95,7 +95,7 @@ export default function Home() {
       <h1>{t.home.title1}<br />{t.home.title2}</h1>
       <p>{t.home.description}</p>
       <form onSubmit={start} className="convert-form"><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /><button type="submit" disabled={busy || !license.allowed}>{busy ? t.home.checking : t.home.convert} ↗</button></form>
-      <VoiceSelect value={voice} onChange={setVoice} />
+      <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={setStyle} />
       {message && <p className="alert" role="alert">{message}</p>}
       {resourceWarning&&<section role="alert" className="alert">
         <h3>{t.home.resourceWarningTitle}</h3>

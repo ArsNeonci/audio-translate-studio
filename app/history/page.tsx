@@ -1,7 +1,7 @@
 "use client";
-import { useLanguage } from "@/lib/language-context";
-import SiteHeader from "@/app/components/site-header";
-import HistoryList from "@/app/components/history-list";
+import { useLanguage } from "@/lib/i18n/language-context";
+import SiteHeader from "@/components/layout/site-header";
+import HistoryList from "@/components/history/history-list";
 
 export default function HistoryPage() {
   const { tr } = useLanguage();

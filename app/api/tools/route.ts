@@ -1,11 +1,12 @@
 import {randomUUID} from "node:crypto";
 import path from "node:path";
 import {mkdir,open,unlink} from "node:fs/promises";
-import {dataRoot} from "@/lib/python";
-import {pythonCommand} from "@/lib/rules";
-import {licenseDenial} from "@/lib/license";
-import {schedule} from "@/lib/jobs";
-import {historyList} from "@/lib/history";
+import {dataRoot} from "@/lib/server/python";
+import { pythonCommand } from "@/lib/server/worker-client";
+import {licenseDenial} from "@/lib/server/license";
+import {schedule} from "@/lib/server/jobs";
+import {historyList} from "@/lib/server/history";
+import {isVoiceStyle} from "@/lib/shared/voice-styles";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){await schedule();return Response.json(await historyList(new URL(request.url).searchParams,"tools"));}
@@ -13,6 +14,7 @@ export async function POST(request:Request){
   const denied=await licenseDenial();if(denied)return denied;
   const params=new URL(request.url).searchParams,tool=params.get("tool"),name=params.get("name")||"";
   if(!["transcription","translation","moderation","tts"].includes(tool||"")||!name||name.length>255||/[\\/\x00]/.test(name))return Response.json({error:"Invalid tool or filename"},{status:400});
+  const style=params.get("style")||undefined;if(style!==undefined&&!isVoiceStyle(style))return Response.json({error:"Invalid voice style"},{status:400});
   const limit=tool==="transcription"?2*1024**3:64*1024**2;
   if(Number(request.headers.get("content-length"))>limit)return Response.json({error:"Upload too large"},{status:413});
   const root=path.join(/*turbopackIgnore: true*/ dataRoot,"uploads");await mkdir(/*turbopackIgnore: true*/ root,{recursive:true});
@@ -22,7 +24,7 @@ export async function POST(request:Request){
     const reader=request.body.getReader();
     try{while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>limit){await reader.cancel();return Response.json({error:"Upload too large"},{status:413});}let offset=0;while(offset<value.length){const written=await file.write(value,offset,value.length-offset);offset+=written.bytesWritten;}}}finally{reader.releaseLock();}
     await file.sync();await file.close();
-    const {status,...body}=await pythonCommand<{status:number}>("manage.py",{action:"create",tool,upload,input_name:name,mime:request.headers.get("content-type")||"",voice:params.get("voice")});
+    const {status,...body}=await pythonCommand<{status:number}>("manage.py",{action:"create",tool,upload,input_name:name,mime:request.headers.get("content-type")||"",voice:params.get("voice"),style});
     if(status===200)void schedule();return Response.json(body,{status:status===200?201:status});
   }catch{return Response.json({error:"Cannot accept upload; check file and storage permissions."},{status:400});}
   finally{await file.close().catch(()=>{});await unlink(upload).catch(()=>{});}

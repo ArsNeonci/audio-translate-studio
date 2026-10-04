@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import SiteHeader from "@/app/components/site-header";
-import { useNotice } from "@/app/components/use-notice";
-import { useLanguage } from "@/lib/language-context";
-import { useTheme } from "@/lib/theme-context";
+import SiteHeader from "@/components/layout/site-header";
+import { useNotice } from "@/components/common/use-notice";
+import { useLanguage } from "@/lib/i18n/language-context";
+import { useTheme } from "@/lib/theme/theme-context";
+import ComputeSettings from "@/components/settings/compute-settings";
 
 type Connection = {
   enabled: boolean;
@@ -136,6 +137,8 @@ export default function Settings() {
             ))}
           </div>
         </section>
+
+        <ComputeSettings />
 
         {/* YouTube connection remains independent of appearance preferences. */}
         <section className="youtube-connection" aria-label={tr("YouTube connection")}>

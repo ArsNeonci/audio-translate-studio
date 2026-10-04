@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import SiteHeader from "../components/site-header";
-import type { LicenseStatus } from "../components/license-status";
-import { useNotice } from "../components/use-notice";
-import { useLanguage } from "@/lib/language-context";
+import SiteHeader from "@/components/layout/site-header";
+import type { LicenseStatus } from "@/components/license/license-status";
+import { useNotice } from "@/components/common/use-notice";
+import { useLanguage } from "@/lib/i18n/language-context";
 
 export default function LicensePage() {
   const { language, t, tr } = useLanguage();

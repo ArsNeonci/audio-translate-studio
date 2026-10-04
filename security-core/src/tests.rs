@@ -1,7 +1,7 @@
 use super::*;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{Signer, SigningKey};
-use license::{adopt, expiration, verify, verified};
+use license::{adopt, expiration, verify, verified, timestamp, CLOCK_SKEW_SECONDS};
 
 fn signed(key: &SigningKey, domain: &str, value: &Value) -> String {
     let mut bytes=domain.as_bytes().to_vec(); bytes.push(0); bytes.extend(serde_json::to_vec(value).unwrap());
@@ -57,7 +57,8 @@ fn fixture(machine: &str, sequence: u64, key_version: u64, product: &str) -> (St
     let machine="a".repeat(64);let (token,root)=fixture(&machine,1,1,PRODUCT);
     let mut state=adopt(None,&token,false,&root,&machine).unwrap();
     state.highest_sequence=2;assert_eq!(verified(&state,&root,&machine).unwrap_err(),"INVALID");
-    let (p,_)=verify(&token,&root,&machine).unwrap(); assert_eq!(expiration(&p,100,200),Err("CLOCK_ROLLBACK"));
+    let (p,_)=verify(&token,&root,&machine).unwrap(); assert_eq!(expiration(&p,100,200+CLOCK_SKEW_SECONDS),Err("CLOCK_ROLLBACK"));
+    let skew=timestamp(&p.activated_at).unwrap()+1000; assert_eq!(expiration(&p,skew-2,skew),Ok(()));
 }
 #[test] fn dpapi_restart_and_copied_state() {
     let temp=tempfile::tempdir().unwrap();let path=temp.path().join("state.dpapi");

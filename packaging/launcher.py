@@ -15,7 +15,7 @@ def main():
     paths=application_paths(root)
     if not paths['security_core'].is_file(): raise RuntimeError('NATIVE_SECURITY_CORE_MISSING')
     data=paths['data']; data.mkdir(parents=True,exist_ok=True)
-    env={**os.environ,'PYTHON_BIN':str(root/'runtime'/'python'/'python.exe'),'PYTHONUTF8':'1','PYTHONNOUSERSITE':'1','AUDIO_DATA_DIR':str(data),'RESULTS_ROOT':str(data/'results'),'VIENEU_SOURCE':str(root/'providers'/'VieNeu'),'NODE_PATH':str(root/'app'/'node_modules'),'PORT':str(args.port),'HOSTNAME':'127.0.0.1','PATH':str(root/'runtime'/'ffmpeg')+';'+str(root/'runtime'/'node')+';'+os.environ.get('PATH','')}
+    env={**os.environ,'PYTHON_BIN':str(root/'runtime'/'python'/'python.exe'),'PYTHONUTF8':'1','HY_MT_MODEL_PATH':str(root/'app'/'models'/'Hy-MT2-1.8B-Q8_0'/'Hy-MT2-1.8B-Q8_0.gguf'),'PYTHONNOUSERSITE':'1','AUDIO_DATA_DIR':str(data),'RESULTS_ROOT':str(data/'results'),'VIENEU_SOURCE':str(root/'providers'/'VieNeu'),'NODE_PATH':str(root/'app'/'node_modules'),'PORT':str(args.port),'HOSTNAME':'127.0.0.1','PATH':str(root/'runtime'/'ffmpeg')+';'+str(root/'runtime'/'node')+';'+os.environ.get('PATH','')}
     url=f'http://127.0.0.1:{args.port}'
     try:
         with urllib.request.urlopen(url+'/api/license',timeout=2) as response:

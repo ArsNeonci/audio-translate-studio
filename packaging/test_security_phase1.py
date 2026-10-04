@@ -34,7 +34,7 @@ class NativeIntegration(unittest.TestCase):
         anchor=cls.base/'build-anchor.json'
         anchor.write_text(json.dumps({'product_id':'audio-translate','root_public_key':public(cls.root_key)}))
         cls.binary=build(anchor,cls.app/'security-core'/'bin'/'audio-security-core.exe')
-        shutil.copytree(ROOT/'worker',cls.app/'worker',ignore=shutil.ignore_patterns('tmp*','test_*','__pycache__','*.pyc'))
+        shutil.copytree(ROOT/'worker',cls.app/'worker',ignore=shutil.ignore_patterns('tmp*','test_*','tests','dev','__pycache__','*.pyc'))
         # Test runtime references host packages; the actual installer has its own
         # isolated portable runtime (separately audited by packaging smoke).
         runtime=cls.base/'runtime'/'python';runtime.mkdir(parents=True)
@@ -123,10 +123,10 @@ class NativeIntegration(unittest.TestCase):
     def test_python_patch_cannot_unlock_native_admission(self):
         # Patch only a copied installation. Native launch must deny even though
         # this copied Python adapter advertises unconditional success.
-        gate=self.app/'worker'/'license_gate.py';original=gate.read_bytes()
+        gate=self.app/'worker'/'audio_translate'/'core'/'license_gate.py';original=gate.read_bytes()
         try:
             gate.write_text('def assert_allowed(internet=True): return True\n')
-            check=subprocess.run([str(self.python),'-c','from license_gate import assert_allowed; assert assert_allowed()'],env=self.env,capture_output=True)
+            check=subprocess.run([str(self.python),'-c','from audio_translate.core.license_gate import assert_allowed; assert assert_allowed()'],env=self.env,capture_output=True)
             self.assertEqual(check.returncode,0,check.stderr.decode(errors='replace'))
             self.activate(days=-1)
             for script,action in [('manage.py','create'),('manage.py','convert'),('manage.py','reprocess'),('manage.py','resume'),('retry.py','retry')]:
@@ -156,7 +156,7 @@ class NativeIntegration(unittest.TestCase):
             ignore=shutil.ignore_patterns('security-core','worker','.env*','data'))
         # Leave the synthetic-root native binary untouched. Only copied Python
         # is edited; the built Next server must continue to consult native core.
-        gate=self.app/'worker'/'license_gate.py';original=gate.read_bytes()
+        gate=self.app/'worker'/'audio_translate'/'core'/'license_gate.py';original=gate.read_bytes()
         gate.write_text('def assert_allowed(internet=True): return True\n')
         with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
         env={**self.env,'HOSTNAME':'127.0.0.1','PORT':str(port)}

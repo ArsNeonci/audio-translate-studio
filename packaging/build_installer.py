@@ -23,11 +23,15 @@ def digest(path):
 def source_hash():
     sha=hashlib.sha256()
     files=[]
-    for directory in ['app','lib','worker','packaging','public']:
+    for directory in ['app','components','lib','worker','packaging','public']:
         files.extend(p for p in (ROOT/directory).rglob('*') if p.is_file() and '__pycache__' not in p.parts and not p.name.startswith('test_'))
     files.extend(p for p in (WORKSPACE/'shared-license-sdk'/'license_sdk').glob('*.py'))
     files.extend(p for p in (WORKSPACE/'VieNeu-TTS-main'/'src').rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix != '.pyc')
     files.append(WORKSPACE/'VieNeu-TTS-main'/'LICENSE')
+    files.append(ROOT/'models'/'Hy-MT2-1.8B-Q8_0'/'provenance.json')
+    files.append(ROOT/'runtime'/'llama'/'provenance.json')
+    files.append(ROOT/'worker'/'config'/'translation-runtime.json')
+    files.append(ROOT/'worker'/'config'/'tts-runtime.json')
     files.extend(p for p in (ROOT/'security-core'/'src').glob('*.rs'))
     files.extend(ROOT/'security-core'/name for name in ['Cargo.toml','Cargo.lock','build.rs','trust-anchor.json'])
     files.extend(ROOT/name for name in ['package.json','package-lock.json','next.config.ts','product.manifest.json','licensing/public-config.json'])
@@ -45,7 +49,7 @@ def python_runtime(target):
     copy_tree(base/'Lib',target/'Lib',shutil.ignore_patterns('site-packages','test','tests','__pycache__','*.pyc','idlelib','tkinter','ensurepip'))
     site=target/'Lib'/'site-packages';site.mkdir(parents=True,exist_ok=True)
     # Copy distribution-recorded files only, including packages from user site.
-    pending=['cryptography','packaging','yt-dlp[default]','websockets','psutil','funasr','torch','torchaudio','transformers','sentencepiece','soundfile','onnxruntime','sea-g2p','soxr','kaldi-native-fbank','librosa','huggingface-hub','PyYAML','jieba','modelscope']
+    pending=['cryptography','packaging','yt-dlp[default]','websockets','psutil','funasr','torch','torchaudio','transformers','sentencepiece','soundfile','onnxruntime','sea-g2p','soxr','kaldi-native-fbank','librosa','huggingface-hub','PyYAML','jieba','modelscope','llama-cpp-python']
     visited=set();inventory=[]
     while pending:
         req=Requirement(pending.pop()); name=canonicalize_name(req.name); extras=set(req.extras)
@@ -91,7 +95,15 @@ def build():
         if app_root!=standalone and (standalone/'node_modules').exists():copy_tree(standalone/'node_modules',payload/'app'/'node_modules')
         copy_tree(ROOT/'.next-installer'/'static',payload/'app'/'.next-installer'/'static')
         if (ROOT/'public').is_dir():copy_tree(ROOT/'public',payload/'app'/'public')
-        copy_tree(ROOT/'worker',payload/'app'/'worker',shutil.ignore_patterns('test_*','verify_*','smoke_*','tmp*','__pycache__','*.pyc','*.md'))
+        copy_tree(ROOT/'worker',payload/'app'/'worker',shutil.ignore_patterns('tests','dev','docs','test_*','verify_*','smoke_*','tmp*','__pycache__','*.pyc','*.md'))
+        runtime_dir = ROOT/'runtime'/'llama'
+        runtime_record = json.loads((runtime_dir/'provenance.json').read_text())
+        if not (runtime_dir/'llama-server.exe').is_file(): raise RuntimeError('HY_MT_SERVER_RUNTIME_MISSING')
+        for name, checksum in runtime_record['files'].items():
+            path = (runtime_dir/name).resolve()
+            if not path.is_relative_to(runtime_dir.resolve()) or digest(path) != checksum:
+                raise RuntimeError('HY_MT_SERVER_RUNTIME_CHECKSUM_MISMATCH')
+        copy_tree(runtime_dir,payload/'app'/'runtime'/'llama')
         # The product ships only the compiled authority, never Python service.py.
         native=payload/'app'/'security-core'/'bin';native.mkdir(parents=True,exist_ok=True)
         shutil.copy2(security_binary,native/'audio-security-core.exe')
@@ -114,6 +126,20 @@ def build():
         copy_tree(vieneu/'src',payload/'providers'/'VieNeu'/'src')
         for name in ['LICENSE','LICENSE.md']:
             if (vieneu/name).exists():shutil.copy2(vieneu/name,payload/'providers'/'VieNeu'/name)
+        # Ship the exact verified offline model, never a source clone or HF cache.
+        model_dir=ROOT/'models'/'Hy-MT2-1.8B-Q8_0'
+        model_record=json.loads((model_dir/'provenance.json').read_text())
+        from importlib.util import spec_from_file_location, module_from_spec
+        spec=spec_from_file_location('translation_download',ROOT/'worker'/'tools'/'download_translation_model.py')
+        expected=module_from_spec(spec);spec.loader.exec_module(expected)
+        if (model_record['sha256']!=expected.SHA256 or model_record['filename']!=expected.FILENAME
+                or (model_dir/expected.FILENAME).stat().st_size!=expected.SIZE
+                or digest(model_dir/expected.FILENAME)!=expected.SHA256):
+            raise RuntimeError('HY_MT_MODEL_CHECKSUM_MISMATCH')
+        destination=payload/'app'/'models'/'Hy-MT2-1.8B-Q8_0'
+        destination.mkdir(parents=True,exist_ok=True)
+        for name in [expected.FILENAME,'provenance.json','LICENSE','MODEL_CARD.md']:
+            shutil.copy2(model_dir/name,destination/name)
         shutil.copy2(ROOT/'packaging'/'launcher.py',payload/'launcher.py')
         shutil.copy2(ROOT/'packaging'/'paths.py',payload/'paths.py')
         (payload/'runtime-inventory.json').write_text(json.dumps(packages,indent=2),encoding='utf-8')
@@ -121,7 +147,7 @@ def build():
         resolver = "const p=require('path'),r=require('module').createRequire(process.argv[1]);for(const m of ['next/dist/compiled/next-server/app-route-turbo.runtime.prod.js','next/dist/compiled/next-server/app-page-turbo.runtime.prod.js']){const f=r.resolve(m);if(!f.startsWith(p.join(p.dirname(process.argv[1]),'node_modules')+p.sep))throw Error('EXTERNAL_RUNTIME_DEPENDENCY');}console.log('Standalone Node runtime isolation OK');"
         subprocess.run([str(payload/'runtime'/'node'/'node.exe'),'-e',resolver,str(payload/'app'/'server.js')],check=True)
         # Smoke the shipped runtime without host Python or user-site dependencies.
-        subprocess.run([str(payload/'runtime'/'python'/'python.exe'),'-c','import sys, cryptography, numpy, torch, torchaudio, transformers, funasr, yt_dlp, soundfile, onnxruntime, sea_g2p, soxr, storage, results; assert not any("Roaming" in p or ".venv" in p for p in sys.path); print("Portable runtime imports and isolation OK")'],env={**os.environ,'PYTHONNOUSERSITE':'1'},check=True)
+        subprocess.run([str(payload/'runtime'/'python'/'python.exe'),'-c','import sys, llama_cpp, cryptography, numpy, torch, torchaudio, transformers, funasr, yt_dlp, soundfile, onnxruntime, sea_g2p, soxr, audio_translate.core.storage, audio_translate.workflow.results; assert not any("Roaming" in p or ".venv" in p for p in sys.path); print("Portable runtime imports and isolation OK")'],env={**os.environ,'PYTHONNOUSERSITE':'1'},check=True)
         with zipfile.ZipFile(staging/'payload.zip','w',zipfile.ZIP_DEFLATED,compresslevel=1) as archive:
             for path in sorted(payload.rglob('*')):
                 if path.is_file():archive.write(path,path.relative_to(payload))

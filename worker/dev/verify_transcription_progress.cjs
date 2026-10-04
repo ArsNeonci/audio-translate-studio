@@ -1,0 +1,16 @@
+const fs=require('node:fs'),assert=require('node:assert/strict'),ts=require('typescript');
+const code=ts.transpileModule(fs.readFileSync('lib/server/transcription-progress.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+const fixture={exports:{}};new Function('module','exports',code)(fixture,fixture.exports);
+const {transcriptionView}=fixture.exports;
+const job={status:'TRANSCRIBING',duration_ms:10000,chunks_total:100,chunks_done:23,steps:{TRANSCRIPTION:{state:'RUNNING',attempt:1,started_at:'2026-10-02T00:00:00Z'}}};
+let rows=transcriptionView(job,{vad:'2026-10-02T00:00:10Z',chunks:'2026-10-02T00:00:12Z'});
+assert.deepEqual(rows.map(row=>row.state),['COMPLETED','COMPLETED','RUNNING','PENDING']);
+assert.equal(rows[2].progress,23);assert.equal(rows[0].duration_ms,10000);assert.equal(rows[1].duration_ms,2000);
+assert.equal(rows[2].started_at,'2026-10-02T00:00:12Z');assert.equal(rows[3].duration_ms,null);
+rows=transcriptionView({...job,chunks_total:undefined,status:'VAD',processed_ms:2000});assert.equal(rows[0].progress,20);
+rows=transcriptionView({...job,status:'MERGING'});assert.equal(rows[3].progress,null);
+rows=transcriptionView({...job,steps:{TRANSCRIPTION:{state:'RUNNING',attempt:2}}},{vad:'2026-10-02T00:00:10Z',chunks:'2026-10-02T00:00:12Z'});assert.equal(rows[0].duration_ms,null);assert.equal(rows[2].started_at,undefined);
+rows=transcriptionView({...job,steps:{TRANSCRIPTION:{state:'COMPLETED'}}});assert(rows.every(row=>row.progress===100));
+rows=transcriptionView({...job,status:'CANCELLED',steps:{TRANSCRIPTION:{state:'CANCELLED',attempt:1,started_at:'2026-10-02T00:00:00Z',completed_at:'2026-10-02T00:00:42Z'}}},{vad:'2026-10-02T00:00:10Z',chunks:'2026-10-02T00:00:12Z'});assert.equal(rows[2].duration_ms,30000);assert.equal(rows[2].state,'CANCELLED');
+const recorded=Array.from({length:4},()=>({state:'COMPLETED',progress:100,attempt:1}));assert.equal(transcriptionView({...job,transcription_steps:recorded}),recorded);
+console.log('TRANSCRIPTION VIEW OK: 14 assertions');

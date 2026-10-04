@@ -1,5 +1,5 @@
-import {pythonCommand} from "@/lib/rules";
-import {voiceSamples, previewBuilderStatus} from '@/lib/voice-previews';
+import { pythonCommand } from "@/lib/server/worker-client";
+import {voiceSamples, previewBuilderStatus} from '@/lib/server/voice-previews';
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(){
