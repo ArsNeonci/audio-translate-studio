@@ -10,6 +10,14 @@ class LicenseError(Exception):
     def __init__(self, code): self.code=code; super().__init__(code)
 
 def native_command(payload):
+    # The security service (native core as a Windows service) is the authority. Prefer the pipe;
+    # fall back to the CLI binary when the pipe is absent. The binary itself decides whether it is
+    # allowed to answer offline (dev builds) or must report the service unavailable (release).
+    try:
+        from audio_translate.core import secure_channel
+        return secure_channel.call(payload)
+    except Exception:
+        pass
     try:
         process=subprocess.run([str(ROOT/'security-core'/'bin'/'audio-security-core.exe')],
             input=json.dumps(payload),capture_output=True,text=True,encoding='utf-8',timeout=40,

@@ -1,7 +1,14 @@
-import { spawnSecurityCore } from "@/lib/server/security-core";
+import { spawnSecurityCore, callSecurityCore } from "@/lib/server/security-core";
 
 export type LicenseStatus = {status: string; allowed?: boolean; expires_at?: string; sequence?: number; error?: string; machine_id?: string; http_status: number};
-export function licenseCommand(payload: Record<string, unknown>): Promise<LicenseStatus> {
+
+// Prefer the service pipe; fall back to spawning the CLI binary when the service is absent
+// (dev). The binary answers queries in-process; the processing gate is enforced at launch.
+export async function licenseCommand(payload: Record<string, unknown>): Promise<LicenseStatus> {
+  try { return await callSecurityCore(payload) as unknown as LicenseStatus; }
+  catch { return await spawnLicenseCommand(payload); }
+}
+function spawnLicenseCommand(payload: Record<string, unknown>): Promise<LicenseStatus> {
   return new Promise((resolve) => {
     const child = spawnSecurityCore(payload);
     let output = "";

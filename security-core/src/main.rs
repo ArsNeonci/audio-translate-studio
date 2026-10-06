@@ -1,4 +1,5 @@
 #![cfg(windows)]
+mod ipc;
 mod license;
 mod manifest;
 mod windows;
@@ -68,6 +69,54 @@ fn app_integrity(app: &Path, scope: manifest::Scope) -> Result<()> {
         Err(code) => Err(code),
     }
 }
+/// Map a status string received from the service back to a static code for error emission.
+fn known(code: &str) -> &'static str {
+    match code {
+        "EXPIRED" => "EXPIRED", "WRONG_MACHINE" => "WRONG_MACHINE", "WRONG_PRODUCT" => "WRONG_PRODUCT",
+        "CLOCK_ROLLBACK" => "CLOCK_ROLLBACK", "UNACTIVATED" => "UNACTIVATED",
+        "INTEGRITY_FAILURE" => "INTEGRITY_FAILURE", "UNTRUSTED_BINARY" => "UNTRUSTED_BINARY",
+        "TAMPER_DETECTED" => "TAMPER_DETECTED", "SECURE_STATE_INVALID" => "SECURE_STATE_INVALID",
+        "SECURITY_SERVICE_UNAVAILABLE" => "SECURITY_SERVICE_UNAVAILABLE",
+        "TRUSTED_TIME_UNAVAILABLE" => "TRUSTED_TIME_UNAVAILABLE", "MACHINE_ID_UNAVAILABLE" => "MACHINE_ID_UNAVAILABLE",
+        _ => "INVALID",
+    }
+}
+/// The authority runs in the service: integrity plus the license check live there, so stopping
+/// the service blocks new processing. Dev builds fall back to an in-process decision when the
+/// pipe is absent; release builds (no dev_fallback feature) fail with SECURITY_SERVICE_UNAVAILABLE.
+fn authorize(kind: &str, script: &str, action: &str) -> Result<()> {
+    let mut request = json!({"action": "authorize", "kind": kind});
+    if kind == "command" { request["script"] = json!(script); request["payload_action"] = json!(action); }
+    match ipc::call(&request) {
+        Ok(value) => if value["status"] == "AUTHORIZED" { Ok(()) } else { Err(known(value["status"].as_str().unwrap_or("INVALID"))) },
+        Err(code) => {
+            let _ = code;
+            #[cfg(feature = "dev_fallback")]
+            { app_integrity(&app_root()?, manifest::Scope::Runtime)?; check(true)?; return Ok(()); }
+            #[cfg(not(feature = "dev_fallback"))]
+            return Err(code);
+        }
+    }
+}
+/// Pipe dispatch for the service: license/identity/integrity queries plus launch authorization.
+fn service_dispatch(request: &Value) -> Result<Value> {
+    if request["action"].as_str() == Some("authorize") {
+        let app = app_root()?;
+        app_integrity(&app, manifest::Scope::Runtime)?;
+        match request["kind"].as_str() {
+            Some("workflow") => { check(true)?; Ok(json!({"status": "AUTHORIZED", "product_id": PRODUCT})) }
+            Some("command") => {
+                let script = request["script"].as_str().ok_or("INVALID_ACTION")?;
+                let action = request["payload_action"].as_str().ok_or("INVALID_ACTION")?;
+                if command_protected(script, action)? { check(true)?; }
+                Ok(json!({"status": "AUTHORIZED", "product_id": PRODUCT}))
+            }
+            _ => Err("INVALID_ACTION"),
+        }
+    } else {
+        execute(request)
+    }
+}
 fn python(app: &Path) -> Result<PathBuf> {
     let bundled = app.parent().ok_or("CORE_UNAVAILABLE")?.join("runtime/python/python.exe");
     let dev = app.join(".venv/Scripts/python.exe");
@@ -89,8 +138,7 @@ fn launch(request: &Value, workflow: bool) -> Result<i32> {
     let script;
     let mut args = Vec::new();
     if workflow {
-        app_integrity(&app, manifest::Scope::Runtime)?;
-        check(true)?;
+        authorize("workflow", "", "")?;
         script = "orchestrator.py";
         let input = PathBuf::from(request["job_dir"].as_str().ok_or("INVALID_ACTION")?);
         let job = input.canonicalize().map_err(|_| "INVALID_ACTION")?;
@@ -102,9 +150,8 @@ fn launch(request: &Value, workflow: bool) -> Result<i32> {
         args.push(job.to_string_lossy().to_string());
     } else {
         script = request["script"].as_str().ok_or("INVALID_ACTION")?;
-        if command_protected(script, request["payload"]["action"].as_str().ok_or("INVALID_ACTION")?)? {
-            app_integrity(&app, manifest::Scope::Runtime)?; check(true)?;
-        }
+        let action = request["payload"]["action"].as_str().ok_or("INVALID_ACTION")?;
+        if command_protected(script, action)? { authorize("command", script, action)?; }
     }
     let mut command = Command::new(python(&app)?);
     command.arg(app.join("worker").join(script)).args(args).current_dir(&app)
@@ -153,6 +200,13 @@ fn emit_error(code: &str, broker: bool) {
     else { println!("{}", json!({"http_status":403,"status":code,"error":code,"product_id":PRODUCT})); }
 }
 fn main() {
+    // Service / console server modes are selected by argument; the default stdin path is the
+    // CLI used by the launcher (workflow/command) and dev tools.
+    match env::args().nth(1).as_deref() {
+        Some("service") => { ipc::set_dispatch(service_dispatch); let _ = ipc::run_service(); return; }
+        Some("serve") => { ipc::set_dispatch(service_dispatch); let _ = ipc::serve(); return; }
+        _ => {}
+    }
     let mut raw = String::new();
     let parsed = std::io::stdin().take(65537).read_to_string(&mut raw).ok().filter(|_| raw.len() <= 65536)
         .and_then(|_| serde_json::from_str::<Value>(raw.trim_start_matches('\u{feff}')).ok());
