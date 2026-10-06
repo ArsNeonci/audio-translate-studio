@@ -16,8 +16,11 @@ use sha2::Sha256;
 use std::path::{Path, PathBuf};
 use x25519_dalek::{PublicKey, StaticSecret};
 
-/// Default offline grace after a lease expires before new processing is blocked (configurable).
+/// Default offline grace after a lease expires when the lease carries none. The server sets the
+/// real value per lease (signed, so it cannot be edited on the machine); this is only the default.
 pub const GRACE_SECONDS: i64 = 3 * 24 * 3600;
+/// Upper bound on a server-supplied grace, so a malformed lease cannot grant unlimited time.
+pub const MAX_GRACE_SECONDS: i64 = 30 * 24 * 3600;
 const INFO: &[u8] = b"audio-content-key-v1";
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -39,6 +42,10 @@ pub struct LeasePayload {
     pub expires_at: String,
     pub key_version: u64,
     pub wrapped_key: WrappedKey,
+    /// Offline grace in seconds, chosen by the server. Absent in older leases (and then not part
+    /// of the signed bytes), so they verify unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grace_seconds: Option<i64>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -52,6 +59,10 @@ pub struct LeaseState {
     pub lease: String,
     pub highest_counter: u64,
     pub last_verified_time: i64,
+    /// Set when the server reports the license revoked: new processing stops at once. Only a lease
+    /// with a higher counter (issued after a restore) clears it, so replaying an old lease cannot.
+    #[serde(default)]
+    pub revoked: bool,
 }
 
 /// Verify a lease envelope's cert chain and signature; returns its payload.
@@ -131,19 +142,45 @@ pub fn save_state(state_dir: &Path, state: &LeaseState) -> Result<()> {
 /// Install a freshly issued lease: verify, reject counter rollback, persist with the highest counter.
 pub fn install(state_dir: &Path, token: &str, root: &str, machine: &str, now: i64) -> Result<LeasePayload> {
     let payload = verify_lease(token, root, machine)?;
-    let previous = load_state(state_dir)?.map(|s| s.highest_counter).unwrap_or(0);
-    if payload.counter < previous { return Err("SECURE_STATE_INVALID"); }
-    save_state(state_dir, &LeaseState { lease: token.into(), highest_counter: payload.counter, last_verified_time: now })?;
+    let old = load_state(state_dir)?;
+    let previous = old.as_ref().map(|s| s.highest_counter).unwrap_or(0);
+    if payload.counter < previous || (old.as_ref().is_some_and(|s| s.revoked) && payload.counter == previous) { return Err("SECURE_STATE_INVALID"); }
+    save_state(state_dir, &LeaseState { lease: token.into(), highest_counter: payload.counter, last_verified_time: now, revoked: false })?;
     Ok(payload)
+}
+
+pub fn mark_revoked(state_dir: &Path) -> Result<()> {
+    let mut state = load_state(state_dir)?.unwrap_or_default();
+    state.revoked = true;
+    save_state(state_dir, &state)
+}
+
+/// Where a lease stands: VALID until expiry, GRACE for the offline grace after, then EXPIRED.
+pub fn phase(now: i64, expires: i64, grace: i64) -> &'static str {
+    if now < expires { "VALID" } else if now < expires + grace { "GRACE" } else { "EXPIRED" }
+}
+pub fn grace_of(p: &LeasePayload) -> i64 { p.grace_seconds.unwrap_or(GRACE_SECONDS).clamp(0, MAX_GRACE_SECONDS) }
+
+/// Lease state for the app: whether to renew now and how long is left. `renew` turns true once half
+/// of the lease has passed, so an app that is opened regularly never sees it lapse.
+pub fn status(state_dir: &Path, root: &str, machine: &str, now: i64) -> Result<serde_json::Value> {
+    let Some(state) = load_state(state_dir)? else { return Ok(serde_json::json!({"lease":"NONE","renew":true})); };
+    if state.revoked { return Ok(serde_json::json!({"lease":"REVOKED","renew":true})); }
+    let p = verify_lease(&state.lease, root, machine)?;
+    let (issued, expires) = (timestamp(&p.issued_at)?, timestamp(&p.expires_at)?);
+    let phase = phase(now, expires, grace_of(&p));
+    Ok(serde_json::json!({"lease":phase, "renew": phase != "VALID" || now >= issued + (expires - issued) / 2,
+        "expires_at":p.expires_at, "grace_seconds":grace_of(&p), "counter":p.counter}))
 }
 
 /// Resolve the current content key from a stored lease, or an error describing why not.
 /// Returns None when no lease is present (the caller may fall back to the embedded key).
 pub fn content_key(state_dir: &Path, root: &str, machine: &str, now: i64) -> Result<Option<[u8; 32]>> {
     let Some(state) = load_state(state_dir)? else { return Ok(None); };
+    if state.revoked { return Err("LICENSE_REVOKED"); }
     let payload = verify_lease(&state.lease, root, machine)?;
     if payload.counter < state.highest_counter { return Err("SECURE_STATE_INVALID"); }
     if now + crate::license::CLOCK_SKEW_SECONDS < state.last_verified_time { return Err("CLOCK_ROLLBACK"); }
-    if now > timestamp(&payload.expires_at)? + GRACE_SECONDS { return Err("LICENSE_EXPIRED"); }
+    if phase(now, timestamp(&payload.expires_at)?, grace_of(&payload)) == "EXPIRED" { return Err("LICENSE_EXPIRED"); }
     Ok(Some(unwrap_content_key(state_dir, &payload.wrapped_key)?))
 }

@@ -84,7 +84,7 @@ fn app_integrity(app: &Path, scope: manifest::Scope) -> Result<()> {
 /// Map a status string received from the service back to a static code for error emission.
 fn known(code: &str) -> &'static str {
     match code {
-        "EXPIRED" => "EXPIRED", "WRONG_MACHINE" => "WRONG_MACHINE", "WRONG_PRODUCT" => "WRONG_PRODUCT",
+        "EXPIRED" => "EXPIRED", "LEASE_REQUIRED" => "LEASE_REQUIRED", "LICENSE_EXPIRED" => "LICENSE_EXPIRED", "LICENSE_REVOKED" => "LICENSE_REVOKED", "WRONG_MACHINE" => "WRONG_MACHINE", "WRONG_PRODUCT" => "WRONG_PRODUCT",
         "CLOCK_ROLLBACK" => "CLOCK_ROLLBACK", "UNACTIVATED" => "UNACTIVATED",
         "INTEGRITY_FAILURE" => "INTEGRITY_FAILURE", "UNTRUSTED_BINARY" => "UNTRUSTED_BINARY",
         "TAMPER_DETECTED" => "TAMPER_DETECTED", "SECURE_STATE_INVALID" => "SECURE_STATE_INVALID",
@@ -104,10 +104,20 @@ fn authorize(kind: &str, script: &str, action: &str) -> Result<()> {
         Err(code) => {
             let _ = code;
             #[cfg(feature = "dev_fallback")]
-            { app_integrity(&app_root()?, manifest::Scope::Runtime)?; check(true)?; return Ok(()); }
+            { app_integrity(&app_root()?, manifest::Scope::Runtime)?; check(true)?; lease_gate()?; return Ok(()); }
             #[cfg(not(feature = "dev_fallback"))]
             return Err(code);
         }
+    }
+}
+/// New processing needs a live lease: valid, or inside the server-set offline grace. A release
+/// build with no lease at all is refused too (LEASE_REQUIRED); dev builds without one pass.
+fn lease_gate() -> Result<()> {
+    let state = state_path()?;
+    match lease::content_key(state.parent().ok_or("INVALID")?, ROOT, &windows::machine_id()?, now())? {
+        Some(_) => Ok(()),
+        None if cfg!(feature = "dev_fallback") => Ok(()),
+        None => Err("LEASE_REQUIRED"),
     }
 }
 /// Pipe dispatch for the service: license/identity/integrity queries plus launch authorization.
@@ -116,11 +126,11 @@ fn service_dispatch(request: &Value) -> Result<Value> {
         let app = app_root()?;
         app_integrity(&app, manifest::Scope::Runtime)?;
         match request["kind"].as_str() {
-            Some("workflow") => { check(true)?; Ok(json!({"status": "AUTHORIZED", "product_id": PRODUCT})) }
+            Some("workflow") => { check(true)?; lease_gate()?; Ok(json!({"status": "AUTHORIZED", "product_id": PRODUCT})) }
             Some("command") => {
                 let script = request["script"].as_str().ok_or("INVALID_ACTION")?;
                 let action = request["payload_action"].as_str().ok_or("INVALID_ACTION")?;
-                if command_protected(script, action)? { check(true)?; }
+                if command_protected(script, action)? { check(true)?; lease_gate()?; }
                 Ok(json!({"status": "AUTHORIZED", "product_id": PRODUCT}))
             }
             _ => Err("INVALID_ACTION"),
@@ -198,9 +208,25 @@ fn execute(request: &Value) -> Result<Value> {
             match lease::content_key(dir, ROOT, &machine, now())? {
                 // A lease-wrapped key is machine-bound; expiry/rollback are enforced in lease::content_key.
                 Some(key) => Ok(json!({"status":"OK", "content_key":URL_SAFE_NO_PAD.encode(key), "source":"lease", "product_id":PRODUCT})),
+                // Embedded key is a dev convenience only: a release build must hold a live lease,
+                // otherwise deleting the lease would unlock everything.
+                #[cfg(feature = "dev_fallback")]
                 None if !license::CONTENT_KEY.is_empty() => Ok(json!({"status":"OK", "content_key":license::CONTENT_KEY, "source":"embedded", "product_id":PRODUCT})),
+                #[cfg(feature = "dev_fallback")]
                 None => Err("VAULT_UNCONFIGURED"),
+                #[cfg(not(feature = "dev_fallback"))]
+                None => Err("LEASE_REQUIRED"),
             }
+        }
+        // The gateway said this license is revoked: stop new processing now, not at lease expiry.
+        "lease_revoke" => {
+            let state = state_path()?;
+            lease::mark_revoked(state.parent().ok_or("INVALID")?)?;
+            Ok(json!({"status":"OK", "product_id":PRODUCT}))
+        }
+        "lease_status" => {
+            let state = state_path()?;
+            lease::status(state.parent().ok_or("INVALID")?, ROOT, &windows::machine_id()?, now())
         }
         "machine_pubkey" => {
             let state = state_path()?;
@@ -212,7 +238,13 @@ fn execute(request: &Value) -> Result<Value> {
             let payload = lease::install(dir, request["token"].as_str().ok_or("INVALID")?, ROOT, &windows::machine_id()?, now())?;
             Ok(json!({"status":"OK", "counter":payload.counter, "expires_at":payload.expires_at, "license_id":payload.license_id, "product_id":PRODUCT}))
         }
-        "check" => check(request["internet"].as_bool().unwrap_or(true)),
+        "check" => {
+            let internet = request["internet"].as_bool().unwrap_or(true);
+            let result = check(internet)?;
+            // Admission checks (online) also need a live lease; per-row progress checks stay cheap.
+            if internet { lease_gate()?; }
+            Ok(result)
+        }
         "status" => {
             let result = (|| {
                 let store = windows::Store::open(&state_path()?)?;

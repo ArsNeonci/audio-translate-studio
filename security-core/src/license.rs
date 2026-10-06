@@ -12,6 +12,7 @@ pub const ROOT: &str = env!("EMBEDDED_ROOT_PUBLIC_KEY");
 pub const MANIFEST: &str = env!("EMBEDDED_MANIFEST_PUBLIC_KEY");
 /// Content key for the asset vault (Phase 2B). Empty in dev builds. Phase 2C prefers a
 /// lease-delivered key over this embedded fallback.
+#[cfg_attr(not(feature = "dev_fallback"), allow(dead_code))]
 pub const CONTENT_KEY: &str = env!("EMBEDDED_CONTENT_KEY");
 /// Edition decided by the compiled Product ID; the legacy single product keeps full features.
 pub fn tier(product: &str) -> &'static str { if product.ends_with("-basic") { "basic" } else { "plus" } }

@@ -133,3 +133,11 @@ fn file_sha(p: &std::path::Path) -> String { use sha2::{Digest, Sha256}; hex::en
     assert_eq!(command_protected("manage.py","unknown"),Err("INVALID_ACTION"));
     assert_eq!(command_protected("anything.py","create"),Err("INVALID_ACTION"));
 }
+
+#[test] fn lease_phases_and_grace_bounds() {
+    assert_eq!(lease::phase(99, 100, 50), "VALID");
+    assert_eq!(lease::phase(100, 100, 50), "GRACE");
+    assert_eq!(lease::phase(149, 100, 50), "GRACE");
+    assert_eq!(lease::phase(150, 100, 50), "EXPIRED");
+    assert_eq!(lease::phase(100, 100, 0), "EXPIRED");
+}

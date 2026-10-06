@@ -213,6 +213,67 @@ class Phase2(unittest.TestCase):
         # An older lease restored offline is a rollback.
         self.assertEqual(self.cli({'action': 'install_lease', 'token': lease(1, 7)}, state=state).get('status'), 'SECURE_STATE_INVALID')
 
+    def _lease_env(self, name, binary=None):
+        state = self.base / name
+        binary = binary or self.binary
+        self.assertEqual(self.cli({'action': 'activate', 'token': self.issue()}, binary=binary, state=state)['status'], 'ACTIVE')
+        machine_pub = self.cli({'action': 'machine_pubkey'}, binary=binary, state=state)['machine_pubkey']
+        signer = private(bytes([19]) * 32)
+        cert = {'product_id': PRODUCT, 'key_version': 1, 'public_key': public(signer)}
+        certificate = {'payload': cert, 'signature': sign(self.root_key, 'product-signing-key-v1', cert)}
+        now = datetime.now(timezone.utc)
+
+        def lease(counter, expires_in, grace=None):
+            payload = {'license_id': 'synthetic', 'machine_id': self.machine, 'product_id': PRODUCT, 'counter': counter,
+                       'nonce': secrets.token_hex(8), 'issued_at': (now - timedelta(days=7)).isoformat(),
+                       'expires_at': (now + expires_in).isoformat(), 'key_version': 1,
+                       'wrapped_key': wrap_content_key(machine_pub, self.content)}
+            if grace is not None: payload['grace_seconds'] = grace
+            return lease_token(certificate, payload, signer)
+
+        def run(payload): return self.cli(payload, binary=binary, state=state)
+        return lease, run
+
+    def test_grace_comes_from_the_signed_lease(self):
+        lease, run = self._lease_env('grace-state')
+        day = timedelta(days=1)
+        # Expired 1 day ago: a 3-day server grace still serves the key, a 0-day grace does not.
+        self.assertEqual(run({'action': 'install_lease', 'token': lease(1, -day, 3 * 86400)})['status'], 'OK')
+        self.assertEqual(run({'action': 'content_key'})['status'], 'OK')
+        self.assertEqual(run({'action': 'lease_status'})['lease'], 'GRACE')
+        self.assertEqual(run({'action': 'install_lease', 'token': lease(2, -day, 0)})['status'], 'OK')
+        self.assertEqual(run({'action': 'content_key'})['status'], 'LICENSE_EXPIRED')
+        self.assertEqual(run({'action': 'lease_status'})['lease'], 'EXPIRED')
+        # A lease without the field keeps the built-in default (3 days).
+        self.assertEqual(run({'action': 'install_lease', 'token': lease(3, -day)})['status'], 'OK')
+        self.assertEqual(run({'action': 'content_key'})['status'], 'OK')
+        # A grace beyond the cap is clamped, so a malformed lease cannot grant unlimited time.
+        self.assertEqual(run({'action': 'install_lease', 'token': lease(4, -timedelta(days=60), 10**9)})['status'], 'OK')
+        self.assertEqual(run({'action': 'content_key'})['status'], 'LICENSE_EXPIRED')
+
+    def test_renew_flag_and_revocation(self):
+        lease, run = self._lease_env('renew-state')
+        self.assertEqual(run({'action': 'lease_status'}), {**run({'action': 'lease_status'}), 'lease': 'NONE', 'renew': True})
+        # Issued 7 days ago, expires in 1 day: past the halfway point, so renew.
+        run({'action': 'install_lease', 'token': lease(1, timedelta(days=1), 3 * 86400)})
+        self.assertTrue(run({'action': 'lease_status'})['renew'])
+        run({'action': 'install_lease', 'token': lease(2, timedelta(days=30), 3 * 86400)})
+        self.assertFalse(run({'action': 'lease_status'})['renew'])
+        # Server says revoked: blocked now, and replaying the same-counter lease does not lift it.
+        self.assertEqual(run({'action': 'lease_revoke'})['status'], 'OK')
+        self.assertEqual(run({'action': 'content_key'})['status'], 'LICENSE_REVOKED')
+        self.assertEqual(run({'action': 'lease_status'})['lease'], 'REVOKED')
+        self.assertEqual(run({'action': 'install_lease', 'token': lease(2, timedelta(days=30))})['status'], 'SECURE_STATE_INVALID')
+        self.assertEqual(run({'action': 'install_lease', 'token': lease(3, timedelta(days=30))})['status'], 'OK')
+        self.assertEqual(run({'action': 'content_key'})['status'], 'OK')
+
+    def test_release_build_has_no_embedded_key_fallback(self):
+        lease, run = self._lease_env('release-lease-state', binary=self.release)
+        # No lease: a release build refuses (deleting the lease must not unlock anything).
+        self.assertEqual(run({'action': 'content_key'})['status'], 'LEASE_REQUIRED')
+        self.assertEqual(run({'action': 'install_lease', 'token': lease(1, timedelta(days=7), 3 * 86400)})['status'], 'OK')
+        self.assertEqual(run({'action': 'content_key'})['source'], 'lease')
+
     # --- Fail closed when the service is down (release build) ---------------
     def test_release_blocks_without_service_even_if_python_patched(self):
         # No service is running for app2's product state root; the release launcher must refuse.

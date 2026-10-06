@@ -201,3 +201,55 @@ Authenticode and final release signing; signed IPC responses / server-process ve
 strong anti-debug and heavy obfuscation; per-customer builds; output watermarking; TPM/attestation
 for the lease key. 2A leaves the manifest key, `dev_fallback` toggle, service model and tamper states
 in place for these.
+
+## 2C follow-up: automatic lease renewal, configurable grace, hard lock on expiry
+
+Decision (owner): a customer who bought a plan may use the app for the whole plan period; when the
+period ends the app locks, **including a cracked copy**. This follow-up wires that end to end.
+
+### What changed
+- **Renewal on app open** (`lib/server/lease.ts`): the app asks the gateway `/v1/lease` (License
+  header, machine public key) and the service verifies and stores the lease. Triggers: every page load
+  (`GET /api/license`, background), right after activate/renew, and before every admission
+  (`licenseDenial`). A lease is renewed once half of it has passed, so an app opened now and then never
+  lapses. Concurrent callers share one request; a fresh result is reused for 10 minutes, a failure for
+  1 minute. Offline: the request fails quietly and the grace period covers it.
+- **Grace is configurable and signed**: `grace_seconds` is a field inside the server-signed lease, so
+  it cannot be edited on the machine. Admin sets lifetime (1–90 days, default 7) and grace (0–30 days,
+  default 3) per gateway (`PUT /admin/lease-settings`); the client cannot ask for more. A lease without
+  the field keeps the 3-day default; the core clamps grace to 30 days.
+- **Lease never outlives the license**: expiry is the smaller of the license expiry and now + lifetime.
+- **Hard lock**: a release build (no `dev_fallback`) has **no embedded-key fallback** and requires a
+  live lease for every admission (`LEASE_REQUIRED` when none, `LICENSE_EXPIRED` after lease + grace).
+  Deleting or never installing the lease no longer unlocks assets. `check` (online) and the service
+  `authorize` both apply the gate. Dev builds without a lease still pass, for development only.
+- **Revocation is immediate**: when the gateway answers `LICENSE_REVOKED`, the app calls `lease_revoke`;
+  the lease state is flagged and new processing stops at once. Replaying an old lease (same counter)
+  cannot lift it; a lease issued after a restore (higher counter) does. History and downloads remain.
+- **Gateway issues leases itself** (`billing-gateway/lease_authority.py`): the app can only reach the
+  gateway, so Admin pushes the product's lease signer, certificate and content key over the admin
+  channel (`PUT /admin/lease-materials/<product>`) and revoke/restore (`PUT /admin/licenses/<id>`).
+  Expired-token requests are refused on the server clock and recorded; repeats flag the license, and
+  an optional `auto_revoke` rule revokes it. Events hold ids, machine, kind, time and a short detail only.
+- **Admin side** (`admin-system/billing.py`, `run.py`): push lease material, set lifetime/grace,
+  revoke/restore (recorded in Admin and on the gateway), view events. API only; no UI screens yet.
+
+### Tests
+- Rust unit tests 13/13. `test_security_phase2.py` 10/10, adding: grace comes from the signed lease
+  (3 days vs 0 days vs missing vs clamped), renew flag, revocation not liftable by an old lease, and a
+  release build refusing without a lease. Phase 1 native 5/5. Worker 315 pass. tsc/eslint/i18n/theme clean.
+- Gateway `test_lease_gateway.py` 8/8 + `test_gateway.py` 13/13: lease signed and wrapped for the
+  machine, server-set lifetime and grace the client cannot override, lease never outlives the license,
+  expired token refused and recorded, revoke/restore, repeats flag and optional auto-revoke, no user content.
+- Admin `test_lease.py` 8/8, `test_lease_link.py` 3/3 (Admin pushes to the real gateway code in-process;
+  the lease verifies against the Admin root and unwraps to the product key), plus existing suites.
+
+### Residual risks specific to this
+- A cracked copy that **patches the service binary** (not just Python) is stopped by the manifest and
+  the Authenticode work planned for Phase 3, not by the lease alone.
+- The content key is **one per product**: someone who extracts it once while licensed can decrypt that
+  version's vault forever. Rotate the key with each release so old extractions stop working on new builds.
+- The lease signer lives on the gateway VPS, so protect that host like the Gemini key (file mode 600).
+- Per-stage execution context is still not threaded through the orchestrator (2B limitation).
+- Not run here: the live app against a running gateway (needs both servers), the real service as
+  Administrator, two physical machines, and benchmarks.

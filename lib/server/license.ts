@@ -20,6 +20,8 @@ function spawnLicenseCommand(payload: Record<string, unknown>): Promise<LicenseS
   });
 }
 export async function licenseDenial(internet = true): Promise<Response | null> {
+  // Admission is the moment a lease matters: refresh it first when it is half used (cached, cheap).
+  if (internet) await (await import("@/lib/server/lease")).ensureLease();
   const result = await licenseCommand({action:"check",internet});
   return result.status === "ACTIVE" && result.allowed === true ? null : Response.json({error:result.error || result.status,license_status:result.status},{status:403,headers:{"Cache-Control":"no-store"}});
 }
