@@ -23,5 +23,7 @@
 | [IMPLEMENTATION_RESULT.md](IMPLEMENTATION_RESULT.md) | Ghi nhận triển khai |
 | [CV_PROJECT_EVIDENCE.md](CV_PROJECT_EVIDENCE.md) | Bằng chứng kỹ thuật cho CV (đồng bộ 2026-10-05; mục 0 liệt kê thay đổi so với bản 1.0.2) |
 | [CLEAN_ARCHITECTURE.md](CLEAN_ARCHITECTURE.md) | Bố cục mã nguồn và phát hành |
+| [SECURITY_PHASE_1_RESULT.md](SECURITY_PHASE_1_RESULT.md) | Bảo mật Phase 1: ranh giới tin cậy native, license gắn máy, broker |
+| [SECURITY_PHASE_2_RESULT.md](SECURITY_PHASE_2_RESULT.md) | Bảo mật Phase 2: service + Named Pipe, manifest ký, integrity, tamper states (2A xong; 2B/2C đang làm) |
 
 Trạng thái dự án, vấn đề đang mở và dòng thời gian: [Agent.md](../../Agent.md).

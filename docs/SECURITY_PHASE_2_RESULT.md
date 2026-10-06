@@ -1,0 +1,117 @@
+# Audio Translate — Security Phase 2
+
+Status: **Phase 2A implemented and tested (client side); 2B/2C in progress.** Branch `security-phase-2`
+in `audio-translates/` (not pushed). Build machine has no Administrator rights, so service
+registration, Program Files installation and the installer smoke are **prepared as scripts/hooks
+for an elevated run**, not executed here (see "Deferred, needs Administrator").
+
+Design goal (unchanged from the brief): raise the effort to self-edit an install for unlimited use,
+AI still runs locally. This is not uncrackable DRM; residual risks are listed at the end.
+
+## Architecture decision (important)
+
+The scheduler (`lib/server/jobs.ts`) spawns the native core per workflow and tracks the **child
+process lifetime and exit code**. Turning the core into a pure resident service would force a risky
+rewrite of that scheduler. Instead:
+
+- The **service** (`audio-security-core.exe service` / `serve`) is the authority. It holds license
+  state and (later) the lease/content key, performs integrity checks, and answers queries plus
+  **launch authorization** over a named pipe.
+- The **launcher** is the same binary spawned by Node for `workflow`/`command` (unchanged process
+  contract). Before spawning the Python worker it asks the service to authorize; if the service is
+  down it fails `SECURITY_SERVICE_UNAVAILABLE` (release builds), so stopping the service blocks new
+  processing. Dev builds keep an in-process fallback behind a compile feature.
+- Node license/edition queries and `license_gate.py` talk to the pipe directly, falling back to the
+  CLI binary when the pipe is absent.
+
+Consequence documented as residual: the launcher exe is still spawned, but the service
+integrity-checks the tree and only authorizes when its own checks pass.
+
+## 2A — Service, IPC, manifest, integrity (done)
+
+### Named-pipe service and IPC (`security-core/src/ipc.rs`)
+- Windows service via `StartServiceCtrlDispatcherW` + control handler + `SetServiceStatus`, and a
+  `serve` console mode for dev/test. Built only on `windows-sys` (no new crates, offline build).
+- Pipe `\\.\pipe\AudioTranslate.<product_id>`. DACL (SDDL `D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)`)
+  grants SYSTEM/Administrators full and the interactive user read/write; `PIPE_REJECT_REMOTE_CLIENTS`
+  refuses remote clients; no TCP port.
+- Requests are 4-byte length-framed, capped at 64 KiB, parsed strict; dispatch is the fixed action
+  set (`identity`, `machine`, `status`, `check`, `activate`, `renew`, `credential`, `integrity`,
+  `authorize`). No arbitrary command runs.
+- Dev fallback is the cargo feature `dev_fallback` (default on for dev/test; release builds pass
+  `--no-default-features`). No environment variable can re-enable it in a release build.
+- Clients: `lib/server/security-core.ts` (`callSecurityCore`, pipe) with spawn fallback in
+  `license.ts`; `worker/audio_translate/core/secure_channel.py` (ctypes named-pipe client) used by
+  `license_gate.py` with CLI fallback. Pipe name's product id comes from `licensing/public-config.json`
+  (a rendezvous label only, never a trust input).
+
+### Signed payload manifest and integrity (`security-core/src/manifest.rs`, `build.rs`)
+- Dedicated Ed25519 **manifest key**, separate from the license root. Public half embedded at compile
+  time from `trust-anchor.json` `manifest_public_key` (optional; empty ⇒ dev build, integrity
+  "unconfigured" and skipped). Private key stays Admin/build side.
+- `payload.manifest.json` = `{version, entries:[{path, sha256, type, version, runtime}], signature}`,
+  signed over `{version, entries}` with domain `payload-manifest-v1`.
+- Install scope hashes all entries; runtime scope hashes only `runtime`-flagged entries (binary,
+  config, encrypted payloads) at service start and before each workflow/command. Multi-GB public
+  model weights are excluded. Binary mismatch ⇒ `UNTRUSTED_BINARY`, other mismatch ⇒
+  `INTEGRITY_FAILURE`; path traversal in entries is rejected.
+- Generator: `packaging/build_manifest.py` (reuses `license_sdk.crypto` so the canonical wire format
+  matches the Rust verifier). Wired into `build_installer.py` under `AUDIO_MANIFEST_KEY_FILE`.
+
+### Tamper states and i18n
+- Codes `TAMPER_DETECTED`, `INTEGRITY_FAILURE`, `SECURITY_SERVICE_UNAVAILABLE`, `SECURE_STATE_INVALID`,
+  `UNTRUSTED_BINARY` (plus `LICENSE_REVOKED`/`LICENSE_EXPIRED` for 2C/6b) block new processing and are
+  localized in `lib/i18n/ui-text.ts`. User data is never deleted.
+
+## 2B — Protected worker and vault (pending)
+Planned: extract assets 1–5 data (translation prompt/strategy, Hán-Việt names, address profiles,
+genre/cleanup lexicons, postprocess) into an encrypted vault loaded via the service; per-stage
+execution context; compile remaining asset code with Nuitka (installed; `--mingw64`, gcc 13.2 present)
+or document infeasibility. Hooks only in 2A.
+
+## 2C — Lease, content key, rollback, ModelVault, canary (pending)
+Planned on `admin-system`/`billing-gateway` (code + local test only; each gets its own git repo).
+Short-lived lease (default 7 days) carrying a machine-wrapped content key; DPAPI lease storage with
+highest sequence; offline grace; online rollback detection; ModelVault interface; canary values.
+
+## 6b — Server-side detection and revocation (pending)
+Planned: server-clock license evaluation, anomaly logging (no user content), escalation policy,
+manual revoke/restore. A crack that never contacts the server is only blocked when the lease expires.
+
+## Tests and verification (what actually ran here)
+- Rust unit tests: **12/12** (license + manifest: sign/verify, wrong key, tampered config vs binary,
+  path traversal). `cargo build --release` offline, no warnings.
+- Python↔Rust cross-language: Python-signed manifest verified by the Rust core — valid ⇒ VERIFIED,
+  tampered config ⇒ INTEGRITY_FAILURE, tampered binary ⇒ UNTRUSTED_BINARY.
+- `packaging/test_security_phase2.py`: **5/5** — integrity valid/configured; tampered config, binary
+  and manifest signature rejected; named-pipe service queries + authorization; **release build blocks
+  workflow and command with SECURITY_SERVICE_UNAVAILABLE when the service is down even with
+  `license_gate.py` patched** (tamper scenarios 1, 5, 6, 7, 8).
+- Named-pipe round-trip from Python verified against a live `serve` process.
+- Regression: `tsc --noEmit`, `eslint`, `check:i18n`, `check:theme` clean; **315 worker tests pass**
+  (1 skipped); Phase 1 native integration **5/5** including the real moderation workflow through the
+  launcher. `test_security_phase1.py` HTTP case not re-run here (needs a Next build).
+- Not measured yet: startup/authorization/integrity overhead benchmark (next).
+
+## Deferred, needs Administrator (prepared, not executed)
+- Install/remove/start/stop the service: `packaging/manage_service.ps1` (test name
+  `AudioTranslateSecTest`, copied binary, removed after). Tamper scenario 7 against a *real* service,
+  and scenarios 9/10/11 (two-machine state, rollback, lease expiry — 2C) run elevated by the operator.
+- Program Files installation + per-user migration in `installer.cs`/`build_installer.py`, and the
+  silent installer smoke, require admin and the full model/runtime payload; the release core must be
+  built with `AUDIO_RELEASE_HARDENED=1` (no dev_fallback) and the installer must register the service.
+- Product version must be bumped before building the installer.
+
+## Residual risks
+- An Administrator can stop the SYSTEM service and run a fake server on the pipe name (responses are
+  not yet signed). Mitigation for Phase 3: sign service responses or verify the server process token.
+  A non-admin cannot stop a SYSTEM service or pre-empt the pipe while it runs.
+- The launcher exe is still spawned per run; integrity is enforced by the service, not self-checked.
+- Offline whole-state/VM rollback is only detected once online (2C); documented, not eliminated.
+- Model weights and thin wrappers remain extractable by design.
+
+## Phase 3 requirements (prepared hooks only)
+Authenticode and final release signing; signed IPC responses / server-process verification;
+strong anti-debug and heavy obfuscation; per-customer builds; output watermarking; TPM/attestation
+for the lease key. 2A leaves the manifest key, `dev_fallback` toggle, service model and tamper states
+in place for these.
