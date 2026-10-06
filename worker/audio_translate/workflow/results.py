@@ -28,10 +28,27 @@ FILES = {
 }
 
 
+CHINESE_KINDS = {'ZH_JSONL', 'ZH_MD'}
+# Exports that carry `text_zh` per row; Basic publishes them without it.
+TRANSCRIPT_ROWS = {'VI_JSONL', 'MODERATED_JSONL'}
+
+
 def output_files(job):
-    if not job.get("workflow_no"): return FILES
+    from audio_translate.core.edition import is_basic
+    files = {step:[item for item in items if item[0] not in CHINESE_KINDS] for step,items in FILES.items()} if is_basic() else FILES
+    if not job.get("workflow_no"): return files
     from audio_translate.workflow.manage import filename
-    return {step:[(kind,source,str(Path(relative).parent/filename(job["workflow_no"],Path(relative).name)).replace("\\","/")) for kind,source,relative in items] for step,items in FILES.items()}
+    return {step:[(kind,source,str(Path(relative).parent/filename(job["workflow_no"],Path(relative).name)).replace("\\","/")) for kind,source,relative in items] for step,items in files.items()}
+
+
+def copy_export(kind, source, out):
+    from audio_translate.core.edition import is_basic, strip_chinese
+    if kind not in TRANSCRIPT_ROWS or not is_basic():
+        with source.open('rb') as inp: shutil.copyfileobj(inp, out, 1024*1024)
+        return
+    with source.open(encoding='utf-8') as inp:
+        for line in inp:
+            if line.strip(): out.write((json.dumps(strip_chinese(json.loads(line)), ensure_ascii=False)+'\n').encode('utf-8'))
 
 def workspace(job_id):
     if not ID.fullmatch(job_id): raise ValueError('Invalid job ID')
@@ -97,7 +114,7 @@ def metadata(job_dir):
     job_id = job.get('id', '')
     if not ID.fullmatch(job_id): return  # Unit fixtures are not public jobs.
     directory = destination(job_id)
-    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'stages', 'tool_steps']}
+    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'tts_auto', 'review_skipped', 'stages', 'tool_steps']}
     # No adapter paths, raw errors, credentials or private worker metadata.
     summary['compute_device'] = job.get('compute_device')
     summary['steps'] = {key: {k:value.get(k) for k in ['state','retry_count','attempt','progress','started_at','completed_at','duration_ms','error']}
@@ -137,6 +154,18 @@ def publish_step(job_dir, step):
                 target = directory/relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if not target.resolve().is_relative_to(directory.resolve()): raise ValueError('Unsafe output path')
+                from audio_translate.core.edition import is_basic
+                if kind in TRANSCRIPT_ROWS and is_basic():
+                    # The published copy differs from the working copy (no transcript).
+                    temp = staging(job_id, directory)/f'{uuid.uuid4().hex}.tmp'
+                    prepared.append((temp, target, kind, relative, None))
+                    with temp.open('wb') as out:
+                        copy_export(kind, source, out); out.flush(); os.fsync(out.fileno())
+                    sha = file_digest(temp)
+                    if target.is_file() and file_digest(target) == sha:
+                        temp.unlink(); prepared[-1] = (None, target, kind, relative, sha)
+                    else: prepared[-1] = (temp, target, kind, relative, sha)
+                    continue
                 sha = file_digest(source)
                 if target.is_file() and file_digest(target) == sha:
                     prepared.append((None, target, kind, relative, sha))
@@ -169,7 +198,9 @@ def publish_step(job_dir, step):
 def import_existing(job_dir):
     """Backfill only validated finals; never start a model or change old jobs."""
     job_dir = Path(job_dir)
-    with file_lock(job_dir/'working'/'worker.lock'):
+    from audio_translate.core.sealing import opened
+    # Sealing here also re-encrypts plaintext left behind by a crashed Basic worker.
+    with file_lock(job_dir/'working'/'worker.lock'), opened(job_dir):
         metadata(job_dir)
         job = read_json(job_dir/'job.json')
         job_id = job.get('id', '')

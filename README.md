@@ -1,6 +1,6 @@
 # Audio Studio — YouTube → Chinese → Vietnamese voice
 
-Local Next.js Studio with a filesystem job queue and Python workers for FunASR, Hy-MT2-1.8B Q8_0 GGUF translation, replacement rules, and VieNeu-TTS. New jobs process in `data/tmp/<job_id>/` and persist final UTF-8 transcripts/Vietnamese audio in `RESULTS_ROOT/<job_id>/`; existing `data/jobs/` workspaces remain compatible.
+Local Next.js Studio with a filesystem job queue and Python workers for FunASR, Hy-MT2-7B Q4_K_M GGUF translation, replacement rules, and VieNeu-TTS. New jobs process in `data/tmp/<job_id>/` and persist final UTF-8 transcripts/Vietnamese audio in `RESULTS_ROOT/<job_id>/`; existing `data/jobs/` workspaces remain compatible.
 
 ## Saved results and History
 
@@ -38,7 +38,7 @@ API: `GET /api/jobs/<id>/errors`, `GET /api/jobs/<id>/steps/<STEP>` (error + fix
 
 New jobs run the full workflow automatically. For an existing Chinese-only job, click **Tiếp tục dịch và đọc →**. Set up **Community Moderation Rules** before continuing if replacements are wanted. Job detail shows separate progress and View/Download controls for each transcript, plus Play/Download for the Vietnamese WAV.
 
-Translation uses Tencent's `Hy-MT2-1.8B-Q8_0.gguf` offline with the local llama-server CPU runtime (embedded llama-cpp-python for GPU). Download with `.venv/Scripts/python.exe worker/tools/download_translation_model.py`; the script verifies the pinned size/SHA-256 and keeps only weights, model card, license and provenance in `models/Hy-MT2-1.8B-Q8_0/`. `HY_MT_MODEL_PATH` relocates the same model. No source clone or nested Git is needed. The adapter uses the official Hy-MT2 chat template and translation prompt, bounded source context and glossary. Old translation snapshots migrate at the next stage boundary; changed fingerprints prevent reuse of translations from the old model. Completed History remains available; use Reprocess TRANSLATION to regenerate existing Vietnamese outputs. See [translation setup](docs/TRANSLATION_LONG.md).
+Translation uses Tencent's `Hy-MT2-7B-Q4_K_M.gguf` offline with the local llama-server CPU runtime (embedded llama-cpp-python for GPU). Download with `.venv/Scripts/python.exe worker/tools/download_translation_model.py`; the script verifies the pinned size/SHA-256 and keeps only weights, model card, license and provenance in `models/Hy-MT2-7B-Q4_K_M/`. `HY_MT_MODEL_PATH` relocates the same model. No source clone or nested Git is needed. The adapter uses the official Hy-MT2 chat template and translation prompt, bounded source context and glossary. Old translation snapshots migrate at the next stage boundary; changed fingerprints prevent reuse of translations from the old model. Completed History remains available; use Reprocess TRANSLATION to regenerate existing Vietnamese outputs. See [translation setup](docs/TRANSLATION_LONG.md).
 
 VieNeu source is detected at `../VieNeu-TTS-main/src`; override `VIENEU_SOURCE` if needed. Legacy nested provider paths remain compatible. VieNeu uses its unchanged `Vieneu(mode="v3turbo")` / `infer_stream` API and the Hải Đăng preset. CPU is the default. Hy-MT2 waits for 3.5 GiB free RAM before loading. The default is one slot with calibration disabled, avoiding benchmark-related pauses; memory protection and durable checkpoints remain active.
 

@@ -3,7 +3,7 @@ mod license;
 mod windows;
 #[cfg(test)] mod tests;
 
-use license::{Result, PRODUCT, ROOT};
+use license::{tier, Result, PRODUCT, ROOT};
 use serde_json::{json, Value};
 use std::{env, io::{Read, Write}, path::{Path, PathBuf}, process::{Command, Stdio}, time::{Duration, SystemTime, UNIX_EPOCH}};
 
@@ -12,7 +12,8 @@ fn state_path() -> Result<PathBuf> {
     // Storage location only; no environment setting changes the embedded anchor.
     let base = env::var_os("AUDIO_LICENSE_STATE_ROOT").map(PathBuf::from)
         .or_else(|| env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AudioTranslate/license"))).ok_or("INVALID")?;
-    Ok(base.join("state.dpapi"))
+    // Each edition keeps its own license; Basic state never blocks activating Plus.
+    Ok(base.join(if PRODUCT == "audio-translate" { "state.dpapi".to_string() } else { format!("state-{PRODUCT}.dpapi") }))
 }
 fn trusted_time() -> Result<i64> {
     let mut handles = Vec::new();
@@ -41,7 +42,17 @@ fn check(internet: bool) -> Result<Value> {
     state.last_verified_time = time.max(state.last_verified_time);
     state.key_version = p.key_version;
     store.write(&state)?;
-    Ok(json!({"status":"ACTIVE", "allowed":true, "product_id":PRODUCT}))
+    Ok(json!({"status":"ACTIVE", "allowed":true, "product_id":PRODUCT, "tier":tier(PRODUCT)}))
+}
+/// The signed license authenticates this machine to the Genius gateway. It is already
+/// the customer's own token; the gateway verifies signature, product and expiry itself.
+fn credential() -> Result<Value> {
+    let machine = windows::machine_id()?;
+    let store = windows::Store::open(&state_path()?)?;
+    let state = store.read()?.ok_or("UNACTIVATED")?;
+    let p = license::verified(&state, ROOT, &machine)?;
+    license::expiration(&p, now(), state.last_verified_time)?;
+    Ok(json!({"status":"ACTIVE", "token":state.current_license, "customer_id":p.customer_id, "product_id":PRODUCT, "tier":tier(PRODUCT)}))
 }
 fn app_root() -> Result<PathBuf> {
     // app/security-core/bin/audio-security-core.exe (same structure in development).
@@ -56,7 +67,8 @@ fn python(app: &Path) -> Result<PathBuf> {
 pub fn command_protected(script: &str, action: &str) -> Result<bool> {
     // Default deny unknown commands. Read/history/download/cancel remain available.
     match (script, action) {
-        ("manage.py", "create"|"convert"|"reprocess"|"resume"|"preflight") => Ok(true),
+        // "review" continues or ends a run held before paid Voice generation (Basic).
+        ("manage.py", "create"|"convert"|"reprocess"|"resume"|"preflight"|"review") => Ok(true),
         ("retry.py", "retry") => Ok(true),
         ("manage.py", "initialize"|"voices"|"history"|"resolve"|"cancel"|"pause"|"abort"|"finish_abort"|"delete") => Ok(false),
         ("retry.py", "errors"|"error"|"guide") => Ok(false),
@@ -96,7 +108,8 @@ fn launch(request: &Value, workflow: bool) -> Result<i32> {
 }
 fn execute(request: &Value) -> Result<Value> {
     match request["action"].as_str().ok_or("INVALID_ACTION")? {
-        "identity" => Ok(json!({"product_id":PRODUCT,"root_public_key":ROOT,"protocol":1})),
+        "identity" => Ok(json!({"product_id":PRODUCT,"tier":tier(PRODUCT),"root_public_key":ROOT,"protocol":1})),
+        "credential" => credential(),
         "machine" => Ok(json!({"machine_id":windows::machine_id()?, "product_id":PRODUCT})),
         "check" => check(request["internet"].as_bool().unwrap_or(true)),
         "status" => {

@@ -32,7 +32,7 @@ class FakeServer:
         self.started = {}; self.finished = {}
         self.exceeded_after_reduction = False
         self.barrier = threading.Barrier(3) if pause else None
-    def completion(self, prompt, slot, limit, progress, seed=42, temperature=.7):
+    def completion(self, prompt, slot, limit, progress, seed=42, temperature=.7, stop=None):
         self.prompts.append(prompt)
         if '<source>' in prompt:
             rows = re.findall(r'<s(\d+)>(.*?)</s\1>', prompt.split('<source>')[-1])
@@ -317,7 +317,12 @@ class ControllerTests(unittest.TestCase):
         tasks=[(i,0,'text','') for i in range(8)]
         with patch('audio_translate.translation.translation_server.time.monotonic',return_value=11),patch.object(self.runtime,'start') as start:
             self.runtime.tune_between_batches(tasks)
-        start.assert_called_once_with(4,4,128,2)
+        self.assertNotIn(2,[call.args[-1] for call in start.call_args_list])  # no measured baseline yet
+        self.assertEqual(self.runtime.slots,1)
+        with patch('audio_translate.translation.translation_server.time.monotonic',return_value=11),patch.object(self.runtime,'start') as start,             patch.object(self.runtime.gain,'can_try',return_value=True):
+            self.runtime.tune_between_batches(tasks)
+        start.assert_called_with(4,4,128,2)
+        self.assertEqual(self.runtime.gain.trial['before'],1)
         self.assertEqual(self.runtime.slots,2)
         self.assertFalse(hasattr(self.runtime,'measure'))
         self.assertFalse(hasattr(self.runtime,'calibrate'))
@@ -340,10 +345,19 @@ class ControllerTests(unittest.TestCase):
         self.runtime.slots=4;self.runtime.server.capacity=4
         self.runtime.server.threads=4;self.runtime.server.batch=128
         self.runtime.healthy_since=0
-        with patch('audio_translate.translation.translation_server.time.monotonic',return_value=11),patch.object(self.runtime,'start') as start:
+        with patch('audio_translate.translation.translation_server.time.monotonic',return_value=11),patch.object(self.runtime,'start') as start,             patch.object(self.runtime.gain,'can_try',return_value=True):
             self.runtime.tune_between_batches([(i,0,'text','') for i in range(16)])
         self.assertEqual(start.call_args.args[-1],5)
         self.assertEqual(self.runtime.slots,5)
+
+    def test_slot_that_is_not_faster_is_dropped_at_the_next_boundary(self):
+        self.runtime.slots=3;self.runtime.server.capacity=3;self.runtime.server.threads=4
+        self.runtime.last_observed=0
+        with patch.object(self.runtime.gain,'verdict',return_value='revert'):
+            self.runtime.observe()
+        self.assertEqual(self.runtime.slots,2)
+        self.assertTrue(self.runtime.pending_reduction)
+        self.assertTrue(self.runtime.needs_drain())
 
     def test_gpu_utilization_and_temperature_block_expansion(self):
         self.config['device']='gpu'

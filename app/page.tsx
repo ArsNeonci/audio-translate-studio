@@ -7,6 +7,11 @@ import type { Job } from "@/lib/server/jobs";
 import JobDetail from "@/components/workflow/job-detail";
 import RulesPanel from "@/components/rules/rules-panel";
 import VoiceSelect from "@/components/voice/voice-select";
+import AddressProfileSelect from "@/components/voice/address-profile-select";
+import TranslationModeSelect from "@/components/voice/translation-mode-select";
+import AutoTtsToggle from "@/components/voice/auto-tts-toggle";
+import type {TranslationMode} from "@/lib/shared/translation-modes";
+import {addressForStyle} from "@/lib/shared/address-profiles";
 import {percent,runNumber} from "@/lib/shared/format";
 import SiteHeader from "@/components/layout/site-header";
 import Link from 'next/link';
@@ -21,13 +26,16 @@ export default function Home() {
   const { language, t , tr} = useLanguage();
   const license = useLicense();
   const [url, setUrl] = useState("");
-  const [voice,setVoice]=useState(""),[style,setStyle]=useState("");
+  const [voice,setVoice]=useState(""),[style,setStyle]=useState(""),[address,setAddress]=useState("");
+  const [mode,setMode]=useState<TranslationMode>("normal"),[auto,setAuto]=useState(false);
+  const basic=license.edition==="basic";
+  const chooseStyle=useCallback((value:string)=>{setStyle(value);setAddress(addressForStyle(value));},[]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useNotice();
   const [selected, setSelected] = useState<string | null>(null);
   const [resourceWarning,setResourceWarning]=useState<ResourceWarning|null>(null);
-  const [pendingConvert,setPendingConvert]=useState<{url:string;voice?:string;style?:string}|null>(null);
+  const [pendingConvert,setPendingConvert]=useState<{url:string;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean}|null>(null);
   const studioJobs=jobs.filter(job=>job.status!=='COMPLETED');
 
   const refresh = useCallback(async () => {
@@ -46,10 +54,12 @@ export default function Home() {
 
   async function start(event: React.FormEvent) {
     event.preventDefault();
-    await convert({url,voice:voice||undefined,style:style||undefined});
+    // Genius handles forms of address itself, so none is sent.
+    const extra=basic?{auto}:{};
+    await convert(mode==="genius"?{url,voice:voice||undefined,style:style||undefined,mode,...extra}:{url,voice:voice||undefined,style:style||undefined,address:address||undefined,...extra});
   }
 
-  async function convert(input:{url:string;voice?:string;style?:string},queue_only=false){
+  async function convert(input:{url:string;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean},queue_only=false){
     if(busy)return;
     setBusy(true); setMessage("");setResourceWarning(null);
     try {
@@ -95,7 +105,10 @@ export default function Home() {
       <h1>{t.home.title1}<br />{t.home.title2}</h1>
       <p>{t.home.description}</p>
       <form onSubmit={start} className="convert-form"><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /><button type="submit" disabled={busy || !license.allowed}>{busy ? t.home.checking : t.home.convert} ↗</button></form>
-      <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={setStyle} />
+      <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={chooseStyle} />
+      <TranslationModeSelect value={mode} onChange={setMode} />
+      {mode==="normal"&&<AddressProfileSelect value={address} onChange={setAddress} />}
+      {basic&&<AutoTtsToggle checked={auto} onChange={setAuto} />}
       {message && <p className="alert" role="alert">{message}</p>}
       {resourceWarning&&<section role="alert" className="alert">
         <h3>{t.home.resourceWarningTitle}</h3>

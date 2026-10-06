@@ -1,12 +1,46 @@
-﻿# Translation: Hy-MT2-1.8B Q8_0
+# Translation: Hy-MT2-7B Q4_K_M
 
-Backend: `hy-mt2-gguf`. Official model: https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF
+Backend: `hy-mt2-gguf`. Official model: https://huggingface.co/tencent/Hy-MT2-7B-GGUF
+(replaced Hy-MT2-1.8B Q8_0 on 2026-10-05; accuracy over speed; the 1.8B files were deleted).
 
-- File: `models/Hy-MT2-1.8B-Q8_0/Hy-MT2-1.8B-Q8_0.gguf`
-- Revision: `a0c709d9fac510f2c807aa3af52872340dc37a4a`
-- Size: 1,908,528,192 bytes
-- SHA-256: `5c3fe0b1408a5ceb0143184ef247b11b579c525f4b02b060e6c851bb76fef1a4`
-- Apache-2.0 license, model card and provenance remain alongside the weights. No source clone or nested Git.
+- File: `models/Hy-MT2-7B-Q4_K_M/Hy-MT2-7B-Q4_K_M.gguf`
+- Revision: `ab8472660ac61fac25f1af43fac2599d52a8a775`
+- Size: 4,624,648,896 bytes
+- SHA-256: `9f96256500f3fc1ab4d64336b58f52a949a95ad7516b0c229476eef782f9f77b`
+- Apache-2.0 license, model card and provenance remain alongside the weights.
+- The official repo has only Q4_K_M, Q6_K and Q8_0: there is no official Q4_K_S/Q3_K_M fallback.
+
+## RAM khi chạy (đo thật, 2026-10-05, máy 15,4 GiB, 8 lõi)
+
+Đo bằng chênh lệch "In use" (tổng − khả dụng), không cộng từ danh sách tiến trình.
+
+| Cấu hình `llama-server` | RAM tăng thêm | Ghi chú |
+|---|---|---|
+| Mặc định (repack Q4_K + mmap) | > 6,7 GiB | Phải dừng: RAM trống xuống dưới 0,8 GiB. Bản repack nằm cạnh trang mmap của GGUF |
+| `--no-mmap` | — | Server thoát khi khởi động |
+| **`--no-repack`** (đang dùng) | **4,52–4,77 GiB** (RSS 4,58, private 0,44) | Nạp 3 s; tốc độ như repack |
+| Đường chạy thật, 2–3 slot | +5,28 GiB đỉnh | RAM trống thấp nhất 2,18 GiB |
+
+- KV cache `q8_0`, ngữ cảnh 3072/slot: 0,32 GiB mỗi slot (f16 sẽ là 0,5 GiB).
+- Ngưỡng: khởi động khi trống ≥ 6 GiB (`start_free_gib`), giữ ≥ 1 GiB cho hệ điều hành
+  (`reserve_gib`), mỗi slot thêm 0,35 GiB (`extra_slot_gib`). Nếu chậm bất thường hoặc
+  "In use" chạm trần: `HY_MT_CONTEXT_SIZE=2048`.
+- Tốc độ: sinh ~6,0–6,7 token/s, đọc prompt ~31 token/s trên 8 luồng. Đường chạy thật 3,4 s/dòng
+  (40 dòng, slot tự tăng lên 2, slot 3 bị gỡ vì không nhanh hơn).
+
+## Mẫu chat theo từng model
+
+Hy-MT2-7B dùng mẫu Hunyuan trong `tokenizer.chat_template` của GGUF:
+`<|startoftext|>{nội dung}<|extra_0|>`, kết thúc `<|eos|>`. Mẫu `hy_*` của 1.8B chỉ là chữ thường
+với 7B (model kết thúc ngay, 1 token). `hymt_translation.chat_format()` chọn mẫu theo metadata.
+
+## Thử nghiệm cách dịch (dòng 101–160 của 000008)
+
+| Cách | Khớp thẻ | Thời gian | Nhận xét |
+|---|---|---|---|
+| A. Nhóm câu ≤ 6 dòng + glossary (mặc định) | 19/19 | 5,5 s/dòng (1 slot) | Tên đúng, văn tự nhiên |
+| B. Batch 20 dòng + 4 dòng ngữ cảnh + nhân vật/giới tính | 2/3 | tương đương A | Không dịch lạc sang ngữ cảnh; chất lượng ngang A, vài dòng sai khác |
+| C. B + lượt 2 rà soát | 2/3 | 8,6 s/dòng | Lượt 2 gần như giữ nguyên bản nháp |
 
 Download/verify: `.venv/Scripts/python.exe worker/tools/download_translation_model.py`.
 Install runtime: `.venv/Scripts/python.exe worker/tools/download_translation_server.py`.

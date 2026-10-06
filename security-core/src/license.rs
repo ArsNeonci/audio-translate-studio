@@ -7,6 +7,8 @@ use serde_json::{json, Value};
 pub type Result<T> = std::result::Result<T, &'static str>;
 pub const PRODUCT: &str = env!("EMBEDDED_PRODUCT_ID");
 pub const ROOT: &str = env!("EMBEDDED_ROOT_PUBLIC_KEY");
+/// Edition decided by the compiled Product ID; the legacy single product keeps full features.
+pub fn tier(product: &str) -> &'static str { if product.ends_with("-basic") { "basic" } else { "plus" } }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]

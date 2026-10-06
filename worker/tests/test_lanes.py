@@ -140,6 +140,14 @@ class AdmissionTests(unittest.TestCase):
         job['auto_paused_at'] = time.time() - lanes.RESUME_COOLDOWN_SECONDS - 1
         self.assertEqual(lanes.admission([job])[1]['id'], 'p')
 
+    def test_workflow_that_yielded_waits_until_that_workflow_finishes(self):
+        self.leases(lease('first', 1, demand=0, units=0))
+        job = {'id': 'p', 'status': 'PAUSED', '_next_stage': 'download', 'auto_paused_for': 'first',
+               'auto_paused_at': time.time() - lanes.RESUME_COOLDOWN_SECONDS - 1}
+        self.assertEqual(lanes.admission([job])[:2], (None, None))
+        self.leases()
+        self.assertEqual(lanes.admission([job])[1]['id'], 'p')
+
     def test_user_paused_workflow_is_never_resumed_by_the_scheduler(self):
         from audio_translate.workflow import scheduling
         root = Path(self.temp.name) / 'tmp' / 'u'; (root / 'working').mkdir(parents=True)

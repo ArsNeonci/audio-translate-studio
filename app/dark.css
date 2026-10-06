@@ -199,3 +199,11 @@
 :root[data-theme="dark"] .voice-style-description {
   color: var(--dark-muted);
 }
+
+:root[data-theme="dark"] .character-editor tr.character-auto td {
+  background: var(--dark-raised);
+}
+
+:root[data-theme="dark"] .character-empty {
+  color: var(--dark-muted);
+}

@@ -1,3 +1,4 @@
+import time
 import json
 from pathlib import Path
 import tempfile
@@ -102,23 +103,42 @@ class TTSTests(unittest.TestCase):
         self.assertFalse(list((self.job/'voice').glob('*.tmp')))
         self.assertFalse(list((self.job/'voice').glob('*.wav')))
 
-    def test_calibration_selects_gain_and_reuses_hardware_profile(self):
-        self.values.update(calibrate=True,max_workers=4);atomic_json(self.path,self.values)
-        runtime=Runtime(self.job,self.config,fake=True)
-        def configure(count,threads):
-            runtime.pool.members=[dict(threads=threads) for _ in range(count)];return True
-        def measure(texts,count,threads):
-            seconds=({4:100,6:90,8:70}[threads] if count==1 else {2:50,4:47}[count])
-            value=dict(workers=count,threads=threads,seconds=seconds,rtf=.5)
-            runtime.records.append(value);return value
-        with patch.object(runtime,'configure',side_effect=configure),patch.object(runtime,'measure',side_effect=measure):
-            runtime.prepare(['short','medium text','long text','another text'])
-            self.assertEqual((runtime.selected['workers'],runtime.selected['threads']),(2,4))
-            runtime.selected=None
-            with patch.object(runtime,'measure',side_effect=AssertionError('profile must skip calibration')):
-                runtime.prepare(['short','medium text'])
-            self.assertEqual((runtime.selected['workers'],runtime.selected['threads']),(2,4))
-        runtime.pool.members=[]
+    def test_starts_with_one_worker_without_calibration(self):
+        runtime=Runtime(self.job,self.config,fake=True);self.addCleanup(runtime.close)
+        runtime.prepare(['short','medium text','long text'])
+        self.assertEqual((len(runtime.pool.members),runtime.selected['workers']),(1,1))
+        self.assertFalse((self.job/'working'/'tts-calibration').exists())
+        self.assertFalse(list(self.root.glob('config/tts-profile-*.json')))
+
+    def test_adds_one_worker_when_healthy_and_retires_it_if_not_faster(self):
+        self.values.update(scale_up_seconds=0.001);atomic_json(self.path,self.values)
+        runtime=Runtime(self.job,self.config,fake=True);self.addCleanup(runtime.close)
+        runtime.prepare(['a','b'])
+        with patch.object(runtime.gain,'can_try',return_value=True):
+            runtime.scale(self.h.copy());time.sleep(.05);runtime.scale(self.h.copy())
+            self.assertIsNotNone(runtime.loading)
+            deadline=time.monotonic()+10
+            while runtime.loading is not None and time.monotonic()<deadline:
+                runtime.scale(self.h.copy());time.sleep(.02)
+        self.assertEqual(len(runtime.pool.members),2)
+        self.assertEqual(runtime.gain.trial['before'],1)
+        with patch.object(runtime.gain,'verdict',return_value='revert'),patch.object(runtime.gain,'can_try',return_value=False):
+            runtime.scale(self.h.copy())
+        self.assertTrue(runtime.pool.members[-1].get('retire'))
+        rows=self.source(['Xin chào.','Tạm biệt.'])
+        synthesize(self.job,runtime)  # the retired worker is removed once idle; output stays complete
+        self.assertEqual(len(list((self.job/'voice').glob('0*.wav'))),len(rows))
+
+    def test_no_growth_under_pressure_or_at_limit(self):
+        self.values.update(scale_up_seconds=0.001,max_workers=1);atomic_json(self.path,self.values)
+        runtime=Runtime(self.job,self.config,fake=True);self.addCleanup(runtime.close)
+        runtime.prepare(['a','b'])
+        with patch.object(runtime.gain,'can_try',return_value=True):
+            runtime.scale(self.h.copy());time.sleep(.05);runtime.scale(self.h.copy())
+            self.assertIsNone(runtime.loading)
+            self.values.update(max_workers=3);atomic_json(self.path,self.values)
+            runtime.scale({**self.h,'cpu':90});time.sleep(.05);runtime.scale({**self.h,'cpu':90})
+            self.assertIsNone(runtime.loading)
 
     def test_cache_eviction_enforces_entry_limit(self):
         self.values.update(cache_enabled=True,cache_max_entries=1);atomic_json(self.path,self.values)

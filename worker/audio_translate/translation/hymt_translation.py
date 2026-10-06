@@ -9,12 +9,27 @@ import time
 from audio_translate.core.control import Cancelled, check_cancel, complete_task
 from audio_translate.core.storage import ROOT, atomic_json
 
-MODEL_NAME = 'Hy-MT2-1.8B-Q8_0.gguf'
-MODEL_SHA256 = '5c3fe0b1408a5ceb0143184ef247b11b579c525f4b02b060e6c851bb76fef1a4'
+# Hy-MT2-7B Q4_K_M (tencent/Hy-MT2-7B-GGUF @ ab84726): accuracy over speed on ~5 GiB free RAM.
+MODEL_NAME = 'Hy-MT2-7B-Q4_K_M.gguf'
+MODEL_DIRECTORY = 'Hy-MT2-7B-Q4_K_M'
+MODEL_SHA256 = '9f96256500f3fc1ab4d64336b58f52a949a95ad7516b0c229476eef782f9f77b'
 BOS = '<｜hy_begin▁of▁sentence｜>'
 USER = '<｜hy_User｜>'
 ASSISTANT = '<｜hy_Assistant｜>'
 EOS = '<｜hy_place▁holder▁no▁2｜>'
+END = '<｜hy_End▁of▁sentence｜>'
+STOP = [EOS, END]
+# The GGUF's own chat template decides the turn tokens. Hy-MT2-1.8B uses the hy_* tokens;
+# Hy-MT2-7B uses the Hunyuan template (<|startoftext|>user<|extra_0|> ... <|eos|>), and the
+# hy_* strings are plain text to it (it then often ended at once: 1-token outputs).
+CHAT_FORMATS = {
+    'hy-mt2': (BOS + USER, ASSISTANT, STOP),
+    'hunyuan': ('<|startoftext|>', '<|extra_0|>', ['<|eos|>', END]),
+}
+
+
+def chat_format(metadata):
+    return 'hunyuan' if '<|extra_0|>' in (metadata or {}).get('tokenizer.chat_template', '') else 'hy-mt2'
 
 # Tencent's official zh->xx template, without background blocks: with long or even
 # 60-character context the 1.8B model translated the context instead of the
@@ -22,9 +37,9 @@ EOS = '<｜hy_place▁holder▁no▁2｜>'
 # temperature and seed; a rejected draft is never fed back into the prompt.
 STRATEGIES = (
     ('natural', '把下面的文本翻译成越南语，译文要自然流畅，符合越南语口语习惯，'
-                '保留原文的语气和情感，人名按汉越音译。不要额外解释。', .7),
+                '保留原文的语气和情感，人名按汉越音译。不要额外解释。', .4),
     ('conversational', '把下面的文本翻译成越南语。请像越南人日常对话那样自然地表达，'
-                       '语气生动，保留说话人的情绪；人名使用汉越音。只输出译文，不要额外解释。', .3),
+                       '语气生动，保留说话人的情绪；人名使用汉越音。只输出译文，不要额外解释。', .2),
     ('literal', '把下面的文本翻译成越南语，不要额外解释。', 0.0),
 )
 PROMPT = STRATEGIES[0][1]
@@ -40,7 +55,7 @@ SENTENCE_END = '。！？!?…'
 GROUP_PROMPT = ('将以下<source></source>之间的文本翻译为越南语，译文要自然流畅，符合越南语口语习惯，保留原文的语气和情感。'
                 '注意只需要输出翻译后的结果，不要额外解释，原文中的<s1></s1>等标签表示分段，需要在译文中相应的位置保留这些标签。'
                 '输出格式为：<target>str</target>')
-GROUP_TEMPERATURES = (.7, .3)
+GROUP_TEMPERATURES = (.4, .2)
 
 
 class GroupFailure(RuntimeError):
@@ -55,7 +70,7 @@ class TranslationFailure(RuntimeError):
 
 
 def output_problem(result, source):
-    if not result or any(token in result for token in ('<think>', '</think>', '<|im_', '<｜hy_')):
+    if not result or any(token in result for token in ('<think>', '</think>', '<|im_', '<｜hy_', '<|eos|>', '<|extra_', '<|startoftext|>')):
         return 'empty text or reasoning/control tokens'
     if re.search(r'[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U000323af]', result):
         return 'untranslated Chinese'
@@ -76,6 +91,46 @@ def output_problem(result, source):
     return None
 
 
+def gender_problem(source, result, names=()):
+    """Soft check for a subject the model invented.
+
+    With exactly one 他/她 and no known name in the Chinese row, pronouns of both genders in
+    the Vietnamese cannot all be right ("可能是和她男朋友在一起吧" -> "anh ấy ... của cô ấy").
+    Only the disagreement is flagged: ASR writes 他/她 unreliably, so the pronoun's own
+    gender is never enforced here (repair uses the character sheet instead).
+    """
+    if len(re.findall('[他她]', source)) != 1 or any(name and name in source for name in names):
+        return None
+    from audio_translate.moderation.address import GENDER_OF, THIRD_RE
+    genders = {GENDER_OF.get(m.group(1).lower()) for m in THIRD_RE.finditer(result)} - {None}
+    return 'pronoun genders disagree' if len(genders) > 1 else None
+
+
+TO_FEMALE = {'anh ấy': 'cô ấy', 'anh ta': 'cô ta', 'ông ấy': 'bà ấy', 'ông ta': 'bà ta', 'cậu ấy': 'cô ấy', 'cậu ta': 'cô ta',
+             'hắn': 'cô ta', 'gã': 'ả'}
+TO_MALE = {'cô ấy': 'anh ấy', 'cô ta': 'anh ta', 'chị ấy': 'anh ấy', 'chị ta': 'anh ta', 'bà ấy': 'ông ấy', 'bà ta': 'ông ta', 'ả': 'hắn'}
+
+
+def harmonize_gender(source, result):
+    """Last resort when every attempt mixed genders for a single 他/她: follow the Chinese pronoun.
+
+    The draft is wrong somewhere already (one person cannot be both), so aligning it with the
+    source's own pronoun cannot make it worse; the model repeats this slip across seeds.
+    """
+    marks = re.findall('[他她](?!们)', source)
+    if len(marks) != 1: return result
+    from audio_translate.moderation.address import GENDER_OF, THIRD_RE
+    table = TO_FEMALE if marks[0] == '她' else TO_MALE
+    wrong = 'male' if marks[0] == '她' else 'female'
+
+    def swap(match):
+        token = match.group(1)
+        if GENDER_OF.get(token.lower()) != wrong: return token
+        new = table[token.lower()]
+        return new[:1].upper() + new[1:] if token[:1].isupper() else new
+    return THIRD_RE.sub(swap, result)
+
+
 def output_budget(source, maximum):
     """Hy-MT2 needs about 2-3 tokens per Chinese character; leave a wide margin."""
     return min(maximum, 48 + 6 * len(source))
@@ -87,23 +142,29 @@ def attempt_seed(source, recovery, attempt):
     return base + recovery * 101 + attempt
 
 
+def physical_cores():
+    import psutil
+    return psutil.cpu_count(logical=False) or 4
+
+
 def default_settings():
     return {
         'backend': 'hy-mt2-gguf',
-        'model': os.getenv('HY_MT_MODEL_PATH', str(ROOT / 'models' / 'Hy-MT2-1.8B-Q8_0' / MODEL_NAME)),
+        'model': os.getenv('HY_MT_MODEL_PATH', str(ROOT / 'models' / MODEL_DIRECTORY / MODEL_NAME)),
         'model_sha256': MODEL_SHA256, 'source_lang': 'zh', 'target_lang': 'vi',
         'device': 'cpu', 'batch_size': int(os.getenv('HY_MT_BATCH_SIZE', '4')),
         'source_tokens': int(os.getenv('HY_MT_SOURCE_TOKENS', '768')),
         'output_tokens': int(os.getenv('HY_MT_OUTPUT_TOKENS', '1536')),
         'context_tokens': 256, 'context_chars': 512,
-        'n_ctx': int(os.getenv('HY_MT_CONTEXT_SIZE', '4096')),
+        # 3072 per slot with q8_0 KV keeps 7B weights + cache near 5.3 GiB; lower to 2048 if RAM is tight.
+        'n_ctx': int(os.getenv('HY_MT_CONTEXT_SIZE', '3072')), 'kv_cache_type': os.getenv('HY_MT_KV_CACHE_TYPE', 'q8_0'),
         'n_batch': 128, 'n_gpu_layers': 0,
-        'threads': int(os.getenv('AI_NUM_THREADS', '4')),
+        'threads': int(os.getenv('AI_NUM_THREADS', '0')) or physical_cores(),
         'cpu_target': float(os.getenv('HY_MT_CPU_TARGET', '85')),
-        'min_available_gib': float(os.getenv('HY_MT_MIN_AVAILABLE_GIB', '2')),
-        'startup_available_gib': float(os.getenv('HY_MT_STARTUP_AVAILABLE_GIB', '3.5')),
+        'min_available_gib': float(os.getenv('HY_MT_MIN_AVAILABLE_GIB', '1')),
+        'startup_available_gib': float(os.getenv('HY_MT_STARTUP_AVAILABLE_GIB', '6')),
         'memory_wait_seconds': float(os.getenv('HY_MT_MEMORY_WAIT_SECONDS', '120')),
-        'glossary': [], 'prompt': PROMPT, 'segmentation': 'sentence', 'version': 6,
+        'glossary': [], 'prompt': PROMPT, 'segmentation': 'sentence', 'version': 7,
     }
 
 
@@ -113,6 +174,9 @@ class TranslationAdapter:
         self.model = None
         self.job_dir = None
         self.runtime = None
+        self.names = []
+        self.lexicon = []  # genre terminology, set per job; [{source, target}]
+        self.gender_check = False  # soft retry of inconsistent pronouns, set per job
         if settings.get('backend') != 'hy-mt2-gguf':
             raise ValueError('Translation requires the hy-mt2-gguf backend')
         for key in ('batch_size', 'source_tokens', 'output_tokens', 'n_ctx', 'n_batch', 'threads', 'context_tokens', 'context_chars'):
@@ -255,10 +319,16 @@ class TranslationAdapter:
             yield text[:cut]
             text = text[cut:]
 
+    def name_sources(self):
+        return [item['source'] for item in (*self.settings['glossary'], *self.names) if item.get('source')]
+
     def terms(self, text):
         """Configured glossary first, then the job's detected names, limited to those in `text`."""
         chosen = {}
         for item in list(self.settings['glossary']) + list(getattr(self, 'names', [])):
+            if item['source'] in text and item['source'] not in chosen:
+                chosen[item['source']] = item['target']
+        for item in self.lexicon:
             if item['source'] in text and item['source'] not in chosen:
                 chosen[item['source']] = item['target']
         # 倩倩 is redundant inside 张倩倩 unless it also occurs on its own.
@@ -278,23 +348,30 @@ class TranslationAdapter:
         """
         user = self.glossary_block(source) + STRATEGIES[strategy][1] + '\n\n' + source
         user = re.sub(r'<[|｜]([^<>]+)[|｜]>', r'〈\1〉', user)
-        return BOS + USER + user + ASSISTANT
+        return self.wrap(user)
 
     def group_prompt(self, texts):
         source = ''.join(f'<s{index}>{text}</s{index}>' for index, text in enumerate(texts, 1))
         user = re.sub(r'<[|｜]([^<>]+)[|｜]>', r'〈\1〉', self.glossary_block(''.join(texts)) + GROUP_PROMPT)
-        return BOS + USER + user + '\n\n<source>' + source + '</source>' + ASSISTANT
+        return self.wrap(user + '\n\n<source>' + source + '</source>')
+
+    def chat(self):
+        return CHAT_FORMATS[chat_format(getattr(self.model, 'metadata', None))]
+
+    def wrap(self, user):
+        start, end, _ = self.chat()
+        return start + user + end
 
     def complete(self, prompt, slot, budget, seed, temperature):
         """One generation; returns (text, stopped normally)."""
         if self.runtime:
             result, final = self.runtime.server.completion(prompt, slot, budget, lambda: check_cancel(self.job_dir),
-                                                           seed=seed, temperature=temperature)
+                                                           seed=seed, temperature=temperature, stop=self.chat()[2])
             return result, (final.get('stop_type') in ('eos', 'word') and not final.get('stopped_limit')
                             and not final.get('truncated'))
         pieces, reason = [], None
         stream = self.model.create_completion(prompt, max_tokens=budget, temperature=temperature, top_p=.6, top_k=20,
-                                              repeat_penalty=1.05, seed=seed, stop=[EOS], stream=True)
+                                              repeat_penalty=1.05, seed=seed, stop=self.chat()[2], stream=True)
         try:
             for chunk in stream:
                 check_cancel(self.job_dir)
@@ -303,7 +380,9 @@ class TranslationAdapter:
                 reason = choice.get('finish_reason') or reason
         finally:
             stream.close()
-        return ''.join(pieces).strip(), reason == 'stop'
+        text = ''.join(pieces)
+        for token in self.chat()[2]: text = text.replace(token, '')
+        return text.strip(), reason == 'stop'
 
     @staticmethod
     def split_group(result, texts):
@@ -344,8 +423,12 @@ class TranslationAdapter:
             result, complete = self.complete(prompt, slot, budget, attempt_seed(joined, 0, attempt), temperature)
             values, problem = self.split_group(result, texts) if complete else (None, 'output exceeded the length budget')
             if values is not None:
-                return values
+                if not self.gender_check or not any(gender_problem(t, v, self.name_sources()) for t, v in zip(texts, values)):
+                    return values
+                problem = 'pronoun genders disagree'  # aligned but inconsistent: retry, then rows one by one
             reasons.append(problem)
+        # Row prompts have no neighbours to borrow a wrong subject from, and `infer` itself
+        # keeps its first draft when every attempt disagrees, so this never fails a row.
         raise GroupFailure('; '.join(reasons))
 
     @complete_task
@@ -371,7 +454,7 @@ class TranslationAdapter:
         pressure = (psutil.cpu_percent(interval=.05) >= target or psutil.virtual_memory().available < self.settings['min_available_gib'] * 1024**3) if not self.runtime else False
         threads = max(1, self.settings['threads'] // 2) if pressure else self.settings['threads']
         if not self.runtime: llama_set_n_threads(self.model.ctx, threads, threads)
-        attempts = []
+        attempts, soft = [], None
         budget = output_budget(source, self.settings['output_tokens'])
         for attempt, (strategy, _, temperature) in enumerate(STRATEGIES):
             seed = attempt_seed(source, recovery, attempt)
@@ -389,8 +472,13 @@ class TranslationAdapter:
             # Hitting the length budget means a runaway answer, not a long translation.
             problem = output_problem(result, source) if complete else 'output exceeded the length budget'
             if problem is None:
+                if self.gender_check and gender_problem(source, result, self.name_sources()):
+                    soft = soft or result
+                    continue
                 return result
             attempts.append(dict(seed=seed, draft=result[:2000], reason=problem, strategy=strategy))
+        if soft is not None:
+            return harmonize_gender(source, soft)
         raise TranslationFailure(f'Hy-MT2 returned {problem} after three attempts; checkpoint not saved', attempts)
 
     def translate_checkpointed(self, texts, lookup=None, save=None, save_row=None, contexts=None):
@@ -577,7 +665,9 @@ class TranslationAdapter:
                         fail_row(owner, part, source, exc)
                         failure = failure or exc
                 if successes: streak = 0
+                record = getattr(self.runtime, 'record', None)
                 for (owner, part, source, owners, _), value in successes:
+                    if record: record(sum(map(len, source)) if part == -1 else len(source))
                     if part == -1:
                         self.group_stats['groups'] += 1
                         self.group_stats['grouped_rows'] += len(owners)

@@ -3,7 +3,7 @@ import { useLanguage } from "@/lib/i18n/language-context";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-export type LicenseStatus = {status: string; expires_at?: string; sequence?: number};
+export type LicenseStatus = {status: string; expires_at?: string; sequence?: number; edition?: "basic" | "plus"};
 export function useLicense() {
   const [license, setLicense] = useState<LicenseStatus>({status: "CHECKING"});
   useEffect(() => {
@@ -12,10 +12,11 @@ export function useLicense() {
     void load(); const timer = setInterval(() => void load(), 15000);
     return () => {disposed = true; clearInterval(timer);};
   }, []);
-  return {...license, allowed: license.status === "ACTIVE"};
+  // Chinese text is offered only once the edition is known to be Plus.
+  return {...license, allowed: license.status === "ACTIVE", plus: license.edition === "plus"};
 }
 export default function LicenseBanner() {
   const { tr } = useLanguage();
   const license = useLicense();
-  return <p className={license.allowed ? "license-banner" : "alert"}><span>{tr("License:")} {tr(license.status)}</span><span aria-hidden="true"> · </span><Link href="/license">{tr("Kích hoạt / Gia hạn")}</Link>{!license.allowed && tr(" · Bạn vẫn có thể mở History và tải file đã tạo.")}</p>;
+  return <p className={license.allowed ? "license-banner" : "alert"}><span>{tr("License:")} {tr(license.status)}</span>{license.edition&&<><span aria-hidden="true"> · </span><span>{tr("Gói:")} {tr(`edition.${license.edition}`)}</span></>}<span aria-hidden="true"> · </span><Link href="/license">{tr("Kích hoạt / Gia hạn")}</Link>{!license.allowed && tr(" · Bạn vẫn có thể mở History và tải file đã tạo.")}</p>;
 }

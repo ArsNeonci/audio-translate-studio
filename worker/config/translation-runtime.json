@@ -1,19 +1,21 @@
 {
   "engine": "auto",
   "enabled": true,
-  "threads": 4,
-  "threads_batch": 4,
+  "threads": 0,
+  "threads_batch": 0,
   "n_batch": 128,
   "max_slots": 0,
-  "start_free_gib": 3.5,
-  "extra_slot_gib": 0.4,
-  "reserve_gib": 2,
+  "start_free_gib": 6.0,
+  "extra_slot_gib": 0.35,
+  "reserve_gib": 1,
   "cpu_target": 85,
   "gpu_target": 85,
   "temperature_limit": 85,
-  "safety_gib": 0.4,
+  "safety_gib": 0.3,
   "vram_reserve_gib": 0.5,
   "observe_seconds": 1,
   "scale_up_seconds": 10,
-  "recovery_seconds": 30
+  "recovery_seconds": 30,
+  "gain_window_seconds": 30,
+  "retry_seconds": 600
 }

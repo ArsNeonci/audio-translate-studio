@@ -1,1 +1,2 @@
 @AGENTS.md
+Cập nhật thông tin dự án vào: Audio-translate\audio-translates\docs mỗi khi có kết quả hãy thông tin gì đấy muốn lưu lại để sau này tái sử dụng và đồng thời có thể vào đây để tìm các thông tin liên quan trước khi quét cả source code. 

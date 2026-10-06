@@ -98,7 +98,8 @@ def request_retry(job_dir, step, fresh=False):
     if step not in STEPS:
         raise ValueError('Unknown step')
     job_dir = Path(job_dir)
-    with file_lock(job_dir/'working'/'worker.lock'):
+    from audio_translate.core.sealing import opened
+    with file_lock(job_dir/'working'/'worker.lock'), opened(job_dir):
         job = read_json(job_dir/'job.json')
         if (job_dir/'working'/'delete-request.json').exists(): raise ValueError('Workflow deletion is pending')
         steps = initial_steps(job)

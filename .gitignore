@@ -56,6 +56,7 @@ next-env.d.ts
 /data/management-locks/
 /data/workflow-registry.sqlite3*
 /data/results/
+/data/benchmarks/
 /.audio-results-staging/
 /data/model-cache/
 /data/model-smoke/

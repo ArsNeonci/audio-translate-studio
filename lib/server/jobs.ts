@@ -9,12 +9,12 @@ import {spawnSecurityCore} from "@/lib/server/security-core";
 import { pythonCommand } from "@/lib/server/worker-client";
 import { licenseDenial } from "@/lib/server/license";
 
-export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING";
+export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING" | "AWAITING_REVIEW";
 export type Artifact = "zh" | "vi" | "moderated" | "voice";
 export type Stage = "transcription" | "translation" | "moderation" | "tts";
 export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS";
 export type StepError = { step: Step; error_code: string; error_message: string; error_type: string; recoverable_manually: boolean; failed_at: string; retry_count: number };
-export type StepState = { state: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED"; progress?: number | null; started_at?: string | null; completed_at?: string | null; duration_ms?: number | null; retry_count: number; attempt: number; output_manifest?: {status:string}[]; error?: StepError };
+export type StepState = { state: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "SKIPPED"; progress?: number | null; started_at?: string | null; completed_at?: string | null; duration_ms?: number | null; retry_count: number; attempt: number; output_manifest?: {status:string}[]; error?: StepError };
 export type Job = {
   id: string;
   url: string;
@@ -24,6 +24,13 @@ export type Job = {
   workflow_no?: number;
   selected_voice_id?: string;
   selected_voice_style?: string;
+  selected_address_profile?: string | null;
+  translation_mode?: "genius";
+  pause_reason?: string | null;
+  tts_auto?: boolean;
+  review_skipped?: boolean;
+  tts_remote_progress?: {units_done:number;billed_chars:number};
+  genius_progress?: {chunks_done:number;chunks_total:number;rows_done:number;rows_total:number;flagged_rows:number[];billed_chars:number};
   compute_device?: "cpu" | "gpu";
   storage_scope?: "workflows" | "tools";
   tool_steps?: Step[];
@@ -50,7 +57,7 @@ export type Job = {
   memory_pause_reason?:string;
   auto_paused_for?:string|null;
   lane?: {workflows:number;target:number|null;units:number;stage:string|null;cores:number;yielding_for:number|null;waiting:boolean};
-  translation_failures?: {row:number;part:number;start_ms:number;end_ms:number;source:string;reason:string;failure_count:number;attempts:{seed:number;draft:string;reason:string}[]}[];
+  translation_failures?: {row:number;part:number;start_ms:number;end_ms:number;source?:string;reason:string;failure_count:number;attempts:{seed:number;draft:string;reason:string}[]}[];
   translation_progress?: {done:number;total:number;exported_rows:number;buffered_rows:number};
   retry_step?: Step | null;
   pause_requested?: boolean;
@@ -111,6 +118,10 @@ export async function getJob(id: string): Promise<Job | null> {
     const [translationErrors, translationProgress] = await Promise.all(['translation-errors.json', 'translation-progress.json'].map(name => readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working, name), 'utf8').catch(()=>null)));
     if (translationErrors) job.translation_failures = JSON.parse(translationErrors).failures;
     if (translationProgress) job.translation_progress = JSON.parse(translationProgress);
+    const genius = await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working, 'genius-progress.json'), 'utf8').catch(()=>null);
+    if (genius) job.genius_progress = JSON.parse(genius);
+    const voice = await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working, 'tts-remote-progress.json'), 'utf8').catch(()=>null);
+    if (voice) job.tts_remote_progress = JSON.parse(voice);
     if (!job.transcription_steps?.length) {
       const [vad, chunks] = await Promise.all(['vad.done', 'chunks.json'].map(name => stat(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working, name)).then(value=>value.mtime.toISOString()).catch(()=>undefined)));
       job.transcription_steps = transcriptionView(job, {vad, chunks});
@@ -142,6 +153,8 @@ async function save(job: Job) {
   delete persisted.translation_runtime;
   delete persisted.translation_failures;
   delete persisted.translation_progress;
+  delete persisted.genius_progress;
+  delete persisted.tts_remote_progress;
   delete persisted.pause_requested;
   delete persisted.delete_requested;
   await writeFile(temp, JSON.stringify(persisted, null, 2), "utf8");
@@ -173,7 +186,7 @@ export async function retryJob(id: string): Promise<Job | null> {
   return next;
 }
 
-const TERMINAL = ["COMPLETED","FAILED","CANCELLED","PAUSED","PARTIAL","DELETING"];
+const TERMINAL = ["COMPLETED","FAILED","CANCELLED","PAUSED","PARTIAL","DELETING","AWAITING_REVIEW"];
 
 // Re-evaluate admission while workflows wait, even when no page is polling.
 function retryLater() {
@@ -222,10 +235,10 @@ export async function schedule(): Promise<void> {
       active.delete(next.id);
       const current = await getJob(next.id);
       if(current?.delete_requested){await pythonCommand("manage.py",{action:"finish_abort",id:next.id});void schedule();return;}
-      if (code !== 0 && current && !["FAILED","COMPLETED","CANCELLED","PAUSED","DELETING"].includes(current.status)) {
+      if (code !== 0 && current && !["FAILED","COMPLETED","CANCELLED","PAUSED","DELETING","AWAITING_REVIEW"].includes(current.status)) {
         await workerFailure(current, "STEP_FAILED", `Worker dừng với exit code ${code}. Xem working/worker.log.`);
       }
-      if (code === 0 && current && !["COMPLETED","FAILED","QUEUED","CANCELLED","PAUSED","PARTIAL","DELETING"].includes(current.status)) {
+      if (code === 0 && current && !["COMPLETED","FAILED","QUEUED","CANCELLED","PAUSED","PARTIAL","DELETING","AWAITING_REVIEW"].includes(current.status)) {
         // An older worker still owns this job. Leave its status intact.
         return;
       }
@@ -250,5 +263,6 @@ async function workerFailure(job: Job, code: string, message: string) {
 
 export function outputExists(id: string): boolean {
   const dir = jobDir(id);
-  return !!dir && existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, "transcript.zh.md"));
+  // Basic keeps the working transcript encrypted (worker/audio_translate/core/sealing.py).
+  return !!dir && ["transcript.zh.md", "transcript.zh.md.sealed"].some(name => existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, name)));
 }

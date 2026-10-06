@@ -126,3 +126,40 @@ Kiểm chứng:
 - `packaging/test_security_phase1.py` 8/8 với core mới. `tsc`, eslint, `check:i18n`, `check:theme` sạch. localhost:3000 trả 200.
 - **Chưa** chạy thật hai workflow cùng lúc từ đầu đến cuối và chưa đo thông lượng song song so với tuần tự.
 - Core Rust đã đổi: **tăng version sản phẩm trước khi build installer**.
+
+## 8. Chạy thử thật hai workflow (2026-10-04, RAM trống ~4 GiB, 8 lõi)
+
+WF#000008 (`8qH7C3NvAQE`, Drama, 21,8 phút audio, 1048 dòng) bắt đầu 21:24:30.
+WF#000009 (`-iCqiqpai1w`, Survival, 15,6 phút audio, 817 dòng) thêm lúc 21:32:26, khi WF8 vừa sang Translation.
+
+| Bước | WF8 thời gian | WF8 luồng (min/max/thường gặp) | WF9 thời gian | WF9 luồng (min/max/thường gặp) |
+|---|---|---|---|---|
+| Download | 30 s | — | 28 s | — |
+| Transcription 1/4 VAD | 241 s | 1 tiến trình | 262 s | 1 tiến trình (song song WF8 dịch) |
+| Transcription 2/4 | 1 s | — | 1 s | — |
+| Transcription 3/4 ASR | 164 s (chờ RAM 22 s) | 1/1/1 worker, 4 luồng | 439 s chạy (chờ RAM 121 s, tự tạm dừng ~32 phút) | 1/1/1 worker, 2–8 luồng |
+| Transcription 4/4 | 10 s | — | 11 s | — |
+| Translation | 1508 s | 1/6/5 slot | 1526 s | 1/8/1 slot |
+| Moderation | 6 s | — | 4 s | — |
+| TTS | 1829 s (sau khi chạy lại) | 1/3/1 worker | 918 s | 2/4/2 worker |
+| Tổng các bước | 3812 s (63,5 phút) | | 3337 s (55,6 phút) | |
+
+Sự kiện:
+- 21:32:32–21:39:21: WF9 tải và chạy VAD song song khi WF8 dịch.
+- 21:39:21: WF9 chờ RAM cho ASR 2 phút rồi tự tạm dừng (`resources`).
+- 21:57:39–22:08:15: TTS WF8 hiệu chuẩn 10,5 phút (lỗi 1). 22:09:57 tạm dừng, sửa, chạy lại TTS; bắt đầu đọc 22:10:06.
+- 22:10:16: WF9 tự chạy lại, ASR 1 worker song song TTS 2 worker WF8; RAM xuống 0,65 GiB; 22:10:46 WF9 tự tạm dừng nhường WF8 (đúng thiết kế); 22:11:46 tự chạy lại (dao động, lỗi 4).
+- 22:16:37: RAM 0,2 GiB, **WF8 (chạy trước) tự tạm dừng** (lỗi 3); 22:17:42 tự chạy lại.
+- 22:19:49 WF9 xong ASR; 22:41:36 WF8 xong; 23:00:46 WF9 xong.
+
+Lỗi phát hiện và đã sửa trong lúc chạy:
+1. TTS profile khóa theo giọng/kiểu giọng → kiểu giọng mới hiệu chuẩn lại ~10 phút. Khóa nay chỉ gồm source/device/precision/sample_rate; mẫu đo lần đầu 16 → 8 câu.
+2. TTS dùng profile cache nhưng không đặt mốc chờ 10 phút → hiệu chuẩn lại ngay khi RAM rảnh.
+3. Pool hiệu chuẩn ASR/TTS không báo số worker vào sổ cái → workflow trước tưởng không ai giữ RAM và tự tạm dừng. Nay pool hiệu chuẩn báo vào sổ cái, và **ASR/TTS bỏ qua hiệu chuẩn khi có workflow khác đang chạy**.
+4. Workflow tự tạm dừng để nhường một workflow cụ thể chạy lại ngay sau 60 s rồi lại bị tạm dừng. Nay chỉ chạy lại khi workflow được nhường đã xong.
+
+Nhận xét hiệu suất (ở mức ~4 GiB):
+- Song song chỉ có lợi ở các bước nhẹ (Download/VAD/chia đoạn) chồng lên bước nặng của workflow khác.
+- Hai bước nặng cùng lúc (ASR + TTS) làm RAM cạn; Translation của mỗi workflow mất ~25 phút so với ~12 phút khi chạy riêng.
+- Tổng thời gian thực cho cả hai: 96 phút (gồm 12 phút hiệu chuẩn lỗi). Ước tính chạy tuần tự: ~37 phút (WF8, theo lần chạy 000007) + ~27–30 phút (WF9) ≈ 65 phút. **Ở 4 GiB, chạy tuần tự nhanh hơn**; chạy song song cần ≥ 8 GiB trống.
+- Dự toán RAM ASR trong sổ cái (5,2–5,6 GiB) thận trọng hơn thực tế lượt này (~3 GiB); cần đo lại `stage_cost` cho ASR.

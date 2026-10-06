@@ -36,7 +36,7 @@ YIELD_GRACE_SECONDS = 20
 RESUME_COOLDOWN_SECONDS = 60
 # Base model and per-unit RAM when a stage has not measured itself yet (dev machine, 16 GB).
 DEFAULT_COST = {
-    'download': (.3, 0), 'transcription': (.5, 5.2), 'translation': (2.2, .4),
+    'download': (.3, 0), 'transcription': (.5, 5.2), 'translation': (4.8, .35),  # Hy-MT2-7B Q4_K_M, --no-repack, q8_0 KV
     'moderation': (.2, 0), 'tts': (.3, 1.8),
 }
 
@@ -339,6 +339,8 @@ def admission(candidates):
         if job['status'] == 'PAUSED':
             if now - job.get('auto_paused_at', 0) < RESUME_COOLDOWN_SECONDS:
                 continue
+            if job.get('auto_paused_for') in running:
+                continue  # yielded to that workflow: resuming now would only pause again
             return None, job, []
         # A new workflow only starts when everyone else is already at or near target.
         if hardware['available'] - reserve_bytes() >= base + unit or not leases:

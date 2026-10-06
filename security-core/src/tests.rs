@@ -73,8 +73,13 @@ fn fixture(machine: &str, sequence: u64, key_version: u64, product: &str) -> (St
 #[test] fn fingerprint_is_stable() {
     let first=windows::machine_id().unwrap();assert_eq!(first.len(),64);assert_eq!(first,windows::machine_id().unwrap());
 }
+#[test] fn edition_follows_product_id() {
+    assert_eq!(license::tier("audio-translate-basic"),"basic");
+    assert_eq!(license::tier("audio-translate-plus"),"plus");
+    assert_eq!(license::tier("audio-translate"),"plus");
+}
 #[test] fn all_admission_commands_protected() {
-    for action in ["create","convert","reprocess","resume","preflight"] { assert_eq!(command_protected("manage.py",action),Ok(true)); }
+    for action in ["create","convert","reprocess","resume","preflight","review"] { assert_eq!(command_protected("manage.py",action),Ok(true)); }
     assert_eq!(command_protected("retry.py","retry"),Ok(true));
     assert_eq!(command_protected("manage.py","history"),Ok(false));
     assert_eq!(command_protected("manage.py","unknown"),Err("INVALID_ACTION"));

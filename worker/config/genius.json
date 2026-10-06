@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "endpoint": "https://audio-gateway.arsneonci.space",
+  "chunk_rows": 100,
+  "context_rows": 12,
+  "max_characters": 30,
+  "request_timeout_seconds": 900,
+  "max_wait_seconds": 600,
+  "tts_chunk_chars": 1200,
+  "tts_inflight": 2,
+  "tts_poll_seconds": 3
+}

@@ -357,6 +357,40 @@ button:hover:not(:disabled),
   line-height: 1.5;
 }
 
+.auto-tts-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.auto-tts-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: #284b37;
+}
+
+.auto-tts-toggle small {
+  flex-basis: 100%;
+  color: #66736a;
+  font-size: 12px;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.review-actions small {
+  flex-basis: 100%;
+  color: #66736a;
+}
+
 .voice-options {
   position: absolute;
   top: calc(100% + 6px);
@@ -1425,4 +1459,39 @@ button:disabled {
   .jobs-section {
     padding-top: 45px;
   }
+}
+
+/* Character sheet (forms of address) on Reprocess */
+.character-editor {
+  margin: 32px 0;
+}
+
+.character-editor table input, .character-editor table select {
+  width: 100%;
+  min-width: 84px;
+  padding: 6px 8px;
+  border: 1.5px solid #8ca48f;
+  border-radius: 6px;
+  background: white;
+  font-size: 13px;
+}
+
+.character-editor tr.character-auto td {
+  background: #f6f8f3;
+}
+
+.character-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.character-editor .action-button, .character-editor .text-button {
+  padding: 8px 16px;
+}
+
+.character-empty {
+  color: #66736a;
+  font-size: 13px;
 }

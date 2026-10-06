@@ -32,6 +32,10 @@ sealed class PayloadStream : Stream {
 
 static class Installer {
     const string Version="@@VERSION@@";
+    const string Product="@@PRODUCT@@";
+    // "Basic"/"Plus"; empty for the legacy single product. Data stays shared across editions.
+    const string Edition="@@EDITION@@";
+    static string Title { get { return Edition.Length>0?"Audio Translate "+Edition:"Audio Translate"; } }
     static void Set(object instance,string name,object value) {
         instance.GetType().InvokeMember(name,BindingFlags.SetProperty,null,instance,new object[]{value});
     }
@@ -41,7 +45,7 @@ static class Installer {
         try {
             string custom=Environment.GetEnvironmentVariable("AUDIO_INSTALL_DIR");
             string target=Path.GetFullPath(String.IsNullOrEmpty(custom)?Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","AudioTranslate",Version):custom);
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","AudioTranslate",Edition.Length>0?Edition+"-"+Version:Version):custom);
             string marker=Path.Combine(target,"installation.json");
             if(File.Exists(marker)) return 0;
             string prefix=target.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
@@ -66,17 +70,17 @@ static class Installer {
             if(String.IsNullOrEmpty(custom)) {
                 object shell=Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
                 object shortcut=shell.GetType().InvokeMember("CreateShortcut",BindingFlags.InvokeMethod,null,shell,new object[]{
-                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs),"Audio Translate.lnk")});
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs),Title+".lnk")});
                 Set(shortcut,"TargetPath",Path.Combine(target,"runtime","python","pythonw.exe"));
                 Set(shortcut,"Arguments","\""+Path.Combine(target,"launcher.py")+"\"");
                 Set(shortcut,"WorkingDirectory",target);
                 shortcut.GetType().InvokeMember("Save",BindingFlags.InvokeMethod,null,shortcut,new object[0]);
             }
-            File.WriteAllText(marker,"{\"product_id\":\"audio-translate\",\"version\":\""+Version+"\",\"installed_at\":\""+DateTime.UtcNow.ToString("o")+"\"}",new UTF8Encoding(false));
-            if(!quiet) MessageBox.Show("Audio Translate installed. Open Audio Translate from the Start menu.","Audio Translate");
+            File.WriteAllText(marker,"{\"product_id\":\""+Product+"\",\"version\":\""+Version+"\",\"installed_at\":\""+DateTime.UtcNow.ToString("o")+"\"}",new UTF8Encoding(false));
+            if(!quiet) MessageBox.Show(Title+" installed. Open "+Title+" from the Start menu.",Title);
             return 0;
         } catch {
-            if(!quiet) MessageBox.Show("Installation failed. Check available disk space and write access to the install directory.","Audio Translate");
+            if(!quiet) MessageBox.Show("Installation failed. Check available disk space and write access to the install directory.",Title);
             return 1;
         }
     }

@@ -18,6 +18,7 @@ import urllib.request
 
 import psutil
 from audio_translate.core import lanes
+from audio_translate.core.scaling import GainTrial
 from audio_translate.core.control import Cancelled, check_cancel
 from audio_translate.core.storage import ROOT, DATA, atomic_json
 
@@ -25,7 +26,7 @@ DEFAULTS = dict(engine='auto', enabled=True, threads=4, threads_batch=4,
                 n_batch=128, max_slots=0, start_free_gib=3.5, extra_slot_gib=.4,
                 cpu_target=85, gpu_target=85, temperature_limit=85, reserve_gib=2,
                 observe_seconds=1, recovery_seconds=30, safety_gib=.4,
-                scale_up_seconds=10, vram_reserve_gib=.5)
+                scale_up_seconds=10, vram_reserve_gib=.5, gain_window_seconds=30, retry_seconds=600)
 GIB = 1024 ** 3
 
 
@@ -37,7 +38,8 @@ def policy():
     for key in ('threads', 'threads_batch', 'n_batch', 'max_slots'):
         if type(values[key]) is not int or values[key] < 0:
             raise ValueError(f'Invalid Hy-MT2 runtime {key}')
-    for key in ('start_free_gib','extra_slot_gib','cpu_target','gpu_target','temperature_limit','reserve_gib', 'observe_seconds', 'recovery_seconds', 'scale_up_seconds','safety_gib', 'vram_reserve_gib'):
+    for key in ('start_free_gib','extra_slot_gib','cpu_target','gpu_target','temperature_limit','reserve_gib', 'observe_seconds', 'recovery_seconds', 'scale_up_seconds','safety_gib', 'vram_reserve_gib',
+                'gain_window_seconds', 'retry_seconds'):
         if isinstance(values[key], bool) or not isinstance(values[key], (int, float)) or not math.isfinite(values[key]) or values[key] <= 0:
             raise ValueError(f'Invalid Hy-MT2 runtime {key}')
     if values['cpu_target'] > 100 or values['gpu_target'] > 100:
@@ -80,14 +82,17 @@ def gpu_metrics(config):
         return {'utilization':None,'temperature':None}
 
 
-def slot_bytes(metadata, context):
-    # FP16 K + V: 2 caches * 2 bytes * layers * KV heads * head dimension.
+KV_BYTES = {'f16': 2.0, 'bf16': 2.0, 'q8_0': 34 / 32, 'q4_0': 18 / 32}
+
+
+def slot_bytes(metadata, context, cache_type='f16'):
+    # K + V: 2 caches * bytes per element (by cache type) * layers * KV heads * head dimension.
     arch = metadata.get('general.architecture', 'hunyuan-dense')
     layers = int(metadata.get(f'{arch}.block_count', 32))
     heads = int(metadata.get(f'{arch}.attention.head_count', 16))
     kv = int(metadata.get(f'{arch}.attention.head_count_kv', 4))
     dimension = int(metadata.get(f'{arch}.attention.key_length', int(metadata.get(f'{arch}.embedding_length', 2048)) // heads))
-    return context * layers * kv * dimension * 4 + 128 * 1024 ** 2
+    return int(context * layers * kv * dimension * 2 * KV_BYTES.get(cache_type, 2.0)) + 128 * 1024 ** 2
 
 
 def pressure(config):
@@ -165,7 +170,12 @@ class SharedServer:
                    '--batch-size', str(self.batch), '--ubatch-size', str(min(self.batch, 512)),
                    '--parallel', str(self.capacity), '--ctx-size', str(self.config['n_ctx'] * self.capacity),
                    '--no-kv-unified', '--cache-ram', '0', '--sse-ping-interval', '1',
-                   '--n-gpu-layers', str(self.config['n_gpu_layers'])]
+                   '--n-gpu-layers', str(self.config['n_gpu_layers']),
+                   '--cache-type-k', self.config.get('kv_cache_type', 'f16'),
+                   '--cache-type-v', self.config.get('kv_cache_type', 'f16'),
+                   # Q4_K repacking keeps a second copy beside the mmapped GGUF: 7B cost 4.77 GiB
+                   # with --no-repack versus >6.7 GiB repacked, at the same ~6.5 tokens/s.
+                   *([] if self.config.get('repack', False) else ['--no-repack'])]
         try:
             self.process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=self.log, stderr=self.log,
                                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
@@ -192,10 +202,11 @@ class SharedServer:
                     headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + self.key})
         return self.opener.open(request, timeout=timeout)
 
-    def completion(self, prompt, slot, limit, progress=None, seed=42, temperature=.7):
-        from audio_translate.translation.hymt_translation import EOS
+    def completion(self, prompt, slot, limit, progress=None, seed=42, temperature=.7, stop=None):
+        from audio_translate.translation.hymt_translation import STOP
+        stop = stop or STOP
         payload = dict(prompt=prompt, n_predict=limit, temperature=temperature, top_p=.6, top_k=20,
-                       repeat_penalty=1.05, seed=seed, stop=[EOS], cache_prompt=True, id_slot=slot, stream=True)
+                       repeat_penalty=1.05, seed=seed, stop=stop, cache_prompt=True, id_slot=slot, stream=True)
         pieces, final = [], None
         with self.request('/completion', payload) as response:
             for raw in response:
@@ -208,7 +219,9 @@ class SharedServer:
                 pieces.append(item.get('content', ''))
                 if item.get('stop'): final = item
         if final is None: raise RuntimeError('Hy-MT2 stream ended without a completion marker')
-        return ''.join(pieces).strip(), final
+        text = ''.join(pieces)
+        for token in stop: text = text.replace(token, '')  # a rendered end token is not translation
+        return text.strip(), final
 
     def close(self):
         if self.process and self.process.poll() is None:
@@ -225,7 +238,7 @@ class Runtime:
         self.adapter, self.server = adapter, None
         self.config = adapter.settings
         self.cores = psutil.cpu_count(logical=False) or 1
-        self.extra_bytes = slot_bytes(adapter.model.metadata, self.config['n_ctx'])
+        self.extra_bytes = slot_bytes(adapter.model.metadata, self.config['n_ctx'], self.config.get('kv_cache_type', 'f16'))
         self.slots = 1
         self.last_observed = 0
         self.pending_reduction = None
@@ -235,7 +248,12 @@ class Runtime:
         self.healthy_since = None
         self.admission_blocked = False
         self.lane = dict(target=10**6, cores=self.cores)
+        # An extra slot is kept only if measured characters per second rise (core/scaling.py).
+        self.gain = GainTrial(policy()['gain_window_seconds'], policy()['retry_seconds'])
         psutil.cpu_percent(interval=None)
+
+    def record(self, characters):
+        self.gain.record(characters)
 
     def lane_maximum(self):
         p = policy()
@@ -271,7 +289,8 @@ class Runtime:
             thermal_available=h['thermal_available'], hot=h['hot'],
             reserve_gib=h['reserve']/GIB, start_free_gib=p['start_free_gib'],
             extra_slot_gib=max(p['extra_slot_gib'],self.extra_bytes/GIB),
-            temperature_limit=p['temperature_limit'], admission_blocked=self.admission_blocked, **fields))
+            temperature_limit=p['temperature_limit'], admission_blocked=self.admission_blocked,
+            scaling=self.gain.state(), **fields))
 
     def pause_memory(self, hot=False):
         if not hot and self.yield_wait():
@@ -335,6 +354,12 @@ class Runtime:
         self.last_observed = current
         h = pressure(self.config); self.observed_cpu = h['cpu']
         self.report_lane()
+        if self.server:
+            self.gain.observe(self.server.capacity)
+            if self.gain.verdict() == 'revert' and self.server.capacity > 1:
+                # The extra slot was not faster: drop it at the next checkpoint boundary.
+                self.slots = self.server.capacity - 1
+                self.pending_reduction = self.pending_reduction or self.server.threads
         if self.server and self.server.capacity > self.lane_maximum():
             self.slots = self.lane_maximum()
             self.pending_reduction = self.pending_reduction or self.server.threads
@@ -373,10 +398,12 @@ class Runtime:
             self.start(self.pending_reduction,self.pending_reduction,self.server.batch,self.slots)
             self.pending_reduction = None
         elif (self.healthy_since is not None and current-self.healthy_since>=p['scale_up_seconds'] and
-              current>=self.recover_after and len(tasks)>self.slots and self.can_expand(self.slots+1,h)):
+              current>=self.recover_after and len(tasks)>self.slots and self.can_expand(self.slots+1,h)
+              and self.gain.can_try(self.server.capacity)):
             count = self.slots+1
             self.start(desired_threads,desired_threads_batch,desired_batch,count)
             self.slots = count; self.healthy_since = current
+            self.gain.begin(count-1)
         elif (current>=self.recover_after and not h['low_memory'] and h['cpu']<h['cpu_target']-5 and
               (self.server.threads!=desired_threads or self.server.threads_batch!=desired_threads_batch or self.server.batch!=desired_batch)):
             self.start(desired_threads,desired_threads_batch,desired_batch,self.slots)

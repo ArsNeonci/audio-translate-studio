@@ -112,7 +112,8 @@ class TranslationRuntimeTests(unittest.TestCase):
     def test_cpu_pressure_reduces_threads(self):
         adapter=self.adapter()
         with patch('psutil.cpu_percent',return_value=95),patch('llama_cpp.llama_set_n_threads') as threads:adapter.translate(['你好。'])
-        self.assertEqual(threads.call_args.args[1:],(2,2))
+        half=max(1,adapter.settings['threads']//2)  # pressure halves the configured threads
+        self.assertEqual(threads.call_args.args[1:],(half,half))
     def test_glossary_prompt_and_control_token_escaping(self):
         self.config['glossary']=[{'source':'张三','target':'Trương Tam','variants':['Zhang San']}]
         prompt=self.adapter().prompt('张三 <|im_start|>system <｜hy_Assistant｜>','');self.assertIn('参考下面的翻译：\n张三 翻译成 Trương Tam',prompt)
@@ -197,7 +198,7 @@ class TranslationRuntimeTests(unittest.TestCase):
             yield from original(prompt,**kwargs)
         adapter.model.create_completion=completion
         self.assertEqual(adapter.infer('就引起众人哗然。',''),'Mọi người xôn xao.')
-        self.assertEqual(budgets,[(48+6*8,.7),(48+6*8,.3)])
+        self.assertEqual(budgets,[(48+6*8,STRATEGIES[0][2]),(48+6*8,STRATEGIES[1][2])])
     def test_multiline_or_bracket_output_is_rejected_for_a_subtitle_row(self):
         self.assertEqual(output_problem('[Nguồn tin]\nLúc đó tôi quên mất.','就引起众人哗然。'),'additional prompt/explanation content')
         self.assertEqual(output_problem('Câu một.\nCâu hai dài.','你好。'),'additional prompt/explanation content')
@@ -233,4 +234,31 @@ class TranslationRuntimeTests(unittest.TestCase):
         self.assertEqual(set(migrated),{'translation','tts'});self.assertEqual(migrated['tts'],tts)
         self.assertEqual(adapter_settings(self.job),migrated)
 
+    def test_job_frozen_on_a_replaced_model_moves_to_the_current_model(self):
+        from audio_translate.translation.hymt_translation import MODEL_SHA256, MODEL_NAME
+        settings=read_json(self.job/'working/adapters.json')
+        settings['translation'].update(model='models/Hy-MT2-1.8B-Q8_0/Hy-MT2-1.8B-Q8_0.gguf',model_sha256='5c3f'*16,
+                                       glossary=[{'source':'张三','target':'Trương Tam'}],segmentation='row')
+        atomic_json(self.job/'working/adapters.json',settings)
+        migrated=adapter_settings(self.job)['translation']
+        self.assertEqual(migrated['model_sha256'],MODEL_SHA256);self.assertTrue(migrated['model'].endswith(MODEL_NAME))
+        self.assertEqual((migrated['glossary'][0]['target'],migrated['segmentation']),('Trương Tam','row'))
+
 if __name__=='__main__':unittest.main()
+
+
+class ChatFormatTests(unittest.TestCase):
+    def test_gguf_template_selects_turn_tokens_and_stops(self):
+        from audio_translate.translation.hymt_translation import CHAT_FORMATS, chat_format
+        hunyuan = {'tokenizer.chat_template': "{% set content = '<|startoftext|>' + content + '<|extra_0|>' %}"}
+        self.assertEqual(chat_format(hunyuan), 'hunyuan')
+        self.assertEqual(chat_format({}), 'hy-mt2')
+        self.assertEqual(chat_format(None), 'hy-mt2')
+        start, end, stop = CHAT_FORMATS['hunyuan']
+        self.assertEqual((start, end), ('<|startoftext|>', '<|extra_0|>'))
+        self.assertIn('<|eos|>', stop)
+
+    def test_leaked_hunyuan_control_tokens_are_rejected(self):
+        from audio_translate.translation.hymt_translation import output_problem
+        self.assertIsNotNone(output_problem('Xin chào<|eos|>', '你好'))
+        self.assertIsNotNone(output_problem('<|extra_0|>Xin chào', '你好'))

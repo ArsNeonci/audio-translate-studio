@@ -138,14 +138,60 @@ def migrate():
         try: results.import_existing(directory)
         except LockedError: pass
 
-def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=None, style=None):
+def translation_mode(mode, tool=None):
+    """'genius' sends Translation to Gemini through the gateway; None keeps the local model."""
+    if mode in (None, '', 'normal'): return None
+    if mode != 'genius': raise ValueError('Unknown translation mode')
+    if tool not in (None, 'translation'): raise ValueError('Genius applies to workflows and Tool 2 only')
+    from audio_translate.translation.genius import configured
+    if not configured(): raise ValueError('Genius gateway is not configured')
+    return 'genius'
+
+
+def needs_review(job):
+    """Basic stops before paid Voice generation unless the run was created with Auto.
+
+    Jobs created before this setting existed carry no `tts_auto` and are never held."""
+    if 'tts_auto' not in job or job['tts_auto'] or job.get('review_approved'): return False
+    return 'TTS' in job.get('tool_steps', STEPS)
+
+
+def review(job_id, decision, scope='workflows'):
+    """AWAITING_REVIEW -> continue (queue Voice generation) or finish (complete without voice)."""
+    if decision not in ('continue', 'finish'): raise ValueError('Unknown review decision')
+    if decision == 'continue':
+        from audio_translate.core.license_gate import assert_allowed
+        assert_allowed()
+    directory = results.workspace(job_id)
+    with file_lock(directory/'working'/'worker.lock'):
+        job = read_json(directory/'job.json')
+        if scope != job.get('storage_scope', 'workflows'): raise ValueError('Wrong history scope')
+        if job.get('status') != 'AWAITING_REVIEW': raise ValueError('This run is not waiting for review')
+        steps = initial_steps(job)
+        if decision == 'continue':
+            update_job(directory, status='QUEUED', review_approved=True, error=None)
+        else:
+            steps['TTS'].update(state='SKIPPED', progress=None)
+            update_job(directory, status='COMPLETED', steps=steps, progress=100, review_skipped=True, completed_at=now())
+        results.metadata(directory)
+        return read_json(directory/'job.json')
+
+
+def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=None, style=None, address=None, mode=None, auto=None):
     from audio_translate.core.license_gate import assert_allowed
     assert_allowed()
     scope = 'tools' if tool else 'workflows'
     if tool and tool not in TOOLS: raise ValueError('Unsupported tool')
+    if tool == 'transcription':
+        from audio_translate.core.edition import require_chinese_access
+        require_chinese_access('Chinese audio transcription')
     from audio_translate.tts.voices import select
     from audio_translate.tts.voice_styles import validate
+    from audio_translate.moderation.address import validate_profile
     chosen = select(voice, style)
+    mode = translation_mode(mode, tool)
+    # Genius handles forms of address itself; the local address layer is not offered.
+    address = None if mode else validate_profile(address)
     job_id = str(uuid.uuid4())
     directory = DATA/('tool-tmp' if tool else 'tmp')/job_id
     directory.mkdir(parents=True)
@@ -155,8 +201,17 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
         with registry() as db: number = allocate(db,job_id,scope)
         job = {'id':job_id,'workflow_no':number,'storage_scope':scope,'url':url,'name':input_name or url,
                'status':'QUEUED','progress':0,'duration_ms':0,'total_duration_ms':0,'created_at':now(),
-               'error':None,'workflow_version':2,'selected_voice_id':chosen,'selected_voice_style':validate(style),'steps':initial_steps({})}
-        if tool:
+               'error':None,'workflow_version':2,'selected_voice_id':chosen,'selected_voice_style':validate(style),'selected_address_profile':address,'steps':initial_steps({})}
+        if mode: job['translation_mode'] = mode
+        from audio_translate.core.edition import is_basic
+        if is_basic() and tool in (None, 'tts'):
+            # Basic pays for Voice generation: ask before it unless Auto was ticked.
+            job['tts_auto'] = auto is True
+        if tool and url and not upload:
+            # Tool 1 from a YouTube link: the same download step as a workflow, then stop after Transcription.
+            if tool != 'transcription': raise ValueError('Only Chinese audio transcription accepts a link')
+            job.update(tool_type=tool,input_file=None,tool_steps=['DOWNLOAD','TRANSCRIPTION'])
+        elif tool:
             job.update(tool_type=tool,input_file=input_name,tool_steps=TOOLS[tool],upload_file=Path(upload).name)
             normalize_input(directory,job,upload,input_name,mime)
         atomic_json(directory/'job.json',job)
@@ -209,16 +264,20 @@ def normalize_input(directory,job,upload,name,mime):
     from audio_translate.core.storage import count_rows
     if not count or count_rows(directory/target,key) != count: raise ValueError('Input contains no valid text')
 
-def reprocess(job_id,step,voice=None,style=None):
+def reprocess(job_id,step,voice=None,style=None,address=None,mode=None):
     from audio_translate.core.license_gate import assert_allowed
     assert_allowed()
+    if step in ('DOWNLOAD','TRANSCRIPTION'):
+        from audio_translate.core.edition import require_chinese_access
+        require_chinese_access('Restarting from Download or Transcription')
     directory = results.workspace(job_id)
-    with file_lock(directory/'working'/'worker.lock'):
+    from audio_translate.core.sealing import opened
+    with file_lock(directory/'working'/'worker.lock'), opened(directory):
         job = read_json(directory/'job.json')
         effective = job.get('tool_steps',STEPS)
         if step not in effective: raise ValueError('Unknown restart stage')
         if (directory/'working'/'delete-request.json').exists(): raise ValueError('Workflow deletion is pending')
-        if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL']: raise ValueError('Pause or finish the current run first')
+        if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','AWAITING_REVIEW']: raise ValueError('Pause or finish the current run first')
         steps = initial_steps(job)
         if any(steps[s]['state'] != 'COMPLETED' for s in effective[:effective.index(step)]): raise ValueError('Complete predecessor stages first')
         inputs = {'TRANSCRIPTION':None,'TRANSLATION':'transcript.zh.jsonl','MODERATION':'transcript.vi.jsonl','TTS':'transcript.vi.moderated.jsonl'}
@@ -227,6 +286,31 @@ def reprocess(job_id,step,voice=None,style=None):
             if not source_file(directory): raise ValueError('Source audio is missing; restart from Download')
         elif inputs.get(step) and not (directory/inputs[step]).is_file(): raise ValueError('Predecessor output is missing; restart from an earlier stage')
         affected = effective[effective.index(step):]
+        if mode is not None:
+            chosen_mode = translation_mode(mode, job.get('tool_type'))
+            if chosen_mode != job.get('translation_mode') and 'TRANSLATION' not in affected:
+                raise ValueError('Changing the translation mode requires restarting from Translation or earlier')
+            if chosen_mode: job['translation_mode'] = chosen_mode
+            else: job.pop('translation_mode', None)
+            if chosen_mode: address = None
+        if job.get('translation_mode') and 'selected_address_profile' in job:
+            job['selected_address_profile'] = None
+        if 'TRANSLATION' in affected:
+            # Every Genius translation run is a new billed job on the gateway.
+            (directory/'working'/'genius-state.json').unlink(missing_ok=True)
+        if 'TTS' in affected:
+            (directory/'working'/'tts-remote-state.json').unlink(missing_ok=True)
+            # Reprocess from TTS is an explicit request to generate the voice: no second question.
+            # Restarting earlier asks again (unless Auto), since the text may change.
+            job['review_approved'] = step == 'TTS'
+            job.pop('review_skipped', None)
+        if address:
+            from audio_translate.moderation.address import validate_profile
+            address = validate_profile(address)
+            # Forms of address are applied in Moderation; TTS alone cannot change them.
+            if address != (job.get('selected_address_profile') or 'neutral') and 'MODERATION' not in affected:
+                raise ValueError('Changing forms of address requires restarting from Moderation or earlier')
+            job['selected_address_profile'] = address
         if voice or style:
             from audio_translate.tts.voices import select
             from audio_translate.tts.adapters import apply_style
@@ -279,7 +363,7 @@ def reprocess(job_id,step,voice=None,style=None):
 def cancel(job_id, mode='cancel'):
     directory = results.workspace(job_id)
     job = read_json(directory/'job.json')
-    if job['status'] in ['COMPLETED','FAILED','CANCELLED','PAUSED']: raise ValueError('Run is already stopped')
+    if job['status'] in ['COMPLETED','FAILED','CANCELLED','PAUSED','AWAITING_REVIEW']: raise ValueError('Run is already stopped')
     if mode=='pause' and (directory/'working'/'delete-request.json').exists(): raise ValueError('Workflow deletion is pending')
     atomic_json(directory/'working'/'cancel.signal',{'requested_at':now(),'mode':mode})
     try:
@@ -296,7 +380,8 @@ def resume(job_id):
     from audio_translate.core.license_gate import assert_allowed
     assert_allowed()
     directory=results.workspace(job_id)
-    with file_lock(directory/'working'/'worker.lock'):
+    from audio_translate.core.sealing import opened
+    with file_lock(directory/'working'/'worker.lock'), opened(directory):
         job=read_json(directory/'job.json');steps=initial_steps(job)
         if (directory/'working'/'delete-request.json').exists(): raise ValueError('Workflow deletion is pending')
         translation_failed = job.get('status') == 'FAILED' and steps['TRANSLATION']['state'] == 'FAILED'
@@ -322,7 +407,7 @@ def resume(job_id):
         (directory/'working'/'cancel.signal').unlink(missing_ok=True)
         update_job(directory,steps=steps,status='QUEUED',retry_step=None,error=None,
                    completed_at=None,active_stage=None,failed_stage=None,memory_pause_reason=None,
-                   auto_paused_for=None,auto_paused_at=None)
+                   pause_reason=None,auto_paused_for=None,auto_paused_at=None)
         results.metadata(directory)
         return read_json(directory/'job.json')
 
@@ -334,7 +419,7 @@ def hard_delete(job_id,confirm,scope=None):
     if type(confirm) is not int or confirm != job.get('workflow_no'): raise ValueError('Confirmation number does not match')
     with file_lock(DATA/'management-locks'/f'{job_id}.lock'):
         with file_lock(directory/'working'/'worker.lock'):
-            if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','DELETING'] and not (directory/'working'/'delete-request.json').exists(): raise ValueError('Pause the active or queued run before deleting')
+            if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','DELETING','AWAITING_REVIEW'] and not (directory/'working'/'delete-request.json').exists(): raise ValueError('Pause the active or queued run before deleting')
             targets = [directory,results.destination(job_id),results.RESULTS/job_id,DATA/'jobs'/job_id,DATA/'tmp'/job_id,DATA/'tool-tmp'/job_id,results.RESULTS.parent/'.audio-results-staging'/job_id]
             if job.get('upload_file'):
                 upload = DATA/'uploads'/job['upload_file']
@@ -368,10 +453,27 @@ def abort(job_id,confirm,scope='workflows'):
     if type(confirm) is not int or confirm!=job.get('workflow_no') or scope!=job.get('storage_scope'):
         raise ValueError('Confirmation number or scope does not match')
     atomic_json(directory/'working'/'delete-request.json',{'confirm':confirm,'scope':scope,'requested_at':now()})
-    if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','DELETING']:
+    if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','DELETING','AWAITING_REVIEW']:
         cancel(job_id,mode='abort')
     else:
         atomic_json(directory/'working'/'cancel.signal',{'mode':'abort','requested_at':now()})
+    try: return finish_abort(job_id)
+    except (LockedError,ValueError): return {'deleted':False,'deletion_pending':True}
+
+def delete(job_id,confirm,scope=None):
+    """Delete now when stopped; a queued or running tool first finishes its current
+    mini task (pause drain), then the scheduler removes everything it created."""
+    directory=results.workspace(job_id);job=read_json(directory/'job.json')
+    stopped=job['status'] in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','DELETING','AWAITING_REVIEW']
+    if stopped or job.get('storage_scope')!='tools':
+        hard_delete(job_id,confirm,scope);return {'deleted':True}
+    if type(confirm) is not int or confirm!=job.get('workflow_no') or scope!=job.get('storage_scope'):
+        raise ValueError('Confirmation number or scope does not match')
+    # Pause first (the drain refuses once a delete request exists), then request deletion;
+    # the scheduler finishes it when the worker exits, or finish_abort below does it now.
+    try: cancel(job_id,mode='pause')
+    except ValueError: pass  # already stopped in the meantime
+    atomic_json(directory/'working'/'delete-request.json',{'confirm':confirm,'scope':scope,'requested_at':now()})
     try: return finish_abort(job_id)
     except (LockedError,ValueError): return {'deleted':False,'deletion_pending':True}
 
@@ -391,7 +493,7 @@ def history(scope):
         try:
             live = read_json(results.workspace(job['id'])/'job.json')
             if live.get('id') == job['id'] and live.get('storage_scope') == scope:
-                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','retry_step']:
+                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','selected_address_profile','translation_mode','pause_reason','tts_auto','review_skipped','retry_step']:
                     if key in live: job[key] = live[key]
                 job['steps'] = {step:{k:item.get(k) for k in ['state','progress','started_at','completed_at','duration_ms','attempt','retry_count','error']} for step,item in live.get('steps',{}).items()}
                 working=results.workspace(job['id'])/'working'
@@ -422,22 +524,23 @@ def main():
         elif action=='voices':
             from audio_translate.tts.voices import discover
             value=discover()
-        elif action=='create': value={'job':create(p.get('url',''),p.get('voice'),p.get('tool'),p.get('upload'),p.get('input_name'),p.get('mime',''),p.get('style'))}
+        elif action=='create': value={'job':create(p.get('url',''),p.get('voice'),p.get('tool'),p.get('upload'),p.get('input_name'),p.get('mime',''),p.get('style'),p.get('address'),p.get('mode'),p.get('auto') is True)}
+        elif action=='review': value={'job':review(p['id'],p.get('decision'),scope)}
         elif action=='preflight':
             from audio_translate.workflow.workflow_admission import preflight
             value={'assessment':preflight()}
         elif action=='convert':
             from audio_translate.workflow.workflow_admission import convert
             if type(p.get('queue_only',False)) is not bool: raise ValueError('Invalid queue option')
-            response=convert(p.get('url',''),p.get('voice'),p.get('queue_only',False),p.get('style'))
+            response=convert(p.get('url',''),p.get('voice'),p.get('queue_only',False),p.get('style'),p.get('address'),p.get('mode'),p.get('auto') is True)
             print(json.dumps(response,ensure_ascii=False)); return
-        elif action=='reprocess': value={'job':reprocess(p['id'],p['step'],p.get('voice'),p.get('style'))}
+        elif action=='reprocess': value={'job':reprocess(p['id'],p['step'],p.get('voice'),p.get('style'),p.get('address'),p.get('mode'))}
         elif action=='cancel': cancel(p['id']); value={}
         elif action=='pause': cancel(p['id'],mode='pause'); value={}
         elif action=='abort': value=abort(p['id'],p.get('confirm'),scope)
         elif action=='finish_abort': value=finish_abort(p['id'])
         elif action=='resume': value={'job':resume(p['id'])}
-        elif action=='delete': hard_delete(p['id'],p.get('confirm'),p.get('scope')); value={}
+        elif action=='delete': value=delete(p['id'],p.get('confirm'),p.get('scope'))
         elif action=='history': value={'jobs':history(scope)}
         elif action=='resolve':
             directory=results.workspace(p['id']); job=read_json(directory/'job.json')

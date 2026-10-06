@@ -8,9 +8,11 @@ fn main() {
     println!("cargo:rerun-if-env-changed=AUDIO_TRUST_ANCHOR_BUILD_FILE");
     println!("cargo:rerun-if-changed={source}");
     let data: serde_json::Value = serde_json::from_slice(&fs::read(&source).expect("trust anchor required")).expect("invalid anchor");
-    assert_eq!(data["product_id"], "audio-translate");
+    // Legacy single product plus the two editions; each has its own root key in Admin.
+    let product = data["product_id"].as_str().expect("product required");
+    assert!(["audio-translate", "audio-translate-basic", "audio-translate-plus"].contains(&product), "unknown product");
     let key = data["root_public_key"].as_str().expect("root required");
     assert_eq!(URL_SAFE_NO_PAD.decode(key).expect("invalid root encoding").len(), 32);
-    println!("cargo:rustc-env=EMBEDDED_PRODUCT_ID=audio-translate");
+    println!("cargo:rustc-env=EMBEDDED_PRODUCT_ID={product}");
     println!("cargo:rustc-env=EMBEDDED_ROOT_PUBLIC_KEY={key}");
 }

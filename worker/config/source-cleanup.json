@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "boilerplate_rows": 80,
+  "boilerplate": [
+    "(?:好看小?[，,。\\s]*)*小说千千万[，,。\\s]*悠悠[，,。\\s]*这里占一半[，,。\\s]*连好\\s*wifi[，,。\\s]*备好瓜子饮料[，,。！!\\s]*精彩故事[，,。\\s]*现在开始[，,。！!\\s]*"
+  ],
+  "asr_corrections": [
+    {"source": "煤运", "target": "霉运"},
+    {"source": "苦苦婆心", "target": "苦口婆心"},
+    {"source": "撒比", "target": "傻逼"},
+    {"source": "全闻完", "target": "全文完"}
+  ]
+}

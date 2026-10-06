@@ -39,7 +39,7 @@ class AdmissionTests(unittest.TestCase):
     def test_queue_confirmation_still_checks_but_only_creates_once(self):
         with patch.object(admission,'preflight',return_value=self.assess(available=2.9*GIB)) as check,patch('audio_translate.workflow.manage.create',return_value={'id':'new','status':'QUEUED'}) as create,patch('audio_translate.core.license_gate.assert_allowed'):
             response=admission.convert('url','voice',queue_only=True)
-        check.assert_called_once();create.assert_called_once_with('url','voice',style=None)
+        check.assert_called_once();create.assert_called_once_with('url','voice',style=None,address=None,mode=None,auto=False)
         self.assertEqual(response['job']['status'],'QUEUED');self.assertFalse(response['assessment']['allowed'])
 
     def test_pending_allocations_reserved_and_loaded_model_not_double_counted(self):
@@ -61,14 +61,16 @@ class AdmissionTests(unittest.TestCase):
 
     def test_no_profile_uses_estimate_no_fingerprint_or_model(self):
         with patch.object(admission,'fingerprint') as identify:
-            self.assertEqual(admission.model_budget(8),(int(3.5*GIB),4,'estimated'))
+            self.assertEqual(admission.model_budget(8),(int(6*GIB),4,'estimated'))
         identify.assert_not_called()
 
     def test_hymt_allocation_blocks_insufficient_physical_memory(self):
         allocation,threads,basis=admission.model_budget(8)
-        result=admission.assess(snapshot(available=4*GIB),[],allocation,threads,basis)
+        # Hy-MT2-7B needs 6 GiB (4.77 GiB measured + 1 GiB for the OS); one workflow keeps 0.5 GiB more: 6.5 GiB.
+        result=admission.assess(snapshot(available=int(6.49*GIB)),[],allocation,threads,basis)
         self.assertFalse(result['allowed'])
-        self.assertGreaterEqual(result['required_available_gib'],3.5)
+        self.assertEqual(result['required_available_gib'],6.5)
+        self.assertTrue(admission.assess(snapshot(available=int(6.5*GIB)),[],allocation,threads,basis)['allowed'])
         self.assertTrue(admission.assess(snapshot(available=8*GIB),[],allocation,threads,basis)['allowed'])
 
     def test_valid_profile_and_stale_profile(self):
@@ -76,9 +78,9 @@ class AdmissionTests(unittest.TestCase):
         profile={'fingerprint':'cpu','created_at':time.time(),'peak_bytes':GIB,'single_threads':6}
         atomic_json(self.root/'config'/'asr-autotune.json',profile)
         with patch.object(admission,'fingerprint',return_value='cpu'):
-            self.assertEqual(admission.model_budget(8),(int(3.5*GIB),6,'measured-asr/estimated-translation'))
+            self.assertEqual(admission.model_budget(8),(int(6*GIB),6,'measured-asr/estimated-translation'))
             profile.update(workers=2,threads=3);atomic_json(self.root/'config'/'asr-autotune.json',profile)
-            self.assertEqual(admission.model_budget(8),(int(3.5*GIB),6,'measured-asr/estimated-translation'))
+            self.assertEqual(admission.model_budget(8),(int(6*GIB),6,'measured-asr/estimated-translation'))
             profile['created_at']=0;atomic_json(self.root/'config'/'asr-autotune.json',profile)
             self.assertEqual(admission.model_budget(8)[2],'estimated')
 

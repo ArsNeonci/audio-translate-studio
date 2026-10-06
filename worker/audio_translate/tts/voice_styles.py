@@ -38,7 +38,9 @@ def validate(style):
 
 
 def catalog():
-    return [{'id': key, 'recommended_voice_id': (value or {}).get('voice')} for key, value in STYLES.items()]
+    # Each style suggests the forms-of-address profile of the same genre.
+    return [{'id': key, 'recommended_voice_id': (value or {}).get('voice'), 'address_profile': 'neutral' if value is None else key}
+            for key, value in STYLES.items()]
 
 
 def settings(style):

@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "roles": ["narrator", "family", "lover", "friend", "antagonist", "other"],
+  "ranks": ["elder", "senior", "peer", "junior"],
+  "base": {
+    "other.male.elder": {"third": "ông ấy", "you": "ông"},
+    "other.female.elder": {"third": "bà ấy", "you": "bà"},
+    "other.male.senior": {"third": "anh ấy", "you": "anh"},
+    "other.female.senior": {"third": "chị ấy", "you": "chị"},
+    "other.male.peer": {"third": "anh ấy", "you": "anh"},
+    "other.female.peer": {"third": "cô ấy", "you": "cô"},
+    "other.male.junior": {"third": "cậu ấy", "you": "cậu"},
+    "other.female.junior": {"third": "cô bé", "you": "em"},
+    "family.male.elder": {"third": "ông", "you": "ông"},
+    "family.female.elder": {"third": "bà", "you": "bà"},
+    "family.male.senior": {"third": "anh ấy", "you": "anh"},
+    "family.female.senior": {"third": "chị ấy", "you": "chị"},
+    "family.male.peer": {"third": "anh ấy", "you": "anh"},
+    "family.female.peer": {"third": "cô ấy", "you": "em"},
+    "family.male.junior": {"third": "em ấy", "you": "em"},
+    "family.female.junior": {"third": "em ấy", "you": "em"},
+    "lover.male": {"third": "anh ấy", "you": "anh"},
+    "lover.female": {"third": "cô ấy", "you": "em"},
+    "friend.male.peer": {"third": "cậu ấy", "you": "cậu"},
+    "friend.female.peer": {"third": "cô ấy", "you": "cậu"},
+    "antagonist.male.elder": {"third": "ông ta", "you": "ông"},
+    "antagonist.female.elder": {"third": "bà ta", "you": "bà"},
+    "antagonist.male.senior": {"third": "anh ta", "you": "anh"},
+    "antagonist.female.senior": {"third": "chị ta", "you": "chị"},
+    "antagonist.male.peer": {"third": "anh ta", "you": "anh"},
+    "antagonist.female.peer": {"third": "cô ta", "you": "cô"},
+    "antagonist.male.junior": {"third": "cậu ta", "you": "cậu"},
+    "antagonist.female.junior": {"third": "cô ta", "you": "cô"}
+  },
+  "profiles": {
+    "neutral": {"inherit_base": false, "rules": {}},
+    "drama": {"inherit_base": true, "rules": {}},
+    "survival": {"inherit_base": true, "rules": {
+      "antagonist.male.senior": {"third": "hắn", "you": "mày"},
+      "antagonist.male.peer": {"third": "hắn", "you": "mày"},
+      "antagonist.male.junior": {"third": "hắn", "you": "mày"},
+      "antagonist.female.peer": {"third": "cô ta", "you": "mày"},
+      "antagonist.female.junior": {"third": "cô ta", "you": "mày"}
+    }},
+    "rebirth": {"inherit_base": true, "rules": {
+      "antagonist.male.peer": {"third": "hắn", "you": "anh"},
+      "antagonist.male.junior": {"third": "hắn", "you": "cậu"},
+      "friend.male.peer": {"third": "cậu ấy", "you": "cậu"}
+    }}
+  }
+}

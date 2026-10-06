@@ -1,4 +1,4 @@
-# TTS CPU: calibration, worker và cache
+# TTS CPU: worker +1 theo hiệu quả đo được và cache
 
 TTS CPU dùng VieNeu v3 Turbo ONNX với engine riêng trong mỗi worker. Bộ điều
 phối duy nhất ghi checkpoint và manifest theo ID/timestamp gốc. Giọng, FP32,
@@ -11,16 +11,20 @@ GPU hoặc `enabled=false` tiếp tục dùng đường adapter tuần tự hi�
 khác qua `TTS_RUNTIME_CONFIG`. Job Hy-MT2/TTS đã tạo vẫn nhận chính sách mới khi
 tiến trình TTS tiếp theo khởi động, không cần sửa snapshot hoặc xóa WAV.
 
-- `threads=0`: thử 4/6/8 luồng cho X1, giới hạn bởi nhân vật lý. Giá trị dương
-  ép luồng, nhưng tổng worker × luồng không vượt nhân vật lý khi chạy nhiều worker.
-- `max_workers=0`: tự động, không chặn X4; giới hạn cuối là nhân vật lý,
-  RAM/commit, CPU/nhiệt độ và lợi ích đo được. Giá trị dương là trần, không ép X.
-- `calibrate=true`: warmup + đo trung vị `calibration_rounds` lần trên cùng mẫu.
-  Trên máy 8 nhân, thử X1 với 4/6/8 luồng, rồi X2×4 và X4×2 nếu RAM cho phép.
-  Phép đo không ghi vào checkpoint/âm thanh của người dùng. Chi phí calibration
-  chỉ xảy ra khi thiếu profile hợp lệ; có thể tắt để chạy X1 nhanh vào việc.
-- `min_gain=0.10`: chỉ giữ mức X mới khi hoàn thành cùng tập văn bản nhanh hơn
-  ít nhất 10%. Mỗi phép đo lưu RTF, thời gian, RSS pool đỉnh và RAM trống thấp nhất.
+- `threads=0`: worker đầu dùng 4 luồng (không vượt nhân vật lý). Worker thêm vào
+  dùng `nhân ÷ (số worker + 1)` luồng. Giá trị dương ép số luồng mỗi worker.
+- `max_workers=0`: tự động; giới hạn cuối là nhân vật lý, RAM/commit, CPU/nhiệt
+  độ, mục tiêu của Bộ phân luồng khi chạy nhiều workflow và lợi ích đo được.
+- **Không còn hiệu chuẩn trước** (đã bỏ cơ chế nhân đôi 1→2→4 qua phép đo và
+  profile `tts-profile-*.json`, 2026-10-05). TTS bắt đầu đọc ngay với 1 worker.
+- `scale_up_seconds=10`: sau 10 giây tài nguyên ổn định (CPU dưới mục tiêu − 5%,
+  đủ RAM cho thêm 1 worker, không nóng) thì nạp **thêm 1 worker** trong nền;
+  các worker khác vẫn đọc trong lúc nạp.
+- `gain_window_seconds=30`: tốc độ (ký tự nguồn/giây) đo 30 giây trước và 30 giây
+  sau khi worker mới sẵn sàng. **Nhanh hơn bất kỳ mức nào thì giữ**; không nhanh
+  hơn thì gỡ worker đó khi nó rảnh.
+- `retry_seconds=600`: mức worker đã thử không nhanh hơn sẽ không thử lại trong
+  10 phút. Logic dùng chung với Translation: `worker/audio_translate/core/scaling.py`.
 - `cpu_target=85`: tối đa 65% khi dùng pin. `temperature_limit=85` °C nếu hệ
   điều hành cung cấp cảm biến; không có cảm biến thì không đo được nhiệt độ.
 - `reserve_gib=1.5`: RAM/commit dự phòng. `initial_worker_gib=1.5` là dự toán
@@ -32,9 +36,6 @@ tiến trình TTS tiếp theo khởi động, không cần sửa snapshot hoặc
   Quá tải giảm cấp việc, thu hồi worker dư khi rảnh; cấu hình luồng thay ở ranh
   giới batch đã drain. Tài nguyên hồi phục có thể đo lại, tránh thử liên tục.
 
-Profile `data/config/tts-profile-*.json` hiệu lực tối đa 7 ngày, gắn CPU, model/
-giọng/cấu hình, mã provider, revision weights đã cache và chính sách. Xóa profile
-để đo lại. Đổi các trường hiệu năng không làm đổi fingerprint WAV của job.
 Sinh TTS có thể ngẫu nhiên; đổi worker/luồng không bảo đảm audio bit-for-bit giống
 nhau. Cần nghe mẫu để kiểm tra chất lượng; chương trình không tự đánh giá giọng đọc.
 

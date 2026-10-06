@@ -15,11 +15,14 @@ def adapter_settings(job_dir):
     device = freeze(job_dir)
     if path.exists():
         settings = read_json(path)
-        if settings['translation'].get('backend') != 'hy-mt2-gguf':
-            # Upgrade at the stage boundary; changed fingerprints invalidate old translations.
-            glossary = settings['translation'].get('glossary', [])
+        from audio_translate.translation.hymt_translation import MODEL_SHA256
+        old = settings['translation']
+        if old.get('backend') != 'hy-mt2-gguf' or old.get('model_sha256') != MODEL_SHA256:
+            # Upgrade at the stage boundary (also when the model was replaced, e.g. 1.8B -> 7B,
+            # whose file no longer exists); changed fingerprints invalidate old translations.
             settings['translation'] = default_settings()
-            settings['translation']['glossary'] = glossary
+            for key in ('glossary', 'segmentation'):
+                if key in old: settings['translation'][key] = old[key]
             atomic_json(path, settings)
         if job.get('selected_voice_id'): settings['tts']['voice'] = job['selected_voice_id']
         apply_style(settings, job)

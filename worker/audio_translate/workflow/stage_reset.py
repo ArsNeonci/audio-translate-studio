@@ -12,9 +12,9 @@ def reset(job_dir, step):
         'DOWNLOAD':['source/*'],
         'TRANSCRIPTION':['transcript.zh.*','transcript.jsonl','transcript*.tmp',
             'working/chunk-*','working/chunks.json','working/vad*','working/transcription-progress.json','working/asr-runtime.json'],
-        'TRANSLATION':['transcript.vi.jsonl*','transcript.vi.md*','transcript.vi.partial.*','working/translation.done.json','working/translation-runtime.json','working/translation-server.log','working/translation-errors.json','working/translation-progress.json','working/translation-continue.json'],
+        'TRANSLATION':['transcript.vi.jsonl*','transcript.vi.md*','transcript.vi.partial.*','working/translation.done.json','working/translation-runtime.json','working/translation-server.log','working/translation-errors.json','working/translation-progress.json','working/translation-continue.json','working/genius-state.json'],
         'MODERATION':['transcript.vi.moderated.*','moderation-result*','working/moderation.done.json','working/replacement-rules.snapshot.json'],
-        'TTS':['voice/*','voice.vi.wav*','working/voice-checkpoints/*','working/tts.done.json','working/tts-runtime.json','working/tts-worker-*.log','working/tts-calibration/*'],
+        'TTS':['voice/*','voice.vi.wav*','working/voice-checkpoints/*','working/tts.done.json','working/tts-runtime.json','working/tts-worker-*.log','working/tts-calibration/*','working/tts-remote-state.json','working/tts-remote-progress.json'],
     }
     targets=[]
     for pattern in patterns[step]:

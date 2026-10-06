@@ -1,9 +1,10 @@
 import { licenseCommand } from "@/lib/server/license";
+import { edition } from "@/lib/server/edition";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(request: Request) {
-  const result = await licenseCommand({action:new URL(request.url).searchParams.get("machine") === "1" ? "machine" : "status"});
-  return Response.json(result,{status:result.http_status,headers:{"Cache-Control":"no-store"}});
+  const [result, tier] = await Promise.all([licenseCommand({action:new URL(request.url).searchParams.get("machine") === "1" ? "machine" : "status"}), edition()]);
+  return Response.json({...result, edition: tier},{status:result.http_status,headers:{"Cache-Control":"no-store"}});
 }
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");

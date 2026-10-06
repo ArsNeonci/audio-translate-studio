@@ -13,13 +13,33 @@ from audio_translate.core.storage import (Checkpoints, atomic_json, completed, c
                      finish, progress, read_json, rows, text_outputs, update_job, write_row)
 
 
+def tool_addresser(job_dir):
+    """Tool 2 (Chinese text -> Vietnamese text) applies the chosen forms of address to
+    its own output, since a standalone tool never reaches Moderation."""
+    job = read_json(Path(job_dir)/'job.json')
+    if job.get('tool_type') != 'translation' or not job.get('selected_address_profile'):
+        return None
+    from audio_translate.moderation.address import resolver
+    zh = [{'text_zh': row['text']} for _, row in rows(Path(job_dir)/'transcript.zh.jsonl', 'text')]
+    return resolver(job_dir, zh, job['selected_address_profile'])
+
+
+def is_genius(job_dir):
+    return read_json(Path(job_dir)/'job.json').get('translation_mode') == 'genius'
+
+
+def translation_signature(job_dir, source, config):
+    addresser = tool_addresser(job_dir)
+    return digest([file_digest(source), config, *([addresser.signature] if addresser else []), *(['genius-v1'] if is_genius(job_dir) else [])])
+
+
 def stage_complete(job_dir, stage):
     """Check durable outputs before the orchestrator starts any model process."""
     job_dir = Path(job_dir)
     config = adapter_settings(job_dir)
     if stage == "translation":
         source = job_dir / "transcript.zh.jsonl"
-        signature = digest([file_digest(source), config["translation"]])
+        signature = translation_signature(job_dir, source, config["translation"])
     elif stage == "moderation":
         snapshot = job_dir / "working" / "replacement-rules.snapshot.json"
         source = job_dir / "transcript.vi.jsonl"
@@ -52,6 +72,10 @@ def stage_complete(job_dir, stage):
 
 
 def translate(job_dir, adapter=None):
+    if adapter is None and is_genius(job_dir):
+        # Gemini through the billing gateway; no local model is loaded.
+        from audio_translate.translation.genius import translate as genius_translate
+        return genius_translate(job_dir)
     try:
         return _translate(job_dir,adapter)
     except Exception:
@@ -67,7 +91,7 @@ def _translate(job_dir, adapter=None):
     source = job_dir / "transcript.zh.jsonl"
     config = adapter_settings(job_dir)["translation"]
     use_context = config.get("backend") == "hy-mt2-gguf"
-    signature = digest([file_digest(source), config])
+    signature = translation_signature(job_dir, source, config)
     total = count_rows(source, "text")
     if completed(job_dir, "translation", signature):
         progress(job_dir, "translation", "TRANSLATION_COMPLETED", total, total)
@@ -163,6 +187,50 @@ def translation_key(row, config, context, extra):
     return digest([row, config, context, extra])
 
 
+def is_styled(job_dir):
+    """Jobs created with a voice style carry `selected_address_profile`; older jobs keep legacy behaviour."""
+    return 'selected_address_profile' in read_json(Path(job_dir)/'job.json')
+
+
+def row_extra_builder(extra, repaired, lexicon):
+    """Per-row key parts: unchanged for rows the styled layers did not touch, so caches stay valid."""
+    def row_extra(index, row):
+        changed = index in repaired  # '' (dropped intro) is a change too
+        source = repaired[index] if changed else row['text']
+        terms = [(item['source'], item['target']) for item in lexicon if item['source'] in source]
+        if not changed and not terms: return extra
+        return {**extra, **({'zh': source} if changed else {}), **({'lexicon': terms} if terms else {})}
+    return row_extra
+
+
+def styled_state(job_dir, source, config, record=False):
+    """(cleaned + gender-repaired Chinese by row index, genre lexicon); both empty for legacy jobs.
+
+    Cleanup (channel intro removal, known ASR mishearings) runs first; '' marks a dropped row.
+    """
+    if config.get('backend') != 'hy-mt2-gguf' or not is_styled(job_dir): return {}, []
+    from audio_translate.moderation.address import Resolver, load_sheet
+    from audio_translate.translation.lexicon import entries
+    profile = read_json(Path(job_dir)/'job.json').get('selected_address_profile')
+    lexicon = entries(profile)
+    from audio_translate.translation.source_cleanup import clean
+    originals = [(index, row['text']) for index, row in rows(source, 'text')]
+    cleaned = clean(originals)
+    texts = [(index, cleaned.get(index, text)) for index, text in originals]
+    sheet = load_sheet(job_dir, [{'text_zh': text} for _, text in texts])
+    repaired, genders = dict(cleaned), 0
+    if sheet:
+        resolver = Resolver(sheet, profile)
+        for index, text in texts:
+            fixed = resolver.repair(text)
+            if fixed != text: repaired[index] = fixed; genders += 1
+    if record:
+        atomic_json(Path(job_dir)/'working'/'gender-repair.json', {'rows': genders, 'profile': profile})
+        atomic_json(Path(job_dir)/'working'/'source-cleanup.json', {'dropped_rows': sorted(i for i, t in cleaned.items() if not t),
+                    'changed_rows': sorted(i for i, t in cleaned.items() if t)})
+    return repaired, lexicon
+
+
 def translation_extra(job_dir, config):
     return {'segmentation': config.get('segmentation', 'sentence'), 'names': digest(name_glossary(job_dir))}
 
@@ -173,8 +241,13 @@ def _translate_streaming(job_dir, adapter, source, config, signature, total):
     from audio_translate.translation.hymt_translation import output_problem
     adapter.names = name_glossary(job_dir, source) if config.get('backend') == 'hy-mt2-gguf' else []
     extra = translation_extra(job_dir, config)
+    repaired, lexicon = styled_state(job_dir, source, config, record=True)
+    if is_styled(job_dir) and config.get('backend') == 'hy-mt2-gguf': adapter.lexicon, adapter.gender_check = lexicon, True
+    row_extra = row_extra_builder(extra, repaired, lexicon)
+    dropped = {index for index, text in repaired.items() if not text.strip()}
 
-    def valid_cache(row, cached):
+    def valid_cache(row, cached, index=None):
+        if index in dropped: return isinstance(cached, dict) and cached.get('text_vi') == '' and cached.get('text_zh') == row['text']
         return (isinstance(cached, dict) and cached.get('start_ms') == row['start_ms'] and
                 cached.get('end_ms') == row['end_ms'] and cached.get('text_zh') == row['text'] and
                 isinstance(cached.get('text_vi'), str) and
@@ -191,26 +264,33 @@ def _translate_streaming(job_dir, adapter, source, config, signature, total):
         failures = {item['row']: item for item in checkpoints.translation_failures()}
         previous = ''
         for index, row in rows(source, 'text'):
-            key = translation_key(row, config, previous, extra)
-            if valid_cache(row, checkpoints.get('translation', index, key)): done += 1
+            key = translation_key(row, config, previous, row_extra(index, row))
+            if valid_cache(row, checkpoints.get('translation', index, key), index): done += 1
             previous = (previous + row['text'])[-config.get('context_chars', 512):]
         progress(job_dir, 'translation', 'TRANSLATING', done, total)
 
+        from audio_translate.core.edition import is_basic
+        hide_source = is_basic()
+
         def emit_errors():
-            atomic_json(job_dir/'working'/'translation-errors.json', {'failures': checkpoints.translation_failures()})
+            # The UI reads this file directly; Basic never shows the Chinese row.
+            failures = checkpoints.translation_failures()
+            if hide_source: failures = [{k: v for k, v in item.items() if k != 'source'} for item in failures]
+            atomic_json(job_dir/'working'/'translation-errors.json', {'failures': failures})
 
         def entries():
             previous = ''
             for index, row in rows(source, 'text'):
                 context = previous if config.get('backend') == 'hy-mt2-gguf' else ''
-                key = translation_key(row, config, context, extra)
+                key = translation_key(row, config, context, row_extra(index, row))
                 previous = (previous + row['text'])[-config.get('context_chars', 512):]
                 pending[index] = dict(row=row, key=key, result=None)
                 cached = checkpoints.get('translation', index, key)
-                if not valid_cache(row, cached): cached = None
+                if not valid_cache(row, cached, index): cached = None
                 failure = failures.get(index)
                 recovery = generation if failure and failure.get('fingerprint') == key else 0
-                yield index, row['text'], context, cached, recovery
+                # The prompt uses the gender-repaired Chinese; stored rows keep `text_zh` as transcribed.
+                yield index, repaired.get(index, row['text']), context, cached, recovery
 
         def lookup(index, part, text):
             cached = checkpoints.get_translation_part(index, part, digest([pending[index]['key'], part, text, 'sentence-token-v2']))
@@ -219,13 +299,15 @@ def _translate_streaming(job_dir, adapter, source, config, signature, total):
         def save(index, part, source_text, text):
             checkpoints.put_translation_part(index, part, digest([pending[index]['key'], part, source_text, 'sentence-token-v2']), text)
 
+        addresser = tool_addresser(job_dir)
+
         def save_row(index, text, cached=False):
             nonlocal head, done
             entry = pending[index]
             row = entry['row']
             result = text if cached else dict(start_ms=row['start_ms'], end_ms=row['end_ms'], text_zh=row['text'],
                                              text_vi=apply_glossary(row['text'], text, config.get('glossary', [])))
-            if not isinstance(result.get('text_vi'), str) or (row['text'].strip() and not result['text_vi'].strip()):
+            if not isinstance(result.get('text_vi'), str) or (row['text'].strip() and not result['text_vi'].strip() and index not in dropped):
                 raise RuntimeError('Invalid translation output')
             if not cached: checkpoints.put('translation', index, entry['key'], result)
             entry['result'] = result
@@ -237,6 +319,9 @@ def _translate_streaming(job_dir, adapter, source, config, signature, total):
             wrote = False
             while head in pending and pending[head]['result'] is not None:
                 value = pending.pop(head)['result']
+                if addresser:
+                    # Stateful referent window: applied in row order at export; checkpoints stay raw.
+                    value = {**value, 'text_vi': addresser.apply(value)[0]}
                 write_row(final_handles, value, 'text_vi')
                 write_row(partial, value, 'text_vi')
                 head += 1
@@ -299,19 +384,22 @@ def export_translation_partial(job_dir):
     count=0
     previous_source=""
     extra=translation_extra(job_dir,config)
+    repaired,lexicon=styled_state(job_dir,job_dir/'transcript.zh.jsonl',config)
+    row_extra=row_extra_builder(extra,repaired,lexicon)
+    dropped={index for index,text in repaired.items() if not text.strip()}
     from audio_translate.translation.hymt_translation import output_problem
     try:
         with closing(sqlite3.connect(database.as_uri()+'?mode=ro',uri=True)) as db, temporary[0].open('w',encoding='utf-8',newline='\n') as jout, temporary[1].open('w',encoding='utf-8',newline='\n') as mout:
             for index,row in rows(job_dir/'transcript.zh.jsonl','text'):
                 found=db.execute('SELECT fingerprint,output FROM segments WHERE stage=? AND idx=?',('translation',index)).fetchone()
-                key=translation_key(row,config,previous_source,extra)
+                key=translation_key(row,config,previous_source,row_extra(index,row))
                 if not found or found[0]!=key:break
                 value=json.loads(found[1])
                 if config.get('backend')=='hy-mt2-gguf' and (
                         not isinstance(value,dict) or value.get('start_ms')!=row['start_ms'] or
                         value.get('end_ms')!=row['end_ms'] or value.get('text_zh')!=row['text'] or
                         not isinstance(value.get('text_vi'),str) or
-                        (row['text'].strip() and output_problem(value['text_vi'],row['text']) is not None)):
+                        (row['text'].strip() and index not in dropped and output_problem(value['text_vi'],row['text']) is not None)):
                     break
                 previous_source=(previous_source+row['text'])[-config.get('context_chars',512):]
                 write_row((jout,mout),value,'text_vi'); count+=1
@@ -335,7 +423,17 @@ def moderate(job_dir, service=None, after_segment=None):
                 atomic_json(snapshot_path, service.read())
             snapshot = read_json(snapshot_path)
             engine = ReplaceEngine(snapshot)
-            signature = digest([file_digest(source), snapshot, "literal-nfc-leftmost-longest-v1"])
+            from audio_translate.moderation.address import resolver as address_resolver
+            # Forms of address run before literal rules so user rules still win.
+            # None (neutral, no manual forms) keeps the legacy signature and keys.
+            addresser = address_resolver(job_dir, [row for _, row in rows(source, "text_vi")],
+                                         read_json(job_dir / "job.json").get("selected_address_profile"))
+            flow = None
+            if is_styled(job_dir):
+                from audio_translate.moderation.flow import Flow
+                flow = Flow([row["text_vi"] for _, row in rows(source, "text_vi")], [n["target"] for n in name_glossary(job_dir)])
+            signature = digest([file_digest(source), snapshot, "literal-nfc-leftmost-longest-v1",
+                                *([addresser.signature] if addresser else []), *(["flow-v1"] if flow else [])])
             if completed(job_dir, "moderation", signature):
                 progress(job_dir, "moderation", "MODERATION_COMPLETED", total, total)
                 return
@@ -343,16 +441,31 @@ def moderate(job_dir, service=None, after_segment=None):
             names = ["transcript.vi.moderated.jsonl", "transcript.vi.moderated.md"]
             stats = {"total_segments": total, "modified_segments": 0, "total_replacements": 0,
                      "rules_snapshot_sha256": digest(snapshot), "rules": {r["id"]: 0 for r in snapshot}}
+            if addresser: stats.update(address_profile=addresser.profile, address_replacements=0, address_segments=0)
+            previous_vi = ""
             with Checkpoints(job_dir) as checkpoints, text_outputs(job_dir, *names) as handles:
                 for index, row in rows(source, "text_vi"):
                     check_cancel(job_dir)
-                    key = digest([row, snapshot, "literal-nfc-leftmost-longest-v1"])
+                    flowed = flow.apply(previous_vi, row["text_vi"]) if flow else row["text_vi"]
+                    previous_vi = row["text_vi"]
+                    if addresser:
+                        # Stateful (referent window): runs for every row, cached or not.
+                        addressed, address_changes = addresser.apply({**row, "text_vi": flowed})
+                        key = digest([row, snapshot, "literal-nfc-leftmost-longest-v1", addresser.signature, addressed])
+                    else:
+                        addressed, address_changes = flowed, 0
+                        key = digest([row, snapshot, "literal-nfc-leftmost-longest-v1", *(["flow-v1", flowed] if flow else [])])
                     cached = checkpoints.get("moderation", index, key)
                     if cached is None:
-                        text, counts = engine.apply(row["text_vi"])
-                        cached = {"row": {**row, "text_vi_moderated": text}, "counts": counts}
+                        text, counts = engine.apply(addressed)
+                        moderated = {**row, "text_vi_moderated": text}
+                        if addresser: moderated["address_changes"] = address_changes
+                        cached = {"row": moderated, "counts": counts}
                         checkpoints.put("moderation", index, key, cached)
                     result, counts = cached["row"], cached["counts"]
+                    if addresser:
+                        stats["address_replacements"] += address_changes
+                        stats["address_segments"] += int(address_changes > 0)
                     stats["modified_segments"] += int(result["text_vi_moderated"] != row["text_vi"])
                     stats["total_replacements"] += sum(counts.values())
                     for rule_id, count in counts.items():
@@ -429,7 +542,11 @@ def synthesize(job_dir, adapter=None):
         return
     progress(job_dir, "tts", "TTS_GENERATING", 0, total)
     runtime = None
-    if adapter is None:
+    if adapter is None and config.get('backend') == 'remote':
+        # Basic: the VPS generates the voice; nothing is loaded locally.
+        from audio_translate.tts.remote import RemoteTTS
+        runtime = RemoteTTS(job_dir, config)
+    elif adapter is None:
         from audio_translate.tts.tts_runtime import Runtime, policy
         if config['device'] == 'cpu' and policy()['enabled']:
             runtime = Runtime(job_dir,config)
@@ -482,7 +599,7 @@ def synthesize(job_dir, adapter=None):
                 wav = voice / f"{index:06d}.wav"
                 meta = checkpoint_dir / f"{index:06d}.json"
                 batch.append((index,unit,key,wav,meta))
-                if len(batch)>=(max(4,(psutil_cores())*2) if runtime else 1):flush(out)
+                if (runtime.full(batch) if hasattr(runtime,'full') else len(batch)>=(max(4,(psutil_cores())*2) if runtime else 1)):flush(out)
             if batch:flush(out)
         check_cancel(job_dir)
         os.replace(manifest_tmp, manifest)
@@ -491,6 +608,7 @@ def synthesize(job_dir, adapter=None):
         if runtime:runtime.close()
     concatenate(job_dir, manifest)
     finish(job_dir, "tts", signature, ["voice/voice.manifest.jsonl", "voice.vi.wav"], total)
+    if hasattr(runtime, 'finished'): runtime.finished()
     progress(job_dir, "tts", "TTS_GENERATING", total, total)
 
 

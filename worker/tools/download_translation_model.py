@@ -9,12 +9,12 @@ from pathlib import Path
 import time
 import urllib.request
 
-REPO = 'tencent/Hy-MT2-1.8B-GGUF'
-REVISION = 'a0c709d9fac510f2c807aa3af52872340dc37a4a'
-FILENAME = 'Hy-MT2-1.8B-Q8_0.gguf'
-SIZE = 1908528192
-SHA256 = '5c3fe0b1408a5ceb0143184ef247b11b579c525f4b02b060e6c851bb76fef1a4'
-DIRECTORY = Path(__file__).resolve().parents[2] / 'models' / 'Hy-MT2-1.8B-Q8_0'
+REPO = 'tencent/Hy-MT2-7B-GGUF'
+REVISION = 'ab8472660ac61fac25f1af43fac2599d52a8a775'
+FILENAME = 'Hy-MT2-7B-Q4_K_M.gguf'
+SIZE = 4624648896
+SHA256 = '9f96256500f3fc1ab4d64336b58f52a949a95ad7516b0c229476eef782f9f77b'
+DIRECTORY = Path(__file__).resolve().parents[2] / 'models' / 'Hy-MT2-7B-Q4_K_M'
 
 
 def download():

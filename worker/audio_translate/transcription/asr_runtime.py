@@ -274,6 +274,7 @@ def same_output(left, right):
 
 def measure(job_dir, samples, total, workers, threads, baseline=None, fake=False, observe=None, stagger_load=False):
     if observe: observe('loading')
+    lanes.report(job_dir,'transcription',workers,2*GIB,None,workers)  # calibration pools hold RAM too
     pool = Pool(job_dir,threads,1 if stagger_load else workers,fake)
     try:
         # Every worker warms up before timed rounds. No calibration writes checkpoints.
@@ -348,7 +349,8 @@ def tune(job_dir, source, chunks, force=False):
             if isinstance(cached,dict) and cached.get('fingerprint')==key and time.time()-cached.get('created_at',0)<7*86400:
                 return cached
         wait_memory(job_dir,2*GIB,'CALIBRATION')
-        if not fits(hardware(), 2*GIB, parallel=True):
+        # Measuring beside another workflow is memory-hungry and biased by its load.
+        if not fits(hardware(), 2*GIB, parallel=True) or lanes.others_running(job_dir):
             # Defer benchmarking while memory is scarce; start actual recognition.
             return {'single_threads':min(4,hardware()['physical_cores']), 'workers':1,
                     'threads':min(4,hardware()['physical_cores']), 'peak_bytes':2*GIB,
@@ -371,7 +373,7 @@ def tune(job_dir, source, chunks, force=False):
             score,_=measure(job_dir,samples,len(chunks),2,3,baseline)
             benchmarks.append(score)
             print(f'CPU pool benchmark: {score}',flush=True)
-            if score['compatible'] and score['seconds']<single['seconds']*.9: best=score
+            if score['compatible'] and score['seconds']<single['seconds']: best=score
         profile={'fingerprint':key,'created_at':time.time(),'benchmarks':benchmarks,
                  'single_threads':single['threads'],'workers':best['workers'],'threads':best['threads'],
                  'peak_bytes':max(score['peak_bytes'] for score in benchmarks),
@@ -464,7 +466,7 @@ def run(job_dir, source, chunks, profile=None, fake=False, producer_override=Non
                 if current-window_start>=30 and window_audio:
                     rate=window_audio/(current-window_start)
                     if len(pool.members)==1: single_rate=rate
-                    elif single_rate and trial_started and current-trial_started>=60 and rate<single_rate*1.05:
+                    elif single_rate and trial_started and current-trial_started>=60 and rate<=single_rate:
                         pool_disabled=True
                         for member in pool.members[1:]: member['retire']=True
                     window_start=current;window_audio=0

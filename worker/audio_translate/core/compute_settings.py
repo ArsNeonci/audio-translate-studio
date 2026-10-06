@@ -45,6 +45,9 @@ print(json.dumps(result))
 def validate(device, stages, available=None):
     if device not in ('cpu', 'gpu'): raise ValueError('Invalid compute device')
     if device == 'cpu': return
+    from audio_translate.core.edition import is_basic
+    # Basic generates the voice on the VPS (CPU there); the local GPU choice does not apply to TTS.
+    if is_basic(): stages = [s for s in stages if s.lower() != 'tts']
     available = available if available is not None else capabilities()
     if any(s.lower() in ('transcription', 'translation', 'tts') and
            not available.get(s.lower()) for s in stages): raise RuntimeError(GPU_ERROR)
@@ -68,7 +71,13 @@ def stage_environment(device):
 
 def apply_adapters(settings, device):
     settings['translation'].update(device=device, n_gpu_layers=999 if device == 'gpu' else 0)
-    settings['tts']['device'] = 'cuda' if device == 'gpu' else 'cpu'
+    from audio_translate.core.edition import is_basic
+    if is_basic():
+        # Voice generation runs on the VPS; a distinct backend keeps its checkpoints apart from local ones.
+        settings['tts'].update(device='cpu', backend='remote')
+    else:
+        settings['tts']['device'] = 'cuda' if device == 'gpu' else 'cpu'
+        settings['tts'].pop('backend', None)
     return settings
 
 

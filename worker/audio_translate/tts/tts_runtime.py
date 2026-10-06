@@ -6,7 +6,6 @@ import multiprocessing as mp
 import os
 from pathlib import Path
 import shutil
-import statistics
 import sys
 import time
 from types import SimpleNamespace
@@ -14,6 +13,7 @@ from types import SimpleNamespace
 import psutil
 from audio_translate.core.control import Cancelled, check_cancel, stop_mode
 from audio_translate.core import lanes
+from audio_translate.core.scaling import GainTrial
 from audio_translate.core.storage import ROOT, DATA, atomic_json, digest, file_digest, read_json, file_lock, LockedError
 
 GIB = 1024 ** 3
@@ -23,21 +23,25 @@ _cpu_sample = 0
 
 class TrialPressure(RuntimeError):
     pass
-DEFAULTS = dict(enabled=True, calibrate=True, threads=0, max_workers=0, cpu_target=85,
-                temperature_limit=85, reserve_gib=1.5, initial_worker_gib=1.5, min_gain=.10,
-                observe_seconds=10, memory_wait_seconds=120, calibration_rounds=2,
+# Workers grow +1 after `scale_up_seconds` of healthy resources and are kept only if
+# measured throughput rises (core/scaling.py). There is no up-front calibration.
+DEFAULTS = dict(enabled=True, threads=0, max_workers=0, cpu_target=85,
+                temperature_limit=85, reserve_gib=1.5, initial_worker_gib=1.5,
+                observe_seconds=10, memory_wait_seconds=120, scale_up_seconds=10,
+                gain_window_seconds=30, retry_seconds=600,
                 cache_enabled=True, cache_max_gib=1., cache_max_entries=1000)
 
 
 def policy():
     path = Path(os.getenv('TTS_RUNTIME_CONFIG', ROOT/'worker'/'config'/'tts-runtime.json'))
     value = {**DEFAULTS, **(json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else {})}
-    for key in ('enabled','calibrate','cache_enabled'):
+    for key in ('enabled','cache_enabled'):
         if type(value[key]) is not bool: raise ValueError(f'Invalid TTS {key}')
-    for key in ('threads','max_workers','calibration_rounds','cache_max_entries'):
-        if type(value[key]) is not int or value[key] < (1 if key in ('calibration_rounds','cache_max_entries') else 0):
+    for key in ('threads','max_workers','cache_max_entries'):
+        if type(value[key]) is not int or value[key] < (1 if key=='cache_max_entries' else 0):
             raise ValueError(f'Invalid TTS {key}')
-    for key in ('cpu_target','temperature_limit','reserve_gib','initial_worker_gib','min_gain','observe_seconds','memory_wait_seconds','cache_max_gib'):
+    for key in ('cpu_target','temperature_limit','reserve_gib','initial_worker_gib','observe_seconds','memory_wait_seconds',
+                'scale_up_seconds','gain_window_seconds','retry_seconds','cache_max_gib'):
         if isinstance(value[key],bool) or not isinstance(value[key],(float,int)) or not math.isfinite(value[key]) or value[key] <= 0:
             raise ValueError(f'Invalid TTS {key}')
     if value['cpu_target']>100: raise ValueError('Invalid TTS cpu_target')
@@ -197,17 +201,17 @@ class Runtime:
         self.cache=ContentCache(config,self.signature)
         job=read_json(self.job_dir/'job.json')
         self.cache_allowed=not job.get('reprocess_pending') and job.get('retry_step')!='TTS'
-        self.selected=None;self.records=[];self.last_observed=0;self.retry_at=0;self.worker_bytes=int(policy()['initial_worker_gib']*GIB)
+        self.selected=None;self.last_observed=0;self.worker_bytes=int(policy()['initial_worker_gib']*GIB)
+        p=policy();self.gain=GainTrial(p['gain_window_seconds'],p['retry_seconds']);self.healthy_since=None;self.loading=None
         self.last_cpu=0;self.cache_hits=0
         self.lane=dict(target=10**6,cores=hardware()['cores']);self.lane_at=0
-        self.sampler=None
         psutil.cpu_percent(interval=None)
     def emit(self,state='RUNNING',**fields):
         h=hardware()
         atomic_json(self.job_dir/'working'/'tts-runtime.json',dict(state=state,workers=len(self.pool.members),
             threads=[m['threads'] for m in self.pool.members],available_gib=round(h['available']/GIB,2),
             cpu=round(h['cpu'],1),cpu_target=h['target'],hot=h['hot'],cache_hits=self.cache_hits,
-            measured_worker_gib=round(self.worker_bytes/GIB,3),selected=self.selected,**fields))
+            measured_worker_gib=round(self.worker_bytes/GIB,3),selected=self.selected,scaling=self.gain.state(),**fields))
     def report_lane(self,force=False):
         if not force and time.monotonic()-self.lane_at<2:return self.lane
         self.lane_at=time.monotonic();h=hardware();p=policy()
@@ -253,6 +257,7 @@ class Runtime:
             if time.monotonic()-member['started']>180:raise RuntimeError('TTS model load timed out')
             if hardware()['available']<256*1024**2:self.pause_memory()
         self.worker_bytes=max(self.worker_bytes,int(self.pool.peak*1.25))
+        if self.job_dir and not self.fake:self.report_lane(force=True)  # every loaded worker
         if not self.fake:
             signature=provider_signature(self.config)
             if signature!=self.signature:self.signature=self.cache.signature=signature
@@ -262,92 +267,52 @@ class Runtime:
         for index in range(count):
             if not self.add(threads,initial=index==0):break
         return len(self.pool.members)==count
-    def measure(self,texts,count,threads):
-        import soundfile as sf
-        if not self.configure(count,threads):return None
-        durations=[];audio_seconds=[];minimum=hardware()['available'];peak=0;cpus=[]
-        directory=self.job_dir/'working'/'tts-calibration';directory.mkdir(exist_ok=True)
-        self.sampler=dict(minimum=minimum,peak=0,cpu=[],at=0)
-        try:
-            for round_id in range(policy()['calibration_rounds']+1):
-                tasks=[(i,text,directory/f'{i}.wav') for i,text in enumerate(texts)]
-                began=time.monotonic();seconds=0
-                def done(item):
-                    nonlocal seconds
-                    seconds+=sf.info(str(item[2])).duration
-                    item[2].unlink(missing_ok=True)
-                try:self.run(tasks,done,observe=False)
-                except TrialPressure:
-                    self.pool.close();return None
-                h=hardware();minimum=min(minimum,h['available']);cpus.append(h['cpu'])
-                peak=max(peak,self.sampler['peak']);minimum=min(minimum,self.sampler['minimum'])
-                if round_id:durations.append(time.monotonic()-began);audio_seconds.append(seconds)
-            record=dict(workers=count,threads=threads,seconds=statistics.median(durations),
-                rtf=statistics.median(d/s for d,s in zip(durations,audio_seconds)),peak_pool_rss_gib=round(peak/GIB,3),
-                minimum_available_gib=round(minimum/GIB,3),cpu_average=round(statistics.mean(cpus),1))
-            self.records.append(record);self.emit('CALIBRATING',measurements=self.records)
-            return record
-        finally:
-            self.sampler=None
-            for path in directory.glob('*.wav'):path.unlink(missing_ok=True)
-    def profile_key(self):
-        return digest([self.config,self.signature,os.getenv('PROCESSOR_IDENTIFIER',''),hardware()['cores'],policy()])
+    def first_threads(self):
+        p=policy();return min(self.lane_cores(hardware()['cores']),p['threads'] or 4)
     def prepare(self,texts):
+        """Start with one worker; run() adds more only while it measurably helps."""
         if self.selected is not None:return
-        p=policy();self.report_lane(force=True);cores=self.lane_cores(hardware()['cores']);threads=min(cores,p['threads'] or 4)
-        if not p['calibrate'] or len(texts)<2:
-            self.add(threads,initial=True);self.selected=dict(workers=1,threads=threads);return
-        path=DATA/'config'/('tts-profile-'+self.profile_key()+'.json')
-        try:
-            profile=read_json(path)
-            if time.time()-profile['created_at']<7*86400:
-                self.worker_bytes=max(self.worker_bytes,profile['worker_bytes']);best=profile['selected']
-                previous_signature=self.signature
-                self.configure(best['workers'],best['threads'])
-                if self.signature!=previous_signature:return self.prepare(texts)
-                self.selected={**best,'workers':len(self.pool.members)}
-                self.records=profile['measurements'];self.emit(profile_cached=True);return
-        except (OSError,ValueError,KeyError):pass
-        samples=texts[:max(4,cores*2)]
-        best=self.measure(samples,1,threads)
-        if best is None:
-            self.pause_memory()  # returns only when a later workflow released memory
-            best=dict(workers=1,threads=threads,seconds=float('inf'))
-        if not p['threads']:
-            for value in sorted({min(cores,n) for n in (4,6,8)}):
-                if value==threads:continue
-                trial=self.measure(samples,1,value)
-                if trial and trial['seconds']<best['seconds']:best=trial
-        count=2
-        while count<=min(cores,p['max_workers'] or cores):
-            trial=self.measure(samples,count,min(p['threads'] or max(1,cores//count),max(1,cores//count)))
-            if trial and trial['seconds']<=best['seconds']/(1+p['min_gain']):best=trial;count*=2
-            else:break
-        self.configure(best['workers'],best['threads']);self.selected={**best,'workers':len(self.pool.members)}
-        path=DATA/'config'/('tts-profile-'+self.profile_key()+'.json')
-        atomic_json(path,dict(created_at=time.time(),selected=self.selected,worker_bytes=self.worker_bytes,measurements=self.records))
-        self.retry_at=time.monotonic()+600;self.emit(measurements=self.records)
+        self.report_lane(force=True);threads=self.first_threads()
+        self.add(threads,initial=True);self.selected=dict(workers=1,threads=threads)
+        self.gain.observe(len(self.pool.members))
     def tune(self,texts):
+        """Between batches: honour the lane target and policy limit by retiring idle workers."""
         h=hardware();p=policy();self.report_lane(force=True)
-        limit=self.lane_limit(min(h['cores'],p['max_workers'] or h['cores']));h['cores']=self.lane_cores(h['cores'])
-        pressured=h['hot'] or h['cpu']>=h['target'] or h['available']<p['reserve_gib']*GIB
-        if pressured or len(self.pool.members)>limit:
-            count=max(1,min(limit,len(self.pool.members)//2))
-            threads=max(1,min(m['threads'] for m in self.pool.members)//2) if pressured else min(m['threads'] for m in self.pool.members)
-            self.configure(count,threads);self.retry_at=time.monotonic()+p['observe_seconds']*3
-        elif p['threads'] and any(m['threads']!=min(p['threads'],max(1,h['cores']//len(self.pool.members))) for m in self.pool.members):
-            self.configure(len(self.pool.members),min(p['threads'],max(1,h['cores']//len(self.pool.members))))
-        elif self.selected and time.monotonic()>=self.retry_at and min(m['threads'] for m in self.pool.members)<self.selected['threads'] and self.fit(len(self.pool.members)):
-            self.configure(len(self.pool.members),self.selected['threads'])
-        elif p['calibrate'] and time.monotonic()>=self.retry_at and len(texts)>=2 and self.fit(len(self.pool.members)+1):
-            count=len(self.pool.members);threads=self.pool.members[0]['threads'];samples=texts[:max(4,count*4)]
-            before=self.measure(samples,count,threads)
-            if before is None:
-                self.pause_memory();self.emit();return
-            trial=self.measure(samples,min(count*2,limit),max(1,h['cores']//min(count*2,limit)))
-            best=trial if trial and before and trial['workers']>count and trial['seconds']<=before['seconds']/(1+p['min_gain']) else before
-            self.configure(best['workers'],best['threads']);self.selected=best;self.retry_at=time.monotonic()+600
-        self.emit()
+        limit=self.lane_limit(min(h['cores'],p['max_workers'] or h['cores']))
+        while len(self.pool.members)>max(1,limit):
+            idle=next((m for m in reversed(self.pool.members) if m['pending'] is None),None)
+            if not idle:break
+            self.pool.remove(idle)
+        self.gain.observe(len(self.pool.members));self.emit()
+    def scale(self,h):
+        """+1 worker after scale_up_seconds healthy; keep it only if throughput rises."""
+        p=policy();now=time.monotonic();count=len(self.pool.members)
+        if self.loading is not None:
+            member=self.loading
+            if member['pipe'].poll():
+                try:self.pool.receive(member)
+                except BaseException:
+                    if member in self.pool.members:self.pool.remove(member)
+                    self.loading=None;return
+            if member.get('ready'):
+                self.loading=None;self.worker_bytes=max(self.worker_bytes,int(self.pool.peak*1.25))
+                self.gain.begin(count-1);self.report_lane(force=True)
+            elif not member['process'].is_alive() or now-member['started']>180:
+                self.pool.remove(member);self.loading=None
+            return
+        if self.gain.verdict()=='revert' and count>1:
+            # Not faster: retire the newest worker once it is idle.
+            self.pool.members[-1]['retire']=True
+        active=len([m for m in self.pool.members if not m.get('retire')])
+        self.gain.observe(active)
+        limit=self.lane_limit(min(h['cores'],p['max_workers'] or h['cores']))
+        healthy=(not h['hot'] and h['cpu']<h['target']-5 and active==count and count<limit and self.fit(count+1))
+        if not healthy:
+            self.healthy_since=None;return
+        self.healthy_since=self.healthy_since or now
+        if now-self.healthy_since>=p['scale_up_seconds'] and self.gain.can_try(count):
+            threads=max(1,min(p['threads'] or 4,self.lane_cores(h['cores'])//(count+1)))
+            self.loading=self.pool.add(threads);self.healthy_since=None
     def run(self,tasks,on_done,observe=True):
         pending=list(tasks);failure=None;paused=False;pressure_since=None;trial_pressure=False
         while pending or any(m['pending'] for m in self.pool.members):
@@ -355,12 +320,10 @@ class Runtime:
             if mode and mode!='pause':raise Cancelled('TTS cancelled')
             paused=paused or mode=='pause'
             h=hardware()
-            if self.sampler and time.monotonic()-self.sampler['at']>=.1:
-                self.sampler['at']=time.monotonic();self.sampler['minimum']=min(self.sampler['minimum'],h['available'])
-                self.sampler['peak']=max(self.sampler['peak'],sum(psutil.Process(m['process'].pid).memory_info().rss for m in self.pool.members))
             if h['available']<256*1024**2 or (h['commit'] is not None and h['commit']<256*1024**2):self.pause_memory()
             if observe and time.monotonic()-self.last_observed>=policy()['observe_seconds']:
                 self.last_observed=time.monotonic();self.last_cpu=h['cpu'];self.emit()
+            if observe:self.scale(h)
             if observe and self.job_dir:
                 self.report_lane()
                 while len(self.pool.members)>self.lane_limit(len(self.pool.members)):
@@ -375,8 +338,11 @@ class Runtime:
                 pressure_since=pressure_since or time.monotonic()
                 if not observe:trial_pressure=True
             else:pressure_since=None
-            for member in self.pool.members:
-                if pending and member['pending'] is None and busy<target and not low and not trial_pressure and not paused and failure is None:
+            for member in list(self.pool.members):
+                if member is self.loading or not member.get('ready',True):continue
+                if member.get('retire') and member['pending'] is None and len(self.pool.members)>1:
+                    self.pool.remove(member);continue
+                if pending and member['pending'] is None and busy<target and not low and not trial_pressure and not paused and failure is None and not member.get('retire'):
                     item=pending.pop(0);member['pending']=item;busy+=1
                     member['pipe'].send(('render',item[0],item[1],str(item[2])))
                 if member['pending'] is not None and member['pipe'].poll():
@@ -384,14 +350,15 @@ class Runtime:
                         result=self.pool.receive(member)
                         if result[0]=='done':
                             item=member['pending'];member['pending']=None
-                            self.worker_bytes=max(self.worker_bytes,int(self.pool.peak*1.25));on_done(item)
+                            self.worker_bytes=max(self.worker_bytes,int(self.pool.peak*1.25))
+                            self.gain.record(len(item[1]));on_done(item)
                     except BaseException as exc:
                         member['pending']=None;failure=failure or exc
                 elif member['pending'] is not None and not member['process'].is_alive():
                     member['pending']=None;failure=failure or RuntimeError('TTS worker crashed')
             if observe and low and len(self.pool.members)>1:
-                idle=next((m for m in reversed(self.pool.members) if m['pending'] is None),None)
-                if idle:self.pool.remove(idle)
+                idle=next((m for m in reversed(self.pool.members) if m['pending'] is None and m is not self.loading),None)
+                if idle:self.pool.remove(idle);self.loading=None if idle is self.loading else self.loading
             if not any(m['pending'] for m in self.pool.members):
                 if failure:raise failure
                 if paused:raise Cancelled('TTS paused; completed WAV checkpoints preserved')

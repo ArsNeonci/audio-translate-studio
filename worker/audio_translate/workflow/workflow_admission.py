@@ -7,7 +7,7 @@ from audio_translate.transcription.asr_runtime import GIB, hardware, reserve, fi
 from audio_translate.core.storage import DATA, read_json
 from audio_translate.core.memory_policy import required
 
-TERMINAL = {'COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'DELETING'}
+TERMINAL = {'COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'DELETING', 'AWAITING_REVIEW'}
 
 
 def pending_jobs():
@@ -31,7 +31,8 @@ def pending_jobs():
 
 def model_budget(cores):
     # Stages are isolated: reserve for the largest model, including Hy-MT2 GGUF.
-    translation_allocation = int(max(3.5, float(os.getenv('HY_MT_STARTUP_AVAILABLE_GIB', '3.5')))*GIB)
+    # Hy-MT2-7B Q4_K_M measured 4.77 GiB (no repack) + 1 GiB kept for the OS.
+    translation_allocation = int(max(6, float(os.getenv('HY_MT_STARTUP_AVAILABLE_GIB', '6')))*GIB)
     # A profile is useful only for the same hardware/model versions and <=7 days.
     try:
         profile = read_json(DATA/'config'/'asr-autotune.json')
@@ -88,7 +89,7 @@ def preflight():
     return assess(snapshot, jobs, allocation, threads, basis)
 
 
-def convert(url, voice=None, queue_only=False, style=None):
+def convert(url, voice=None, queue_only=False, style=None, address=None, mode=None, auto=False):
     from audio_translate.core.license_gate import assert_allowed
     from audio_translate.core.storage import file_lock
     from audio_translate.workflow.manage import create
@@ -97,5 +98,5 @@ def convert(url, voice=None, queue_only=False, style=None):
     with file_lock(DATA/'management-locks'/'convert-admission.lock'):
         # The lane broker admits queued workflows when resources allow; Convert only queues.
         assessment = preflight()
-        job = create(url, voice, style=style)
+        job = create(url, voice, style=style, address=address, mode=mode, auto=auto)
         return {'status':200, 'job':job, 'assessment':assessment}

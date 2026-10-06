@@ -1,4 +1,4 @@
-> Current TRANSLATION: Hy-MT2-1.8B Q8_0; see [setup](TRANSLATION_LONG.md). Qwen sections below are historical.
+> Current TRANSLATION: Hy-MT2-7B Q4_K_M; see [setup](TRANSLATION_LONG.md). Qwen sections below are historical.
 
 # Source and release layout
 
@@ -22,7 +22,7 @@ download history. Increment the product version before rebuilding changed code.
 - FunASR and yt-dlp run from installed packages in `.venv`, not source checkouts.
   Their upstream usage documentation and licenses are retained in their folders;
   unused development source and model-specific build systems are removed.
-- Active Hy-MT2 weights are in `models/Hy-MT2-1.8B-Q8_0/`, downloaded directly
+- Active Hy-MT2 weights are in `models/Hy-MT2-7B-Q4_K_M/`, downloaded directly
   with checksum/provenance and no vendor Git/source tree. ASR weights in
   `data/model-cache/` and
   VieNeu/codec weights in `data/hf-cache/` are retained. They are not duplicate

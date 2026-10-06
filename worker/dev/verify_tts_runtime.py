@@ -1,4 +1,4 @@
-"""Small real VieNeu CPU calibration and ordered WAV acceptance fixture."""
+"""Small real VieNeu CPU scaling and ordered WAV acceptance fixture."""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # worker/ import root
@@ -24,7 +24,7 @@ def main():
     (job/'working').mkdir(parents=True)
     atomic_json(job/'job.json',dict(status='MODERATION_COMPLETED'))
     p=policy()
-    if args.quick:p.update(threads=4,max_workers=2,calibration_rounds=1,cache_enabled=False)
+    if args.quick:p.update(threads=4,max_workers=2,cache_enabled=False)
     atomic_json(job/'policy.json',p);os.environ['TTS_RUNTIME_CONFIG']=str(job/'policy.json')
     config=adapter_settings(job)['tts']
     texts=['Xin chào, chúc bạn một ngày tốt lành.',

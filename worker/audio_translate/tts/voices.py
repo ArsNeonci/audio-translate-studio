@@ -5,7 +5,13 @@ from pathlib import Path
 from audio_translate.core.storage import ROOT, DATA, read_json, atomic_json, file_lock
 from audio_translate.core.providers import vieneu_source
 
-def discover():
+# Basic installers ship without VieNeu (the VPS generates the voice): voices come from this catalog,
+# exported on the build machine by worker/tools/export_voice_catalog.py.
+CATALOG = ROOT/'worker'/'config'/'voice-catalog.json'
+
+
+def live_presets():
+    """(presets, default) from the local VieNeu source and cached model metadata."""
     source = vieneu_source()/'src'/'vieneu'
     tree = ast.parse((source/'v3turbo.py').read_text(encoding='utf-8'))
     repo = None
@@ -25,18 +31,29 @@ def discover():
             voices.update({name:value for name,value in extra.get('presets',extra.get('voices',{})).items() if value.get('speaker_emb') is not None})
             default = extra.get('default_voice', default)
         except (ImportError, OSError): pass
+    return voices, default
+
+
+def discover():
+    if (vieneu_source()/'src'/'vieneu'/'v3turbo.py').is_file():
+        voices, default = live_presets()
+        items = [{'id': key, 'label': key, 'description': value.get('description', ''), 'aliases': value.get('aliases', [])} for key, value in voices.items()]
+    else:
+        catalog = read_json(CATALOG) if CATALOG.is_file() else {'voices': []}
+        items, default = catalog['voices'], catalog.get('default_voice_id')
+        voices = {item['id']: item for item in items}
     if not voices: raise ValueError('VieNeu has no available voice presets')
-    items = [{'id': key, 'label': key, 'description': value.get('description', ''), 'aliases': value.get('aliases', [])} for key, value in voices.items()]
     if default not in voices: default = items[0]['id']
     settings = DATA/'config'/'preferences.json'
     saved = read_json(settings) if settings.exists() else {}
     preferred = saved.get('last_vietnamese_voice_id')
     from audio_translate.tts.voice_styles import DEFAULT_STYLE, STYLES, catalog
+    from audio_translate.moderation.address import profiles as address_profiles
     # A style's recommended preset is offered only when this VieNeu build has it.
     styles = [{**item, 'recommended_voice_id': item['recommended_voice_id'] if item['recommended_voice_id'] in voices else None} for item in catalog()]
     style = saved.get('last_voice_style')
     return {'voices': items, 'default_voice_id': default, 'selected_voice_id': preferred if preferred in voices else default,
-            'styles': styles, 'selected_style': style if style in STYLES else DEFAULT_STYLE}
+            'styles': styles, 'selected_style': style if style in STYLES else DEFAULT_STYLE, 'address_profiles': address_profiles()}
 
 def select(voice=None, style=None):
     from audio_translate.tts.voice_styles import validate
