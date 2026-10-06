@@ -9,7 +9,6 @@ import {historyList} from "@/lib/server/history";
 import {isVoiceStyle} from "@/lib/shared/voice-styles";
 import {isAddressProfile} from "@/lib/shared/address-profiles";
 import {isTranslationMode} from "@/lib/shared/translation-modes";
-import {basicDenial} from "@/lib/server/edition";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){await schedule();return Response.json(await historyList(new URL(request.url).searchParams,"tools"));}
@@ -17,7 +16,6 @@ export async function POST(request:Request){
   const denied=await licenseDenial();if(denied)return denied;
   if((request.headers.get("content-type")||"").startsWith("application/json")){
     // Tool 1 from a YouTube link: queued like a workflow, stops after Transcription.
-    const basic=await basicDenial();if(basic)return basic;
     let tool:unknown,url:unknown;
     try{({tool,url}=await request.json());}catch{return Response.json({error:"Invalid JSON"},{status:400});}
     if(tool!=="transcription"||typeof url!=="string"||!validYoutubeUrl(url))return Response.json({error:"Enter a valid YouTube link"},{status:400});
@@ -27,7 +25,6 @@ export async function POST(request:Request){
   const params=new URL(request.url).searchParams,tool=params.get("tool"),name=params.get("name")||"";
   if(!["transcription","translation","moderation","tts"].includes(tool||"")||!name||name.length>255||/[\\/\x00]/.test(name))return Response.json({error:"Invalid tool or filename"},{status:400});
   const style=params.get("style")||undefined;if(style!==undefined&&!isVoiceStyle(style))return Response.json({error:"Invalid voice style"},{status:400});
-  if(tool==="transcription"){const basic=await basicDenial();if(basic)return basic;}
   const mode=params.get("mode")||undefined;if(mode!==undefined&&(tool!=="translation"||!isTranslationMode(mode)))return Response.json({error:"Invalid translation mode"},{status:400});
   const address=mode==="genius"?undefined:params.get("address")||undefined;if(address!==undefined&&(tool!=="translation"||!isAddressProfile(address)))return Response.json({error:"Invalid address profile"},{status:400});
   const limit=tool==="transcription"?2*1024**3:64*1024**2;

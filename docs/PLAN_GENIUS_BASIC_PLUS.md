@@ -6,6 +6,8 @@
 
 ### Đã làm và đã kiểm thử
 
+> **Cập nhật 2026-10-06:** Basic đã được khôi phục toàn bộ phần tiếng Trung (workflow chính, xem/tải ZH JSONL và Markdown, Tools 1, Reprocess từ Download/Transcription, bảng nhân vật, `text_zh` trong file xuất) và không còn mã hóa bản làm việc. Các dòng nói Basic ẩn tiếng Trung hay mã hóa trong tài liệu này là lịch sử.
+
 | Phần | Nơi | Kiểm thử |
 |---|---|---|
 | Tier theo mã sản phẩm: `identity`/`check` trả `tier`; action `credential` trả license đã ký; build.rs nhận `audio-translate[-basic\|-plus]`; mỗi gói có file license riêng (`state-<product>.dpapi`, sản phẩm cũ giữ `state.dpapi`) | `security-core/` | Rust 10/10; binary Basic tổng hợp trả `tier: basic` |
@@ -51,7 +53,7 @@ Ký hiệu:
 | Tính phí Genius | Theo **ký tự tiếng Việt thành phẩm**, ghi sổ ngay khi Gemini dịch xong; chủ sản phẩm chịu chi phí model [Chốt] |
 | Hạn mức | Trả sau, có hạn mức nợ cấu hình trong admin-system; mọi request Gemini đều đối chiếu hạn mức [Chốt] |
 | Thanh toán | Người bán nhập thủ công số tiền đã nhận; API ngân hàng làm sau [Chốt] |
-| Bản tiếng Trung ở Basic | Không cho xem hay tải; bản làm việc giữ dạng **mã hóa** [Chốt] |
+| Bản tiếng Trung ở Basic | ~~Không cho xem hay tải, mã hóa~~ **Đã hủy 2026-10-06**: xem, tải, Tools 1 và Reprocess như Plus |
 | Sửa bản dịch | Hủy chức năng sửa Markdown trong app; người dùng tải bản Moderated Markdown về sửa rồi chạy Tools 4 [Chốt] |
 | Về sau | Basic bỏ TTS local, dùng TTS trên VPS có tính phí theo ký tự tiếng Việt đầu vào; Plus giữ TTS local miễn phí [Chốt hướng] |
 
@@ -146,10 +148,12 @@ Người dùng không thể né phí bằng cách hủy job: VPS tính theo số
   - `packaging/build_installer.py` đang gán cứng `product_id == 'audio-translate'`.
   - Mỗi gói cần `product.manifest.json`, `licensing/public-config.json` và tên file `.exe` riêng.
   - Đăng ký 2 sản phẩm trong admin-system.
-- Bộ cài Basic **không đóng gói** những phần không dùng: Tools 1 và route tải bản tiếng Trung. Phần dùng chung kiểm tra gói lúc chạy theo mã sản phẩm đã gắn. [Đề xuất]
+- Bộ cài Basic và Plus dùng chung phần tiếng Trung. Phần khác nhau là TTS: Basic không đóng gói VieNeu, `sea-g2p`, `onnxruntime`.
 - Mỗi lần phát hành: build, kiểm thử và đăng ký cả 2 bộ cài. Nâng Basic lên Plus là cài bộ cài kia và cấp license mới; dữ liệu cũ phải dùng lại được. [Đề xuất]
 
-### Basic: không cho xem hay tải bản tiếng Trung [Chốt]
+### ~~Basic: không cho xem hay tải bản tiếng Trung~~ [ĐÃ HỦY 2026-10-06: Basic dùng tiếng Trung như Plus]
+> Mục này là thiết kế cũ, giữ để tham chiếu. Đã gỡ: xuất ZH và `text_zh`, bảng nhân vật, Tools 1, Reprocess từ Download/Transcription, route tải file, `source` trong lỗi dịch, và việc mã hóa bản làm việc. Hai gói chỉ còn khác nhau ở cách tạo giọng (Basic qua VPS, có duyệt trước). Job do bản Basic cũ đã mã hóa vẫn đọc được: lần mở kế tiếp worker giải mã một lần rồi giữ dạng thường.
+
 Mục đích là không để người dùng lấy bản tiếng Trung đem chạy dịch vụ dịch bên ngoài. Các nơi chứa tiếng Trung đều bị ẩn trên giao diện **và** bị từ chối ở API/worker:
 
 | Nơi chứa tiếng Trung | Xử lý |

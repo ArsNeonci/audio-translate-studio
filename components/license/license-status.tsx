@@ -12,8 +12,7 @@ export function useLicense() {
     void load(); const timer = setInterval(() => void load(), 15000);
     return () => {disposed = true; clearInterval(timer);};
   }, []);
-  // Chinese text is offered only once the edition is known to be Plus.
-  return {...license, allowed: license.status === "ACTIVE", plus: license.edition === "plus"};
+  return {...license, allowed: license.status === "ACTIVE"};
 }
 export default function LicenseBanner() {
   const { tr } = useLanguage();

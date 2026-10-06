@@ -1,12 +1,9 @@
-"""Basic edition: Chinese-bearing working files are encrypted while no worker uses them.
+"""Reads working files that an earlier Basic build encrypted ("sealed"). Nothing is sealed any more.
 
-A worker unseals them under the job's `worker.lock`, runs, and seals them again. Each file
-is AES-256-GCM encrypted with a per-installation key that Windows DPAPI protects for the
-current user, so the copies are unreadable outside this app on this account. This raises
-the effort needed to extract the transcript; it is not protection against the machine owner.
-
-Unsealing restores the exact bytes, so done markers and checkpoint digests stay valid.
-Unsealing always runs (an upgrade from Basic to Plus reads old jobs); sealing only on Basic.
+Basic used to keep the Chinese working copies encrypted (AES-256-GCM, per-installation key
+protected by Windows DPAPI). Chinese text is available in both editions now, so new jobs stay
+plaintext. A job sealed by that earlier build is unsealed, with its exact bytes, the next time a
+worker opens it under the job's `worker.lock`, and stays plaintext.
 """
 from contextlib import contextmanager
 import os
@@ -45,14 +42,7 @@ def _dpapi(data, protect):
 
 def _key():
     path = DATA/'keys'/'sealing.key'
-    if path.exists(): return _dpapi(path.read_bytes(), False)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    key = secrets.token_bytes(32)
-    temp = path.with_name(path.name + f'.{secrets.token_hex(8)}.tmp')
-    temp.write_bytes(_dpapi(key, True))
-    try: os.link(temp, path)  # First writer wins; a racing process reads the winner.
-    except FileExistsError: pass
-    finally: temp.unlink(missing_ok=True)
+    if not path.exists(): raise ValueError('The sealing key of this installation is missing')
     return _dpapi(path.read_bytes(), False)
 
 
@@ -72,27 +62,6 @@ def sealed(path):
 
 def exists(path):
     return Path(path).exists() or sealed(path).exists()
-
-
-def _plain_files(job_dir):
-    for pattern in PATTERNS:
-        for path in Path(job_dir).glob(pattern):
-            if path.is_file() and not path.is_symlink(): yield path
-
-
-def seal(job_dir):
-    from audio_translate.core.edition import is_basic
-    if not is_basic(): return 0
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-    job_dir, count, cipher = Path(job_dir), 0, None
-    for path in _plain_files(job_dir):
-        cipher = cipher or AESGCM(_key())
-        nonce = secrets.token_bytes(12)
-        label = path.relative_to(job_dir).as_posix().encode()
-        _write(sealed(path), MAGIC + nonce + cipher.encrypt(nonce, path.read_bytes(), label))
-        path.unlink()
-        count += 1
-    return count
 
 
 def unseal(job_dir):
@@ -120,5 +89,4 @@ def unseal(job_dir):
 def opened(job_dir):
     """Plaintext inside the block; call while holding the job's worker.lock."""
     unseal(job_dir)
-    try: yield
-    finally: seal(job_dir)
+    yield

@@ -1,8 +1,7 @@
 """Basic / Plus edition, decided by the Product ID compiled into the native core.
 
-Basic never exposes Chinese text: no Chinese artifacts, no `text_zh` in exports,
-no Tool 1, no restart from Download / Transcription, and the Chinese working copies
-stay encrypted while no worker uses them (`core/sealing.py`).
+Both editions work with the Chinese transcript (workflow, Tool 1, Reprocess, exports).
+They differ in voice generation: Basic generates it on the VPS and asks for review first.
 """
 _cached = None  # One native query per process; tests set this directly.
 
@@ -16,18 +15,9 @@ def tier():
             product = identity.get('product_id', '')
             _cached = identity.get('tier') or ('basic' if product.endswith('-basic') else 'plus')
         except LicenseError:
-            return 'basic'  # Fail closed (not cached): an unreadable edition hides Chinese.
+            return 'basic'  # Fail closed (not cached): an unreadable edition is treated as Basic (remote voice).
     return _cached
 
 
 def is_basic():
     return tier() == 'basic'
-
-
-def require_chinese_access(action):
-    if is_basic(): raise ValueError(f'{action} is not available in the Basic edition')
-
-
-def strip_chinese(row):
-    """Export copy of a translation row without the transcript."""
-    return {key: value for key, value in row.items() if key != 'text_zh'}

@@ -269,14 +269,8 @@ def _translate_streaming(job_dir, adapter, source, config, signature, total):
             previous = (previous + row['text'])[-config.get('context_chars', 512):]
         progress(job_dir, 'translation', 'TRANSLATING', done, total)
 
-        from audio_translate.core.edition import is_basic
-        hide_source = is_basic()
-
         def emit_errors():
-            # The UI reads this file directly; Basic never shows the Chinese row.
-            failures = checkpoints.translation_failures()
-            if hide_source: failures = [{k: v for k, v in item.items() if k != 'source'} for item in failures]
-            atomic_json(job_dir/'working'/'translation-errors.json', {'failures': failures})
+            atomic_json(job_dir/'working'/'translation-errors.json', {'failures': checkpoints.translation_failures()})
 
         def entries():
             previous = ''

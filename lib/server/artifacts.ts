@@ -1,11 +1,9 @@
 import { resolveHistoryFile } from "@/lib/server/history";
 import { savedFileResponse } from "@/lib/server/file-response";
-import { basicDenial } from "@/lib/server/edition";
 
 const kinds: Record<string, string> = {zh: "ZH", vi: "VI", moderated: "MODERATED", voice: "VOICE"};
 export async function artifactResponse(request: Request, id: string, kind: string) {
   if (!Object.hasOwn(kinds, kind)) return Response.json({error: "Unknown artifact"}, {status: 404});
-  if (kind === "zh") {const denied = await basicDenial(); if (denied) return denied;}
   const params = new URL(request.url).searchParams;
   const extension = kind === "voice" ? "WAV" : params.get("format") === "jsonl" ? "JSONL" : "MD";
   try {

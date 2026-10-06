@@ -3,7 +3,6 @@ import {randomUUID} from "node:crypto";
 import {readFile, rename, unlink, writeFile} from "node:fs/promises";
 import {jobDir} from "@/lib/server/jobs";
 import {validCharacterSheet} from "@/lib/shared/address-profiles";
-import {basicDenial} from "@/lib/server/edition";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -18,8 +17,6 @@ async function locate(id: string) {
 }
 
 export async function GET(_request: Request, {params}: {params: Promise<{id: string}>}) {
-  // The sheet holds Chinese names and aliases.
-  const denied = await basicDenial(); if (denied) return denied;
   const found = await locate((await params).id);
   if (!found) return Response.json({error: "Job không tồn tại."}, {status: 404});
   const sheet = await readFile(/*turbopackIgnore: true*/ found.file, "utf8").then(JSON.parse).catch(() => null);
@@ -27,7 +24,6 @@ export async function GET(_request: Request, {params}: {params: Promise<{id: str
 }
 
 export async function PUT(request: Request, {params}: {params: Promise<{id: string}>}) {
-  const denied = await basicDenial(); if (denied) return denied;
   const found = await locate((await params).id);
   if (!found) return Response.json({error: "Job không tồn tại."}, {status: 404});
   if (!editable.includes(found.job.status || "")) return Response.json({error: "Pause or finish the current run first"}, {status: 409});

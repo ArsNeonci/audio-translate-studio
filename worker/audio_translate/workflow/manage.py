@@ -182,9 +182,6 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
     assert_allowed()
     scope = 'tools' if tool else 'workflows'
     if tool and tool not in TOOLS: raise ValueError('Unsupported tool')
-    if tool == 'transcription':
-        from audio_translate.core.edition import require_chinese_access
-        require_chinese_access('Chinese audio transcription')
     from audio_translate.tts.voices import select
     from audio_translate.tts.voice_styles import validate
     from audio_translate.moderation.address import validate_profile
@@ -267,9 +264,6 @@ def normalize_input(directory,job,upload,name,mime):
 def reprocess(job_id,step,voice=None,style=None,address=None,mode=None):
     from audio_translate.core.license_gate import assert_allowed
     assert_allowed()
-    if step in ('DOWNLOAD','TRANSCRIPTION'):
-        from audio_translate.core.edition import require_chinese_access
-        require_chinese_access('Restarting from Download or Transcription')
     directory = results.workspace(job_id)
     from audio_translate.core.sealing import opened
     with file_lock(directory/'working'/'worker.lock'), opened(directory):
