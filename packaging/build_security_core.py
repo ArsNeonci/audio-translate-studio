@@ -8,7 +8,9 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
 
-def build(anchor=None, destination=None, target_dir=None):
+def build(anchor=None, destination=None, target_dir=None, dev_fallback=True):
+    # dev_fallback=True keeps the CLI/in-process path when the service pipe is absent (dev/test).
+    # Release installers build with dev_fallback=False so only the running service can authorize.
     core = ROOT/'security-core'
     anchor = Path(anchor or core/'trust-anchor.json').resolve()
     expected = json.loads(anchor.read_text(encoding='utf-8'))
@@ -21,7 +23,9 @@ def build(anchor=None, destination=None, target_dir=None):
     if not cargo: raise RuntimeError('RUST_TOOLCHAIN_REQUIRED')
     target = os.getenv('AUDIO_RUST_TARGET', 'x86_64-pc-windows-gnu' if shutil.which('gcc') else 'x86_64-pc-windows-msvc')
     target_dir = Path(target_dir or core/'target').resolve()
-    subprocess.run([cargo,'build','--release','--locked','--target',target,'--target-dir',str(target_dir)],cwd=core,env=env,check=True)
+    command = [cargo,'build','--release','--locked','--target',target,'--target-dir',str(target_dir)]
+    if not dev_fallback: command.append('--no-default-features')
+    subprocess.run(command,cwd=core,env=env,check=True)
     binary = target_dir/target/'release'/'audio-security-core.exe'
     identity = subprocess.run([str(binary)],input='{"action":"identity"}',capture_output=True,text=True,check=True)
     result = json.loads(identity.stdout)

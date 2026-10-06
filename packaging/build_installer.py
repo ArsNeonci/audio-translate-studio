@@ -112,7 +112,10 @@ def build(product='audio-translate'):
         staging=dist/f'staging-{label}';staging.mkdir(exist_ok=True)
         payload=staging/'payload';payload.mkdir(exist_ok=True)
         # Compile this edition's core into staging; the development binary stays untouched.
-        security_binary=build_security_core(files['anchor'],staging/'audio-security-core.exe',ROOT/'security-core'/'target')
+        # Release hardening (AUDIO_RELEASE_HARDENED=1) builds the core without the dev_fallback
+        # feature, so only the running Windows service can authorize processing. The installer must
+        # then register and start that service (see packaging/manage_service.ps1).
+        security_binary=build_security_core(files['anchor'],staging/'audio-security-core.exe',ROOT/'security-core'/'target',dev_fallback=os.getenv('AUDIO_RELEASE_HARDENED')!='1')
         env={**os.environ,'AUDIO_NEXT_DIST_DIR':'.next-installer'}
         subprocess.run(['cmd.exe','/c','npm','run','build'],cwd=ROOT,env=env,check=True)
         standalone=ROOT/'.next-installer'/'standalone'
@@ -185,6 +188,19 @@ def build(product='audio-translate'):
         modules='sys, importlib.util, llama_cpp, cryptography, numpy, torch, torchaudio, transformers, funasr, yt_dlp, soundfile, soxr, audio_translate.core.storage, audio_translate.workflow.results'+('' if basic else ', onnxruntime, sea_g2p')
         absent='; assert importlib.util.find_spec("onnxruntime") is None and importlib.util.find_spec("sea_g2p") is None' if basic else ''
         subprocess.run([str(payload/'runtime'/'python'/'python.exe'),'-c',f'import {modules}{absent}; assert not any("Roaming" in p or ".venv" in p for p in sys.path); print("Portable runtime imports and isolation OK")'],env={**os.environ,'PYTHONNOUSERSITE':'1'},check=True)
+        # Sign the payload manifest for install/runtime integrity. Admin supplies the manifest
+        # private key out of band (AUDIO_MANIFEST_KEY_FILE, 32-byte hex); its public half must be in
+        # the trust anchor (manifest_public_key). Without it the build is unsigned and the shipped
+        # core treats integrity as unconfigured — acceptable only for dev, never a signed release.
+        manifest_key=os.getenv('AUDIO_MANIFEST_KEY_FILE')
+        if manifest_key:
+            from build_manifest import load_key, write as write_manifest
+            _,entries=write_manifest(payload,version,load_key(manifest_key))
+            print(f'Signed payload manifest: {entries} entries')
+        elif os.getenv('AUDIO_RELEASE_HARDENED')=='1':
+            raise RuntimeError('AUDIO_MANIFEST_KEY_FILE required for a hardened release build')
+        else:
+            print('WARNING: AUDIO_MANIFEST_KEY_FILE not set; payload manifest unsigned (integrity unconfigured).')
         with zipfile.ZipFile(staging/'payload.zip','w',zipfile.ZIP_DEFLATED,compresslevel=1) as archive:
             for path in sorted(payload.rglob('*')):
                 if path.is_file():archive.write(path,path.relative_to(payload))
