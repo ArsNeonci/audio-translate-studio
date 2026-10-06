@@ -15,4 +15,11 @@ fn main() {
     assert_eq!(URL_SAFE_NO_PAD.decode(key).expect("invalid root encoding").len(), 32);
     println!("cargo:rustc-env=EMBEDDED_PRODUCT_ID={product}");
     println!("cargo:rustc-env=EMBEDDED_ROOT_PUBLIC_KEY={key}");
+    // Optional separate manifest key. Admin embeds it for release; absent in dev builds,
+    // where integrity verification reports itself unconfigured instead of failing closed.
+    let manifest = match data.get("manifest_public_key").and_then(|v| v.as_str()) {
+        Some(m) => { assert_eq!(URL_SAFE_NO_PAD.decode(m).expect("invalid manifest encoding").len(), 32); m.to_string() }
+        None => String::new(),
+    };
+    println!("cargo:rustc-env=EMBEDDED_MANIFEST_PUBLIC_KEY={manifest}");
 }

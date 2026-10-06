@@ -78,6 +78,54 @@ fn fixture(machine: &str, sequence: u64, key_version: u64, product: &str) -> (St
     assert_eq!(license::tier("audio-translate-plus"),"plus");
     assert_eq!(license::tier("audio-translate"),"plus");
 }
+fn sign_manifest(key: &SigningKey, version: &str, entries: &[manifest::Entry]) -> String {
+    #[derive(serde::Serialize)] struct S<'a> { version: &'a str, entries: &'a [manifest::Entry] }
+    let mut msg = b"payload-manifest-v1".to_vec(); msg.push(0);
+    msg.extend(license::canonical(&S { version, entries }).unwrap());
+    URL_SAFE_NO_PAD.encode(key.sign(&msg).to_bytes())
+}
+fn file_sha(p: &std::path::Path) -> String { use sha2::{Digest, Sha256}; hex::encode(Sha256::digest(std::fs::read(p).unwrap())) }
+
+#[test] fn manifest_verify_and_tamper() {
+    let key = SigningKey::from_bytes(&[31; 32]);
+    let pubk = URL_SAFE_NO_PAD.encode(key.verifying_key().to_bytes());
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("core.exe"), b"BINARY").unwrap();
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::write(dir.path().join("config/a.json"), b"{}").unwrap();
+    let entries = vec![
+        manifest::Entry { path: "core.exe".into(), sha256: file_sha(&dir.path().join("core.exe")), kind: "binary".into(), version: "1".into(), runtime: true },
+        manifest::Entry { path: "config/a.json".into(), sha256: file_sha(&dir.path().join("config/a.json")), kind: "config".into(), version: "1".into(), runtime: false },
+    ];
+    let signature = sign_manifest(&key, "1.2.0", &entries);
+    let m = manifest::Manifest { version: "1.2.0".into(), entries, signature };
+    let json = serde_json::to_string(&m).unwrap();
+    let parsed = manifest::parse_with(&json, &pubk).unwrap();
+    assert!(manifest::verify_tree(dir.path(), &parsed, manifest::Scope::Install).is_ok());
+    assert!(manifest::verify_tree(dir.path(), &parsed, manifest::Scope::Runtime).is_ok());
+    // A different key must not validate the same manifest bytes.
+    let other = URL_SAFE_NO_PAD.encode(SigningKey::from_bytes(&[32; 32]).verifying_key().to_bytes());
+    assert_eq!(manifest::parse_with(&json, &other).unwrap_err(), "INTEGRITY_FAILURE");
+    // Config altered: runtime scope skips non-runtime entries, install scope catches it.
+    std::fs::write(dir.path().join("config/a.json"), b"{\"x\":1}").unwrap();
+    assert!(manifest::verify_tree(dir.path(), &parsed, manifest::Scope::Runtime).is_ok());
+    assert_eq!(manifest::verify_tree(dir.path(), &parsed, manifest::Scope::Install).unwrap_err(), "INTEGRITY_FAILURE");
+    // Binary altered: both scopes fail as UNTRUSTED_BINARY.
+    std::fs::write(dir.path().join("core.exe"), b"HACKED!").unwrap();
+    assert_eq!(manifest::verify_tree(dir.path(), &parsed, manifest::Scope::Runtime).unwrap_err(), "UNTRUSTED_BINARY");
+}
+
+#[test] fn manifest_rejects_traversal() {
+    let key = SigningKey::from_bytes(&[31; 32]);
+    let pubk = URL_SAFE_NO_PAD.encode(key.verifying_key().to_bytes());
+    for bad in ["../evil", "C:/evil", "/evil", "a/../b", ""] {
+        let entries = vec![manifest::Entry { path: bad.into(), sha256: "ab".repeat(32), kind: "binary".into(), version: "1".into(), runtime: true }];
+        let signature = sign_manifest(&key, "1", &entries);
+        let m = manifest::Manifest { version: "1".into(), entries, signature };
+        assert_eq!(manifest::parse_with(&serde_json::to_string(&m).unwrap(), &pubk).unwrap_err(), "INTEGRITY_FAILURE", "path {bad:?}");
+    }
+}
+
 #[test] fn all_admission_commands_protected() {
     for action in ["create","convert","reprocess","resume","preflight","review"] { assert_eq!(command_protected("manage.py",action),Ok(true)); }
     assert_eq!(command_protected("retry.py","retry"),Ok(true));

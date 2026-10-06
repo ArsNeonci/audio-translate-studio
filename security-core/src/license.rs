@@ -7,6 +7,9 @@ use serde_json::{json, Value};
 pub type Result<T> = std::result::Result<T, &'static str>;
 pub const PRODUCT: &str = env!("EMBEDDED_PRODUCT_ID");
 pub const ROOT: &str = env!("EMBEDDED_ROOT_PUBLIC_KEY");
+/// Separate Ed25519 key for the payload manifest; never the license root. Empty when
+/// a release manifest key has not been embedded (dev builds): integrity stays unconfigured.
+pub const MANIFEST: &str = env!("EMBEDDED_MANIFEST_PUBLIC_KEY");
 /// Edition decided by the compiled Product ID; the legacy single product keeps full features.
 pub fn tier(product: &str) -> &'static str { if product.ends_with("-basic") { "basic" } else { "plus" } }
 
@@ -39,7 +42,7 @@ struct SignedCertificate { payload: Certificate, signature: String }
 struct Envelope { scheme: String, certificate: SignedCertificate, payload: Payload, signature: String }
 
 // Existing Python wire format uses sorted keys and ensure_ascii=True.
-fn canonical<T: Serialize>(value: &T) -> Result<Vec<u8>> {
+pub(crate) fn canonical<T: Serialize>(value: &T) -> Result<Vec<u8>> {
     let v = serde_json::to_value(value).map_err(|_| "INVALID")?;
     let s = serde_json::to_string(&v).map_err(|_| "INVALID")?;
     let mut ascii = String::new();
@@ -52,7 +55,7 @@ fn canonical<T: Serialize>(value: &T) -> Result<Vec<u8>> {
     }
     Ok(ascii.into_bytes())
 }
-fn signature<T: Serialize>(public: &str, domain: &str, value: &T, encoded: &str) -> Result<()> {
+pub(crate) fn signature<T: Serialize>(public: &str, domain: &str, value: &T, encoded: &str) -> Result<()> {
     let key: [u8; 32] = URL_SAFE_NO_PAD.decode(public).map_err(|_| "INVALID")?.try_into().map_err(|_| "INVALID")?;
     let key = VerifyingKey::from_bytes(&key).map_err(|_| "INVALID")?;
     let sig = Signature::from_slice(&URL_SAFE_NO_PAD.decode(encoded).map_err(|_| "INVALID")?).map_err(|_| "INVALID")?;

@@ -1,5 +1,6 @@
 #![cfg(windows)]
 mod license;
+mod manifest;
 mod windows;
 #[cfg(test)] mod tests;
 
@@ -59,6 +60,14 @@ fn app_root() -> Result<PathBuf> {
     let exe = env::current_exe().map_err(|_| "CORE_UNAVAILABLE")?;
     Ok(exe.parent().and_then(Path::parent).and_then(Path::parent).ok_or("CORE_UNAVAILABLE")?.to_path_buf())
 }
+/// Verify the signed payload manifest. Dev builds have no manifest key embedded, so integrity
+/// reports itself unconfigured and is skipped; release builds fail closed with a tamper state.
+fn app_integrity(app: &Path, scope: manifest::Scope) -> Result<()> {
+    match manifest::load_and_verify(app, scope) {
+        Ok(()) | Err("INTEGRITY_UNCONFIGURED") => Ok(()),
+        Err(code) => Err(code),
+    }
+}
 fn python(app: &Path) -> Result<PathBuf> {
     let bundled = app.parent().ok_or("CORE_UNAVAILABLE")?.join("runtime/python/python.exe");
     let dev = app.join(".venv/Scripts/python.exe");
@@ -80,6 +89,7 @@ fn launch(request: &Value, workflow: bool) -> Result<i32> {
     let script;
     let mut args = Vec::new();
     if workflow {
+        app_integrity(&app, manifest::Scope::Runtime)?;
         check(true)?;
         script = "orchestrator.py";
         let input = PathBuf::from(request["job_dir"].as_str().ok_or("INVALID_ACTION")?);
@@ -92,7 +102,9 @@ fn launch(request: &Value, workflow: bool) -> Result<i32> {
         args.push(job.to_string_lossy().to_string());
     } else {
         script = request["script"].as_str().ok_or("INVALID_ACTION")?;
-        if command_protected(script, request["payload"]["action"].as_str().ok_or("INVALID_ACTION")?)? { check(true)?; }
+        if command_protected(script, request["payload"]["action"].as_str().ok_or("INVALID_ACTION")?)? {
+            app_integrity(&app, manifest::Scope::Runtime)?; check(true)?;
+        }
     }
     let mut command = Command::new(python(&app)?);
     command.arg(app.join("worker").join(script)).args(args).current_dir(&app)
@@ -111,6 +123,11 @@ fn execute(request: &Value) -> Result<Value> {
         "identity" => Ok(json!({"product_id":PRODUCT,"tier":tier(PRODUCT),"root_public_key":ROOT,"protocol":1})),
         "credential" => credential(),
         "machine" => Ok(json!({"machine_id":windows::machine_id()?, "product_id":PRODUCT})),
+        "integrity" => {
+            let scope = if request["scope"].as_str() == Some("runtime") { manifest::Scope::Runtime } else { manifest::Scope::Install };
+            app_integrity(&app_root()?, scope)?;
+            Ok(json!({"status":"VERIFIED", "configured":manifest::configured(), "product_id":PRODUCT}))
+        }
         "check" => check(request["internet"].as_bool().unwrap_or(true)),
         "status" => {
             let result = (|| {
