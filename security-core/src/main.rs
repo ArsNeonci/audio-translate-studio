@@ -1,10 +1,12 @@
 #![cfg(windows)]
 mod ipc;
+mod lease;
 mod license;
 mod manifest;
 mod windows;
 #[cfg(test)] mod tests;
 
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use license::{tier, Result, PRODUCT, ROOT};
 use serde_json::{json, Value};
 use std::{env, io::{Read, Write}, path::{Path, PathBuf}, process::{Command, Stdio}, time::{Duration, SystemTime, UNIX_EPOCH}};
@@ -61,12 +63,22 @@ fn app_root() -> Result<PathBuf> {
     let exe = env::current_exe().map_err(|_| "CORE_UNAVAILABLE")?;
     Ok(exe.parent().and_then(Path::parent).and_then(Path::parent).ok_or("CORE_UNAVAILABLE")?.to_path_buf())
 }
+/// Append a tamper/security event to a local log only (no network, no user content). Canary and
+/// integrity failures land here so an operator can see them without any data leaving the machine.
+fn note_tamper(code: &str) {
+    let Ok(state) = state_path() else { return; };
+    let Some(dir) = state.parent() else { return; };
+    let _ = std::fs::create_dir_all(dir);
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("security-events.log")) {
+        let _ = writeln!(file, "{{\"time\":{},\"event\":\"{}\",\"product_id\":\"{}\"}}", now(), code, PRODUCT);
+    }
+}
 /// Verify the signed payload manifest. Dev builds have no manifest key embedded, so integrity
 /// reports itself unconfigured and is skipped; release builds fail closed with a tamper state.
 fn app_integrity(app: &Path, scope: manifest::Scope) -> Result<()> {
     match manifest::load_and_verify(app, scope) {
         Ok(()) | Err("INTEGRITY_UNCONFIGURED") => Ok(()),
-        Err(code) => Err(code),
+        Err(code) => { note_tamper(code); Err(code) }
     }
 }
 /// Map a status string received from the service back to a static code for error emission.
@@ -180,8 +192,25 @@ fn execute(request: &Value) -> Result<Value> {
         "content_key" => {
             app_integrity(&app_root()?, manifest::Scope::Runtime)?;
             check(false)?;
-            if license::CONTENT_KEY.is_empty() { return Err("VAULT_UNCONFIGURED"); }
-            Ok(json!({"status":"OK", "content_key":license::CONTENT_KEY, "product_id":PRODUCT}))
+            let state = state_path()?;
+            let dir = state.parent().ok_or("INVALID")?;
+            let machine = windows::machine_id()?;
+            match lease::content_key(dir, ROOT, &machine, now())? {
+                // A lease-wrapped key is machine-bound; expiry/rollback are enforced in lease::content_key.
+                Some(key) => Ok(json!({"status":"OK", "content_key":URL_SAFE_NO_PAD.encode(key), "source":"lease", "product_id":PRODUCT})),
+                None if !license::CONTENT_KEY.is_empty() => Ok(json!({"status":"OK", "content_key":license::CONTENT_KEY, "source":"embedded", "product_id":PRODUCT})),
+                None => Err("VAULT_UNCONFIGURED"),
+            }
+        }
+        "machine_pubkey" => {
+            let state = state_path()?;
+            Ok(json!({"status":"OK", "machine_pubkey":lease::machine_public(state.parent().ok_or("INVALID")?)?, "machine_id":windows::machine_id()?, "product_id":PRODUCT}))
+        }
+        "install_lease" => {
+            let state = state_path()?;
+            let dir = state.parent().ok_or("INVALID")?;
+            let payload = lease::install(dir, request["token"].as_str().ok_or("INVALID")?, ROOT, &windows::machine_id()?, now())?;
+            Ok(json!({"status":"OK", "counter":payload.counter, "expires_at":payload.expires_at, "license_id":payload.license_id, "product_id":PRODUCT}))
         }
         "check" => check(request["internet"].as_bool().unwrap_or(true)),
         "status" => {

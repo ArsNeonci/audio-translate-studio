@@ -101,14 +101,68 @@ worker call can still obtain asset data; the monetization gate is lease expiry (
 `build_installer.py` builds the vault and (hardened) compiles modules when `AUDIO_CONTENT_KEY_FILE`
 is set; the plaintext asset sources are then dropped. Unset stays dev-plaintext.
 
-## 2C — Lease, content key, rollback, ModelVault, canary (pending)
-Planned on `admin-system`/`billing-gateway` (code + local test only; each gets its own git repo).
-Short-lived lease (default 7 days) carrying a machine-wrapped content key; DPAPI lease storage with
-highest sequence; offline grace; online rollback detection; ModelVault interface; canary values.
+## 2C — Lease, machine-wrapped content key, rollback, ModelVault, canary (implemented)
 
-## 6b — Server-side detection and revocation (pending)
-Planned: server-clock license evaluation, anomaly logging (no user content), escalation policy,
-manual revoke/restore. A crack that never contacts the server is only blocked when the lease expires.
+Server repos `admin-system`, `billing-gateway`, `shared-license-sdk` each got their own git repo
+(secrets/DBs/keys gitignored) and a "Snapshot before security phase 2C" commit. Code + local tests
+only; nothing deployed.
+
+### Lease + content-key wrapping (verified cross-language)
+- ECIES: X25519 → HKDF-SHA256 → AES-256-GCM. The service holds a machine X25519 keypair
+  (`security-core/src/lease.rs`, DPAPI-sealed); `shared-license-sdk/license_sdk/crypto.py` wraps the
+  content key for that public key. Python-wraps / Rust-unwraps verified end to end.
+- `admin-system/core.py` `issue_lease(license_id, machine_public, duration_days=7)`: signs a lease
+  (cert chain + domain `machine-lease-v1`) carrying license_id, machine_id, a per-license monotonic
+  counter, nonce, issued/expires (min of license expiry and now+duration), key_version and the
+  wrapped key. Content key is a per-product 32-byte key generated at product registration, stored
+  DPAPI-encrypted (`content_keys` table); `content_key(product_id)` exports it for the build.
+- Client (`lease.rs`): actions `machine_pubkey`, `install_lease`, and `content_key` (now prefers the
+  lease, falling back to the 2B embedded key). Lease stored DPAPI (`lease.dpapi`) with the highest
+  counter and last-verified time.
+- Rollback: an older lease restored offline (counter < stored highest) → `SECURE_STATE_INVALID`;
+  a backward clock vs last-verified → `CLOCK_ROLLBACK`.
+- Offline grace: `GRACE_SECONDS` (default 3 days) past expiry still serves the key; beyond →
+  `LICENSE_EXPIRED` blocks new processing. History/download stay available (unchanged UI policy).
+- Gateway (`billing-gateway/gateway.py`): `POST /v1/lease` forwards to the authority via an injected
+  `lease_issuer`; a `guard` on `/v1/translate` and `/v1/tts` calls an injected `evaluator`.
+
+### ModelVault (`worker/audio_translate/core/model_vault.py`)
+Interface + reference sealer/opener for a future private/fine-tuned model: AES-256-GCM under the
+service-released content key. Public upstream weights are never encrypted. Not routed today.
+
+### Canary / local tamper log
+`security-core` appends tamper/integrity failures to a local `security-events.log` (no network, no
+user content). `worker/config/*.json` (including any decoy value) is manifest-protected, so touching
+it raises `INTEGRITY_FAILURE` and is logged locally.
+
+## 6b — Server-side detection and revocation (implemented, local)
+
+- `admin-system/core.py`: `evaluate_request(license_id, machine_id)` judges each work request on the
+  **server clock** (never the client's): `OK`, `LICENSE_EXPIRED`, `LICENSE_REVOKED`, `WRONG_MACHINE`
+  or `INVALID`, logging an anomaly event each time a denial happens. `revoke`/`restore` flip license
+  status; `events` lists the log. `_suspicious` flags a license with ≥5 denials in 60 minutes.
+- Events store only ids, machine id, kind, timestamp and a short detail (counter/reason) — never user
+  content (test asserts this).
+- The gateway `guard` blocks a revoked/expired license's work requests with the matching code; the
+  client shows the i18n message and keeps history/download.
+- **A crack that never contacts the server is only blocked when its lease expires** (offline grace
+  then block); online, abnormal tokens are detected and can be revoked.
+
+### Tests (server)
+- `admin-system/test_lease.py` 6/6: lease wraps the content key for the machine (unwrap matches the
+  product key), monotonic counter, server-clock expiry (client clock cannot revoke), revoke blocks /
+  restore re-enables, repeated denials flag suspicious with no user content, wrong-machine flagged.
+- `admin-system` existing suite 28/28 still pass (content-key generation added to registration).
+- `billing-gateway/test_lease_gateway.py` 4/4: `/v1/lease` forwarding, bad machine key rejected,
+  unavailable without issuer, guard blocks a revoked work request. `test_gateway.py` 13/13 still pass.
+  (`test_platform.py` needs numpy for TTS, absent in this environment — unrelated to these changes.)
+- Rust cross-language lease test: install → content_key (source=lease) matches K, counter rollback →
+  SECURE_STATE_INVALID, expiry beyond grace → LICENSE_EXPIRED.
+
+### Remaining wiring (not deployable here)
+The live app → gateway `/v1/lease` → authority call, periodic lease renewal, and the gateway↔admin
+link that feeds `lease_issuer`/`evaluator` in production are integration glue that needs both servers
+running; the mechanisms they call are implemented and tested. No deploy was performed.
 
 ## Tests and verification (what actually ran here)
 - Rust unit tests: **12/12** (license + manifest: sign/verify, wrong key, tampered config vs binary,

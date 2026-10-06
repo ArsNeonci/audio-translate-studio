@@ -50,6 +50,10 @@ fn protect(raw: &mut [u8], decrypt: bool) -> Result<Vec<u8>> {
     unsafe { std::ptr::write_bytes(output.pbData, 0, output.cbData as usize); LocalFree(output.pbData.cast()); }
     raw.fill(0); Ok(result)
 }
+/// DPAPI-seal arbitrary bytes for the current machine account (machine X25519 key, lease state).
+pub fn seal(plain: &[u8]) -> Result<Vec<u8>> { let mut buf = plain.to_vec(); protect(&mut buf, false) }
+pub fn unseal(raw: &[u8]) -> Result<Vec<u8>> { let mut buf = raw.to_vec(); protect(&mut buf, true) }
+
 pub struct Store { pub path: PathBuf, _lock: File }
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {

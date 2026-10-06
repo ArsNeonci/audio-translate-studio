@@ -24,7 +24,7 @@ from build_security_core import build, ROOT
 import build_manifest as bm
 sys.path.insert(0, str(ROOT.parent / 'shared-license-sdk'))
 sys.path.insert(0, str(ROOT / 'worker'))
-from license_sdk.crypto import private, public, sign, token
+from license_sdk.crypto import private, public, sign, token, lease_token, wrap_content_key
 from audio_translate.core import secure_channel as sc
 
 PRODUCT = 'audio-translate'
@@ -185,6 +185,33 @@ class Phase2(unittest.TestCase):
         self.assertTrue(raw.startswith(b'ATVAULT1\n'))
         opened = AESGCM(key).decrypt(raw[9:21], raw[21:], b'names')
         self.assertEqual(json.loads(opened)['surnames']['王'], 'Vương')
+
+    def test_client_lease_install_unwrap_and_rollback(self):
+        import base64
+        state = self.base / 'lease-client-state'
+        self.assertEqual(self.cli({'action': 'activate', 'token': self.issue()}, state=state)['status'], 'ACTIVE')
+        machine_pub = self.cli({'action': 'machine_pubkey'}, state=state)['machine_pubkey']
+        signer = private(bytes([19]) * 32)
+        cert = {'product_id': PRODUCT, 'key_version': 1, 'public_key': public(signer)}
+        certificate = {'payload': cert, 'signature': sign(self.root_key, 'product-signing-key-v1', cert)}
+        now = datetime.now(timezone.utc)
+        leased_key = secrets.token_bytes(32)
+
+        def lease(counter, days):
+            payload = {'license_id': 'synthetic', 'machine_id': self.machine, 'product_id': PRODUCT, 'counter': counter,
+                       'nonce': secrets.token_hex(8), 'issued_at': now.isoformat(),
+                       'expires_at': (now + timedelta(days=days)).isoformat(), 'key_version': 1,
+                       'wrapped_key': wrap_content_key(machine_pub, leased_key)}
+            return lease_token(certificate, payload, signer)
+
+        self.assertEqual(self.cli({'action': 'install_lease', 'token': lease(1, 7)}, state=state)['status'], 'OK')
+        result = self.cli({'action': 'content_key'}, state=state)
+        self.assertEqual(result.get('source'), 'lease', result)
+        key = base64.urlsafe_b64decode(result['content_key'] + '=' * ((-len(result['content_key'])) % 4))
+        self.assertEqual(key, leased_key)  # lease key overrides the embedded one and unwraps correctly
+        self.assertEqual(self.cli({'action': 'install_lease', 'token': lease(2, 7)}, state=state)['status'], 'OK')
+        # An older lease restored offline is a rollback.
+        self.assertEqual(self.cli({'action': 'install_lease', 'token': lease(1, 7)}, state=state).get('status'), 'SECURE_STATE_INVALID')
 
     # --- Fail closed when the service is down (release build) ---------------
     def test_release_blocks_without_service_even_if_python_patched(self):
