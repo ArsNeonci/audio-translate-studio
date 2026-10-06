@@ -244,12 +244,35 @@ period ends the app locks, **including a cracked copy**. This follow-up wires th
 - Admin `test_lease.py` 8/8, `test_lease_link.py` 3/3 (Admin pushes to the real gateway code in-process;
   the lease verifies against the Admin root and unwraps to the product key), plus existing suites.
 
-### Residual risks specific to this
-- A cracked copy that **patches the service binary** (not just Python) is stopped by the manifest and
-  the Authenticode work planned for Phase 3, not by the lease alone.
-- The content key is **one per product**: someone who extracts it once while licensed can decrypt that
-  version's vault forever. Rotate the key with each release so old extractions stop working on new builds.
-- The lease signer lives on the gateway VPS, so protect that host like the Gemini key (file mode 600).
+### Hardening of the risks above (done 2026-10-07)
+
+| Earlier risk | Fix | Status |
+|---|---|---|
+| One vault key per product: a key extracted once opens that version forever | **One content key per released app version** (`content_key_versions`, created on first export for a build). A key taken from one build opens no other build. The app sends its version with the lease request and the gateway wraps that release's key. A build can be **retired** (`retire_version`): it stops receiving leases and its users must update. | Fixed |
+| The gateway VPS holds the key that signs leases, so its compromise could mint licenses | The gateway now holds a **lease-only signer** with its own certificate domain (`product-lease-key-v1`). The core accepts it for leases only, so it can never sign a license (test: a license signed with the lease key is rejected as INVALID). The license signer and root stay on the Admin machine. | Fixed |
+| Signing material readable from a copied database or backup | Material is **AES-256-GCM encrypted at rest** under `LEASE_MASTER_KEY` (32+ characters, in the service environment, not in the database). Without the key the lease service stays off and logs that loudly. | Fixed (see limit below) |
+| A cracked copy that patches the service binary itself | Cannot be closed by code alone: the patched binary can skip any check it contains. Needs the signed-binary work of Phase 3 (Authenticode, and clients checking the signature of the process on the pipe). | Open, Phase 3 |
+
+Operating notes
+- Release flow: `python export_build_keys.py --product <id> --version <x.y.z> --out <file outside any repo>`,
+  point `AUDIO_CONTENT_KEY_FILE` at it, bump the product version, build, then push lease material
+  (`/api/billing/lease-materials`). Later, `/api/billing/retire-version` retires an old build.
+- Keep an offline copy of `LEASE_MASTER_KEY`. Losing it only means Admin must push the material again.
+- Limit that remains: whoever has root on the gateway host can read the master key from the service
+  environment and so the material. The fix shrinks what that exposes (a lease signer, not a license
+  signer) rather than removing it; file mode 600 and normal host hardening still apply.
+- Existing leases signed under the earlier certificate domain no longer verify; none had shipped.
+- The lease request carries the app version, so older apps that omit it receive only the legacy key,
+  which opens only vaults built with that legacy key.
+
+Tests: Rust 13; `test_security_phase2.py` 11 (adds forged-license rejection); admin `test_lease.py` 11
+(lease signer separation, per-version keys and retirement, export refuses a path inside a repository),
+`test_lease_link.py` 4; gateway `test_lease_gateway.py` 10 (encrypted at rest, wrong master key fails,
+version routing, retired and unsupported builds) plus `test_gateway.py` 13; tsc and eslint clean.
+
+### Residual risks that remain
+- A cracked copy that **patches the service binary** is not stopped by the lease alone (Phase 3).
 - Per-stage execution context is still not threaded through the orchestrator (2B limitation).
+- A key leaked from a build you shipped still opens that one build; retire it to force an update.
 - Not run here: the live app against a running gateway (needs both servers), the real service as
   Administrator, two physical machines, and benchmarks.

@@ -193,7 +193,7 @@ class Phase2(unittest.TestCase):
         machine_pub = self.cli({'action': 'machine_pubkey'}, state=state)['machine_pubkey']
         signer = private(bytes([19]) * 32)
         cert = {'product_id': PRODUCT, 'key_version': 1, 'public_key': public(signer)}
-        certificate = {'payload': cert, 'signature': sign(self.root_key, 'product-signing-key-v1', cert)}
+        certificate = {'payload': cert, 'signature': sign(self.root_key, 'product-lease-key-v1', cert)}
         now = datetime.now(timezone.utc)
         leased_key = secrets.token_bytes(32)
 
@@ -220,7 +220,7 @@ class Phase2(unittest.TestCase):
         machine_pub = self.cli({'action': 'machine_pubkey'}, binary=binary, state=state)['machine_pubkey']
         signer = private(bytes([19]) * 32)
         cert = {'product_id': PRODUCT, 'key_version': 1, 'public_key': public(signer)}
-        certificate = {'payload': cert, 'signature': sign(self.root_key, 'product-signing-key-v1', cert)}
+        certificate = {'payload': cert, 'signature': sign(self.root_key, 'product-lease-key-v1', cert)}
         now = datetime.now(timezone.utc)
 
         def lease(counter, expires_in, grace=None):
@@ -266,6 +266,18 @@ class Phase2(unittest.TestCase):
         self.assertEqual(run({'action': 'install_lease', 'token': lease(2, timedelta(days=30))})['status'], 'SECURE_STATE_INVALID')
         self.assertEqual(run({'action': 'install_lease', 'token': lease(3, timedelta(days=30))})['status'], 'OK')
         self.assertEqual(run({'action': 'content_key'})['status'], 'OK')
+
+    def test_lease_signer_cannot_forge_a_license(self):
+        # Someone who steals the gateway's lease signer must not be able to mint licenses with it.
+        lease_signer = private(bytes([77]) * 32)
+        cert = {'product_id': PRODUCT, 'key_version': 1, 'public_key': public(lease_signer)}
+        certificate = {'payload': cert, 'signature': sign(self.root_key, 'product-lease-key-v1', cert)}
+        now = datetime.now(timezone.utc)
+        payload = {'license_id': 'forged', 'entitlement_id': 'e', 'customer_id': 'c', 'product_id': PRODUCT, 'machine_id': self.machine,
+                   'sequence': 1, 'activated_at': (now - timedelta(days=1)).isoformat(), 'issued_at': (now - timedelta(days=1)).isoformat(),
+                   'expires_at': (now + timedelta(days=365)).isoformat(), 'key_version': 1}
+        forged = token(certificate, payload, lease_signer)
+        self.assertEqual(self.cli({'action': 'activate', 'token': forged}, state=self.base / 'forge-state')['status'], 'INVALID')
 
     def test_release_build_has_no_embedded_key_fallback(self):
         lease, run = self._lease_env('release-lease-state', binary=self.release)

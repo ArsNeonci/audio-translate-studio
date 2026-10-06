@@ -72,7 +72,8 @@ pub fn verify_lease(token: &str, root: &str, machine: &str) -> Result<LeasePaylo
     let e: Envelope = serde_json::from_slice(&raw).map_err(|_| "SECURE_STATE_INVALID")?;
     if e.scheme != "ed25519-lease-v1" { return Err("SECURE_STATE_INVALID"); }
     let c = &e.certificate.payload;
-    verify_sig(root, "product-signing-key-v1", c, &e.certificate.signature).map_err(|_| "SECURE_STATE_INVALID")?;
+    // A separate certificate domain: the lease signer (held by the gateway) can never sign a license.
+    verify_sig(root, "product-lease-key-v1", c, &e.certificate.signature).map_err(|_| "SECURE_STATE_INVALID")?;
     if c.product_id != PRODUCT || e.payload.product_id != PRODUCT { return Err("WRONG_PRODUCT"); }
     verify_sig(&c.public_key, "machine-lease-v1", &e.payload, &e.signature).map_err(|_| "SECURE_STATE_INVALID")?;
     let p = e.payload;

@@ -21,6 +21,14 @@ async function endpoint(): Promise<string | null> {
   } catch { return null; }
 }
 
+// The installed build's version, so the gateway wraps that release's own vault key.
+async function appVersion(): Promise<string | undefined> {
+  try {
+    const config = JSON.parse(await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ process.cwd(), "licensing", "public-config.json"), "utf8"));
+    return typeof config.version === "string" && /^\d+\.\d+\.\d+$/.test(config.version) ? config.version : undefined;
+  } catch { return undefined; }
+}
+
 async function renew(): Promise<LeaseOutcome> {
   const status = (await licenseCommand({ action: "lease_status" })) as Reply;
   const phase = typeof status.lease === "string" ? status.lease : "UNKNOWN";
@@ -36,7 +44,7 @@ async function renew(): Promise<LeaseOutcome> {
     response = await fetch(`${base}/v1/lease`, {
       method: "POST", signal: AbortSignal.timeout(20000), cache: "no-store",
       headers: { "Content-Type": "application/json", Authorization: `License ${credential.token}`, "User-Agent": "audio-translate-app/1" },
-      body: JSON.stringify({ machine_public: key.machine_pubkey }),
+      body: JSON.stringify({ machine_public: key.machine_pubkey, app_version: await appVersion() }),
     });
   } catch { return { lease: phase, renewed: false, error: "GATEWAY_UNREACHABLE" }; } // Offline: the grace period covers this.
   const body = (await response.json().catch(() => ({}))) as { lease?: string; error?: string };
