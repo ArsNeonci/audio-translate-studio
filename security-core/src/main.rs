@@ -264,6 +264,18 @@ fn execute(request: &Value) -> Result<Value> {
         _ => Err("INVALID_ACTION"),
     }
 }
+/// Phase 3 (modest, standard): the license service refuses to run under a debugger in release
+/// builds, so the authority's decisions cannot be single-stepped. Dev builds keep debugging.
+#[cfg(not(feature = "dev_fallback"))]
+fn anti_debug() {
+    if unsafe { windows_sys::Win32::System::Diagnostics::Debug::IsDebuggerPresent() } != 0 {
+        note_tamper("DEBUGGER_DETECTED");
+        std::process::exit(4);
+    }
+}
+#[cfg(feature = "dev_fallback")]
+fn anti_debug() {}
+
 fn emit_error(code: &str, broker: bool) {
     if broker { println!("{}", json!({"status":403,"error":code,"license_status":code})); }
     else { println!("{}", json!({"http_status":403,"status":code,"error":code,"product_id":PRODUCT})); }
@@ -272,8 +284,8 @@ fn main() {
     // Service / console server modes are selected by argument; the default stdin path is the
     // CLI used by the launcher (workflow/command) and dev tools.
     match env::args().nth(1).as_deref() {
-        Some("service") => { ipc::set_dispatch(service_dispatch); let _ = ipc::run_service(); return; }
-        Some("serve") => { ipc::set_dispatch(service_dispatch); let _ = ipc::serve(); return; }
+        Some("service") => { anti_debug(); ipc::set_dispatch(service_dispatch); let _ = ipc::run_service(); return; }
+        Some("serve") => { anti_debug(); ipc::set_dispatch(service_dispatch); let _ = ipc::serve(); return; }
         _ => {}
     }
     let mut raw = String::new();

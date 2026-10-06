@@ -29,8 +29,10 @@ MODULES = [
 def compile_module(py_path):
     out_dir = py_path.parent
     stem = py_path.stem
+    # Hardening: drop docstrings and the .pyi signature stub so the .pyd leaks less (Phase 3).
     subprocess.run([sys.executable, '-m', 'nuitka', '--module', '--mingw64',
-                    '--assume-yes-for-downloads', '--quiet', f'--output-dir={out_dir}', str(py_path)],
+                    '--assume-yes-for-downloads', '--quiet', '--no-pyi-file',
+                    '--python-flag=no_docstrings', f'--output-dir={out_dir}', str(py_path)],
                    check=True)
     built = list(out_dir.glob(f'{stem}.*.pyd'))
     if not built:

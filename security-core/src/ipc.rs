@@ -15,11 +15,13 @@ use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_
 use windows_sys::Win32::Security::Authorization::ConvertStringSecurityDescriptorToSecurityDescriptorW;
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FlushFileBuffers, ReadFile, WriteFile};
-use windows_sys::Win32::System::Pipes::{ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, WaitNamedPipeW};
+use windows_sys::Win32::System::Pipes::{ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, GetNamedPipeServerProcessId, WaitNamedPipeW};
 use windows_sys::Win32::System::Services::{
     RegisterServiceCtrlHandlerExW, SetServiceStatus, StartServiceCtrlDispatcherW, SERVICE_STATUS,
     SERVICE_STATUS_HANDLE, SERVICE_TABLE_ENTRYW,
 };
+use windows_sys::Win32::Security::{CreateWellKnownSid, EqualSid, GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser, WinLocalSystemSid};
+use windows_sys::Win32::System::Threading::{OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION};
 
 const PIPE_ACCESS_DUPLEX: u32 = 0x0000_0003;
 const PIPE_REJECT_REMOTE_CLIENTS: u32 = 0x0000_0008;
@@ -144,6 +146,31 @@ pub fn serve() -> Result<()> {
     }
 }
 
+/// Phase 3: confirm the process on the other end of the pipe runs as LocalSystem, i.e. the
+/// installed service, not a look-alike server a non-admin could start on the same pipe name.
+#[cfg_attr(feature = "dev_fallback", allow(dead_code))]
+fn server_is_local_system(pipe: HANDLE) -> bool {
+    let mut pid = 0u32;
+    if unsafe { GetNamedPipeServerProcessId(pipe, &mut pid) } == 0 { return false; }
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if process.is_null() { return false; }
+    let mut token: HANDLE = null_mut();
+    let opened = unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) };
+    unsafe { CloseHandle(process) };
+    if opened == 0 { return false; }
+    let mut needed = 0u32;
+    unsafe { GetTokenInformation(token, TokenUser, null_mut(), 0, &mut needed) };
+    let mut buffer = vec![0u8; needed as usize];
+    let got = unsafe { GetTokenInformation(token, TokenUser, buffer.as_mut_ptr().cast(), needed, &mut needed) };
+    let mut system = [0u8; 68];
+    let mut system_len = system.len() as u32;
+    let made = unsafe { CreateWellKnownSid(WinLocalSystemSid, null_mut(), system.as_mut_ptr().cast(), &mut system_len) };
+    let result = got != 0 && made != 0 && needed as usize >= std::mem::size_of::<TOKEN_USER>()
+        && unsafe { EqualSid((*(buffer.as_ptr() as *const TOKEN_USER)).User.Sid, system.as_mut_ptr().cast()) != 0 };
+    unsafe { CloseHandle(token) };
+    result
+}
+
 /// Connect to the service pipe, send one request and read one response.
 pub fn call(request: &Value) -> std::result::Result<Value, &'static str> {
     let body = serde_json::to_vec(request).map_err(|_| "INVALID_ACTION")?;
@@ -158,6 +185,9 @@ pub fn call(request: &Value) -> std::result::Result<Value, &'static str> {
         }
         return Err("SECURITY_SERVICE_UNAVAILABLE");
     };
+    // Release builds trust only the LocalSystem service; dev builds accept the console `serve`.
+    #[cfg(not(feature = "dev_fallback"))]
+    if !server_is_local_system(h) { unsafe { CloseHandle(h) }; return Err("SECURITY_SERVICE_UNAVAILABLE"); }
     let result = (|| -> std::result::Result<Value, &'static str> {
         write_all(h, &frame(&body)).map_err(|_| "SECURITY_SERVICE_UNAVAILABLE")?;
         let header = read_exact(h, 4).map_err(|_| "SECURITY_SERVICE_UNAVAILABLE")?;

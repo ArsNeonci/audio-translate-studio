@@ -287,6 +287,26 @@ class Phase2(unittest.TestCase):
         self.assertEqual(run({'action': 'content_key'})['source'], 'lease')
 
     # --- Fail closed when the service is down (release build) ---------------
+    def test_release_rejects_non_system_server_on_the_pipe(self):
+        # Phase 3: a look-alike server started by a non-admin (not LocalSystem) must be refused by
+        # the release launcher's peer check, so a fake service cannot authorize processing.
+        state = self.base / 'peer-state'
+        server = subprocess.Popen([str(self.release), 'serve'],
+                                  env={**os.environ, 'AUDIO_LICENSE_STATE_ROOT': str(state)},
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                  creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        try:
+            for _ in range(40):
+                if sc.available(PRODUCT): break
+                time.sleep(0.1)
+            self.assertTrue(sc.available(PRODUCT), 'test server did not come up')
+            result = self.cli({'action': 'workflow', 'job_dir': str(self.base / 'nope')}, binary=self.release, state=state)
+            self.assertEqual(result.get('license_status'), 'SECURITY_SERVICE_UNAVAILABLE', result)
+        finally:
+            server.terminate()
+            try: server.wait(timeout=10)
+            except Exception: server.kill()
+
     def test_release_blocks_without_service_even_if_python_patched(self):
         # No service is running for app2's product state root; the release launcher must refuse.
         gate = self.app2 / 'worker' / 'audio_translate' / 'core'

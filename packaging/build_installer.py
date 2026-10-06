@@ -20,6 +20,23 @@ from build_security_core import build as build_security_core
 def digest(path):
     with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
 
+def authenticode_sign(path):
+    """Phase 3: Authenticode-sign `path` with the release code-signing certificate when provided
+    (AUDIO_SIGNING_CERT = .pfx path, AUDIO_SIGNING_PASSWORD, optional AUDIO_SIGNING_TIMESTAMP_URL).
+    Needs signtool on PATH. A hardened release requires a cert; dev builds skip signing. The
+    certificate is identity-verified and must be obtained by the publisher; it is never in the repo."""
+    cert=os.getenv('AUDIO_SIGNING_CERT')
+    if not cert:
+        if os.getenv('AUDIO_RELEASE_HARDENED')=='1':raise RuntimeError('AUDIO_SIGNING_CERT required for a hardened release build')
+        return False
+    signtool=shutil.which('signtool') or shutil.which('signtool.exe')
+    if not signtool:raise RuntimeError('SIGNTOOL_NOT_FOUND: install the Windows SDK signing tools')
+    command=[signtool,'sign','/fd','SHA256','/f',cert]
+    if os.getenv('AUDIO_SIGNING_PASSWORD'):command+=['/p',os.environ['AUDIO_SIGNING_PASSWORD']]
+    command+=['/tr',os.getenv('AUDIO_SIGNING_TIMESTAMP_URL','http://timestamp.digicert.com'),'/td','SHA256',str(path)]
+    subprocess.run(command,check=True)
+    return True
+
 # Legacy single product plus the two editions. Admin injects each edition's public
 # config and build-only trust anchor into its own files, so builds never overwrite each other.
 EDITIONS={'audio-translate':'','audio-translate-basic':'Basic','audio-translate-plus':'Plus'}
@@ -88,7 +105,8 @@ def python_runtime(target, exclude=frozenset()):
     (target/'python312._pth').write_text('Lib\nDLLs\nLib/site-packages\n.\n../../app/worker\n',encoding='utf-8')
     return sorted({item['name']:item for item in inventory}.values(),key=lambda d:d['name'].lower())
 
-def build(product='audio-translate'):
+def build(product='audio-translate', customer=None):
+    # customer: optional tag recorded with the release for per-customer traceability (Phase 3).
     if os.name!='nt':raise RuntimeError('WINDOWS_REQUIRED')
     files=product_files(product);edition=EDITIONS[product]
     manifest=json.loads(files['manifest'].read_text(encoding='utf-8'))
@@ -116,6 +134,8 @@ def build(product='audio-translate'):
         # feature, so only the running Windows service can authorize processing. The installer must
         # then register and start that service (see packaging/manage_service.ps1).
         security_binary=build_security_core(files['anchor'],staging/'audio-security-core.exe',ROOT/'security-core'/'target',dev_fallback=os.getenv('AUDIO_RELEASE_HARDENED')!='1')
+        # Sign the native authority before it is copied in and hashed by the manifest.
+        authenticode_sign(security_binary)
         env={**os.environ,'AUDIO_NEXT_DIST_DIR':'.next-installer'}
         subprocess.run(['cmd.exe','/c','npm','run','build'],cwd=ROOT,env=env,check=True)
         standalone=ROOT/'.next-installer'/'standalone'
@@ -219,6 +239,12 @@ def build(product='audio-translate'):
             raise RuntimeError('AUDIO_MANIFEST_KEY_FILE required for a hardened release build')
         else:
             print('WARNING: AUDIO_MANIFEST_KEY_FILE not set; payload manifest unsigned (integrity unconfigured).')
+        # Phase 3: final secret scan — never ship a private key, token, DPAPI blob or database.
+        from scan_secrets import scan as scan_secrets
+        leaks = scan_secrets(payload)
+        if leaks:
+            raise RuntimeError('SECRET_SCAN_FAILED: ' + '; '.join(f'{reason}:{p.relative_to(payload)}' for p, reason in leaks[:10]))
+        print('Secret scan passed.')
         with zipfile.ZipFile(staging/'payload.zip','w',zipfile.ZIP_DEFLATED,compresslevel=1) as archive:
             for path in sorted(payload.rglob('*')):
                 if path.is_file():archive.write(path,path.relative_to(payload))
@@ -234,7 +260,10 @@ def build(product='audio-translate'):
             with (staging/'payload.zip').open('rb') as source:shutil.copyfileobj(source,output,1024*1024)
             output.write(b'ATSETUP1'+(staging/'payload.zip').stat().st_size.to_bytes(8,'little'))
         if not artifact.is_file() or artifact.stat().st_size<1000000:raise RuntimeError('INSTALLER_BUILD_FAILED')
+        # Sign the installer before recording its hash, so the recorded hash is the signed file's.
+        authenticode_sign(artifact)
         record={'product_id':config['product_id'],'version':config['version'],'source_sha256':fingerprint,'installer_sha256':digest(artifact),'size':artifact.stat().st_size,'payload_files':sum(p.is_file() for p in payload.rglob('*'))}
+        if customer:record['customer']=customer
         release.write_text(json.dumps(record,indent=2),encoding='utf-8');print(json.dumps(record))
         # The verified installer is the release; staging is not a second product.
         if staging.resolve().parent != dist.resolve():raise RuntimeError('UNSAFE_STAGING_CLEANUP')
@@ -243,4 +272,5 @@ def build(product='audio-translate'):
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser();parser.add_argument('--product',default='audio-translate',choices=sorted(EDITIONS))
-    build(parser.parse_args().product)
+    parser.add_argument('--customer',help='optional per-customer build tag recorded with the release')
+    args=parser.parse_args();build(args.product,args.customer)
