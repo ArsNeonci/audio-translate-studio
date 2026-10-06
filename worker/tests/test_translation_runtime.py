@@ -5,7 +5,7 @@ from unittest.mock import patch
 from audio_translate.tts.adapters import TranslationAdapter,adapter_settings
 from audio_translate.workflow.postprocess import translate,export_translation_partial,apply_glossary
 from audio_translate.core.storage import atomic_json,Checkpoints,read_json
-from audio_translate.translation.hymt_translation import ASSISTANT,STRATEGIES,attempt_seed,output_problem,TranslationFailure
+from audio_translate.translation.hymt_translation import ASSISTANT,strategies,attempt_seed,output_problem,TranslationFailure
 
 class Model:
     ctx=None
@@ -126,7 +126,7 @@ class TranslationRuntimeTests(unittest.TestCase):
         self.assertEqual(len(adapter.model.calls),3)
         # Rejected drafts are never fed back; the last attempt uses the literal template.
         self.assertTrue(all('Xin chào' not in call for call in adapter.model.calls))
-        self.assertIn(STRATEGIES[2][1],adapter.model.calls[-1])
+        self.assertIn(strategies()[2][1],adapter.model.calls[-1])
         self.assertEqual(export_translation_partial(self.job)['rows'],0)
     def test_repair_can_complete_without_chinese(self):
         adapter=self.adapter();original=adapter.model.create_completion;attempts=[]
@@ -188,7 +188,7 @@ class TranslationRuntimeTests(unittest.TestCase):
         adapter=self.adapter(response='Xin chào 你好')
         with self.assertRaises(TranslationFailure):adapter.infer('你好。','上文很长的背景。'*20)
         self.assertTrue(all('上文' not in call and '[' not in call for call in adapter.model.calls))
-        self.assertEqual([STRATEGIES[i][1] in call for i,call in enumerate(adapter.model.calls)],[True]*3)
+        self.assertEqual([strategies()[i][1] in call for i,call in enumerate(adapter.model.calls)],[True]*3)
     def test_output_budget_scales_with_source_and_runaway_is_retried(self):
         adapter=self.adapter();original=adapter.model.create_completion;budgets=[]
         def completion(prompt,**kwargs):
@@ -198,7 +198,7 @@ class TranslationRuntimeTests(unittest.TestCase):
             yield from original(prompt,**kwargs)
         adapter.model.create_completion=completion
         self.assertEqual(adapter.infer('就引起众人哗然。',''),'Mọi người xôn xao.')
-        self.assertEqual(budgets,[(48+6*8,STRATEGIES[0][2]),(48+6*8,STRATEGIES[1][2])])
+        self.assertEqual(budgets,[(48+6*8,strategies()[0][2]),(48+6*8,strategies()[1][2])])
     def test_multiline_or_bracket_output_is_rejected_for_a_subtitle_row(self):
         self.assertEqual(output_problem('[Nguồn tin]\nLúc đó tôi quên mất.','就引起众人哗然。'),'additional prompt/explanation content')
         self.assertEqual(output_problem('Câu một.\nCâu hai dài.','你好。'),'additional prompt/explanation content')

@@ -63,11 +63,43 @@ integrity-checks the tree and only authorizes when its own checks pass.
   `UNTRUSTED_BINARY` (plus `LICENSE_REVOKED`/`LICENSE_EXPIRED` for 2C/6b) block new processing and are
   localized in `lib/i18n/ui-text.ts`. User data is never deleted.
 
-## 2B — Protected worker and vault (pending)
-Planned: extract assets 1–5 data (translation prompt/strategy, Hán-Việt names, address profiles,
-genre/cleanup lexicons, postprocess) into an encrypted vault loaded via the service; per-stage
-execution context; compile remaining asset code with Nuitka (installed; `--mingw64`, gcc 13.2 present)
-or document infeasibility. Hooks only in 2A.
+## 2B — Protected worker and vault (implemented, with one documented limitation)
+
+### Asset vault (`worker/audio_translate/core/vault.py`, `packaging/build_vault.py`)
+- Assets 1–5 data is AES-256-GCM encrypted (per-asset, logical name as AAD) in `worker/vault/*.vault`.
+  The **content key** is released by the service action `content_key`, gated behind integrity +
+  an offline license check; the key is embedded in the release core (trust anchor `content_key`,
+  via `build.rs`) for 2B and will be replaced by a lease-wrapped key in 2C. Dev builds embed no key.
+- Data extracted from code into data files (loaded via the vault, plaintext fallback in dev):
+  - asset 1: `worker/config/translation-prompts.json` (STRATEGIES, GROUP_PROMPT, temperatures) —
+    exact strings preserved so checkpoint fingerprints are unchanged.
+  - asset 2: `worker/config/names.json` (compound/surname/given tables, ambiguous set).
+  - asset 3: `worker/config/address-profiles.json` (already a config; loader now vault-backed).
+  - asset 4: `worker/config/genre-lexicon.json`, `worker/config/source-cleanup.json`.
+- Loaders (`translation/hymt_translation.py`, `translation/names.py`, `translation/lexicon.py`,
+  `translation/source_cleanup.py`, `moderation/address.py`) read from the vault, falling back to the
+  plaintext source only when no vault file exists (dev). A hardened build ships the `.vault` files and
+  drops the plaintext sources.
+
+### Compiling asset code (`packaging/build_protected.py`)
+- Nuitka (`--module --mingw64`) is **feasible on this toolchain**: it compiled `names.py` to a
+  ~400 KB `.pyd` offline with the bundled gcc, and the compiled module imports and runs in-package.
+  The hardened installer compiles the asset modules to `.pyd` and drops the `.py`. PyInstaller is not
+  relied on for protection.
+
+### Execution context (documented limitation)
+The content key is gated by the service (integrity + license), so a direct `python worker.py` on an
+**expired/unlicensed** state gets no key and no asset data. Full per-stage execution-context binding
+(so that even on a *currently licensed* machine only an authorized workflow run can obtain the key)
+is **not wired through the orchestrator/stage subprocess chain**: doing so safely needs to run the
+real multi-stage pipeline, which this environment cannot (no heavy workflow, 2 GiB RAM headroom
+rule). The token mechanism belongs in the service; threading it from the launcher through the
+orchestrator to each stage is deferred and called out as residual. On a licensed machine a direct
+worker call can still obtain asset data; the monetization gate is lease expiry (2C).
+
+### Installer
+`build_installer.py` builds the vault and (hardened) compiles modules when `AUDIO_CONTENT_KEY_FILE`
+is set; the plaintext asset sources are then dropped. Unset stays dev-plaintext.
 
 ## 2C — Lease, content key, rollback, ModelVault, canary (pending)
 Planned on `admin-system`/`billing-gateway` (code + local test only; each gets its own git repo).

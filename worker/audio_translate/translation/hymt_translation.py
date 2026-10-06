@@ -35,14 +35,40 @@ def chat_format(metadata):
 # 60-character context the 1.8B model translated the context instead of the
 # source (workflow 000007 rows 553/567/570). Each attempt changes the instruction,
 # temperature and seed; a rejected draft is never fed back into the prompt.
-STRATEGIES = (
-    ('natural', '把下面的文本翻译成越南语，译文要自然流畅，符合越南语口语习惯，'
-                '保留原文的语气和情感，人名按汉越音译。不要额外解释。', .4),
-    ('conversational', '把下面的文本翻译成越南语。请像越南人日常对话那样自然地表达，'
-                       '语气生动，保留说话人的情绪；人名使用汉越音。只输出译文，不要额外解释。', .2),
-    ('literal', '把下面的文本翻译成越南语，不要额外解释。', 0.0),
-)
-PROMPT = STRATEGIES[0][1]
+# Asset 1 (translation prompt/strategy): templates live in the encrypted vault
+# (`translation-prompts`), loaded through the security service, with a plaintext dev fallback
+# (`worker/config/translation-prompts.json`). The exact strings are preserved so checkpoint
+# fingerprints stay valid.
+from functools import lru_cache as _lru_cache
+
+
+@_lru_cache(maxsize=1)
+def _prompts():
+    from audio_translate.core import vault
+    data = vault.load_json('translation-prompts', ROOT / 'worker' / 'config' / 'translation-prompts.json')
+    if data.get('version') != 1 or not isinstance(data.get('strategies'), list) or not data['strategies']:
+        raise ValueError('Invalid translation prompts')
+    strategies = tuple((s['name'], s['prompt'], s['temperature']) for s in data['strategies'])
+    return {'strategies': strategies, 'group_prompt': data['group_prompt'],
+            'group_temperatures': tuple(data['group_temperatures'])}
+
+
+def strategies():
+    return _prompts()['strategies']
+
+
+def prompt_text():
+    return strategies()[0][1]
+
+
+def group_prompt():
+    return _prompts()['group_prompt']
+
+
+def group_temperatures():
+    return _prompts()['group_temperatures']
+
+
 QUARANTINE_STREAK = 5
 
 # Sentence mode: consecutive subtitle rows are translated together with <sN> markers
@@ -52,10 +78,8 @@ QUARANTINE_STREAK = 5
 SEGMENTATION = 'sentence-v1'
 GROUP_ROWS, GROUP_CHARS, GROUP_ROW_CHARS = 6, 120, 80
 SENTENCE_END = '。！？!?…'
-GROUP_PROMPT = ('将以下<source></source>之间的文本翻译为越南语，译文要自然流畅，符合越南语口语习惯，保留原文的语气和情感。'
-                '注意只需要输出翻译后的结果，不要额外解释，原文中的<s1></s1>等标签表示分段，需要在译文中相应的位置保留这些标签。'
-                '输出格式为：<target>str</target>')
-GROUP_TEMPERATURES = (.4, .2)
+# GROUP_PROMPT and GROUP_TEMPERATURES moved to the vault asset `translation-prompts`
+# (see strategies()/group_prompt()/group_temperatures() above).
 
 
 class GroupFailure(RuntimeError):
@@ -164,7 +188,7 @@ def default_settings():
         'min_available_gib': float(os.getenv('HY_MT_MIN_AVAILABLE_GIB', '1')),
         'startup_available_gib': float(os.getenv('HY_MT_STARTUP_AVAILABLE_GIB', '6')),
         'memory_wait_seconds': float(os.getenv('HY_MT_MEMORY_WAIT_SECONDS', '120')),
-        'glossary': [], 'prompt': PROMPT, 'segmentation': 'sentence', 'version': 7,
+        'glossary': [], 'prompt': prompt_text(), 'segmentation': 'sentence', 'version': 7,
     }
 
 
@@ -346,13 +370,13 @@ class TranslationAdapter:
         `context` is accepted for checkpoint-key compatibility but deliberately not sent.
         `settings['prompt']` only identifies the job's fingerprint; the template lives here.
         """
-        user = self.glossary_block(source) + STRATEGIES[strategy][1] + '\n\n' + source
+        user = self.glossary_block(source) + strategies()[strategy][1] + '\n\n' + source
         user = re.sub(r'<[|｜]([^<>]+)[|｜]>', r'〈\1〉', user)
         return self.wrap(user)
 
     def group_prompt(self, texts):
         source = ''.join(f'<s{index}>{text}</s{index}>' for index, text in enumerate(texts, 1))
-        user = re.sub(r'<[|｜]([^<>]+)[|｜]>', r'〈\1〉', self.glossary_block(''.join(texts)) + GROUP_PROMPT)
+        user = re.sub(r'<[|｜]([^<>]+)[|｜]>', r'〈\1〉', self.glossary_block(''.join(texts)) + group_prompt())
         return self.wrap(user + '\n\n<source>' + source + '</source>')
 
     def chat(self):
@@ -419,7 +443,7 @@ class TranslationAdapter:
         if len(self.model.tokenize(prompt.encode('utf-8'), add_bos=False, special=True)) + budget > self.settings['n_ctx']:
             raise GroupFailure('group exceeds context budget')
         reasons = []
-        for attempt, temperature in enumerate(GROUP_TEMPERATURES):
+        for attempt, temperature in enumerate(group_temperatures()):
             result, complete = self.complete(prompt, slot, budget, attempt_seed(joined, 0, attempt), temperature)
             values, problem = self.split_group(result, texts) if complete else (None, 'output exceeded the length budget')
             if values is not None:
@@ -456,7 +480,7 @@ class TranslationAdapter:
         if not self.runtime: llama_set_n_threads(self.model.ctx, threads, threads)
         attempts, soft = [], None
         budget = output_budget(source, self.settings['output_tokens'])
-        for attempt, (strategy, _, temperature) in enumerate(STRATEGIES):
+        for attempt, (strategy, _, temperature) in enumerate(strategies()):
             seed = attempt_seed(source, recovery, attempt)
             prompt = self.prompt(source, context, attempt)
             input_tokens = len(self.model.tokenize(prompt.encode('utf-8'), add_bos=False, special=True))

@@ -12,7 +12,7 @@ import psutil
 from audio_translate.tts.adapters import TranslationAdapter, adapter_settings
 from audio_translate.core.license_gate import assert_allowed
 from audio_translate.workflow.postprocess import translate, export_translation_partial
-from audio_translate.translation.hymt_translation import PROMPT
+from audio_translate.translation.hymt_translation import prompt_text
 from audio_translate.core.storage import ROOT, atomic_json, read_json
 
 
@@ -27,7 +27,7 @@ def main():
     atomic_json(job / 'job.json', {'status': 'TRANSCRIPTION_COMPLETED'})
     settings = adapter_settings(job)
     settings['translation'].update(n_ctx=4096, source_tokens=768, output_tokens=1536,
-                                   n_batch=128, threads=4, startup_available_gib=args.startup_gib, prompt=PROMPT, version=5)
+                                   n_batch=128, threads=4, startup_available_gib=args.startup_gib, prompt=prompt_text(), version=5)
     atomic_json(job / 'working' / 'adapters.json', settings)
     sources = [
         {'start_ms': 0, 'end_ms': 4000, 'text': '你好，欢迎来到我们的频道。今天我们聊一聊怎样把中文翻译得更自然。'},

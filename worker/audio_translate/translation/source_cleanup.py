@@ -16,9 +16,14 @@ PUNCT = re.compile(r'^[\s，,。．.！!？?、；;：:…“”"\'‘’（）(
 
 
 def config():
-    path = os.getenv('SOURCE_CLEANUP_CONFIG') or str(ROOT/'worker'/'config'/'source-cleanup.json')
-    with open(path, encoding='utf-8-sig') as handle:
-        data = json.load(handle)
+    override = os.getenv('SOURCE_CLEANUP_CONFIG')
+    if override:
+        with open(override, encoding='utf-8-sig') as handle:
+            data = json.load(handle)
+    else:
+        # Asset 4 (language data): encrypted vault with a plaintext dev fallback.
+        from audio_translate.core import vault
+        data = vault.load_json('source-cleanup', ROOT/'worker'/'config'/'source-cleanup.json')
     if data.get('version') != 1 or not isinstance(data.get('boilerplate'), list) or not isinstance(data.get('asr_corrections'), list):
         raise ValueError('Invalid source cleanup config')
     for item in data['asr_corrections']:

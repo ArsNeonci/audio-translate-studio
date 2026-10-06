@@ -72,8 +72,12 @@ VI_MALE = re.compile(r'(?<!\w)(anh ấy|anh ta|ông ấy|ông ta|cậu ấy|cậ
 
 
 def config():
-    path = Path(os.getenv('ADDRESS_PROFILES_CONFIG', ROOT/'worker'/'config'/'address-profiles.json'))
-    return json.loads(path.read_text(encoding='utf-8-sig'))
+    override = os.getenv('ADDRESS_PROFILES_CONFIG')
+    if override:
+        return json.loads(Path(override).read_text(encoding='utf-8-sig'))
+    # Asset 3 (forms of address): encrypted vault with a plaintext dev fallback.
+    from audio_translate.core import vault
+    return vault.load_json('address-profiles', ROOT/'worker'/'config'/'address-profiles.json')
 
 
 def profiles():

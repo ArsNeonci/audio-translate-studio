@@ -30,10 +30,12 @@ from audio_translate.core import secure_channel as sc
 PRODUCT = 'audio-translate'
 
 
-def _anchor(base, root_key, manifest_key):
+def _anchor(base, root_key, manifest_key, content_key):
+    import base64
     path = base / 'anchor.json'
     path.write_text(json.dumps({'product_id': PRODUCT, 'root_public_key': public(root_key),
-                                'manifest_public_key': public(manifest_key)}))
+                                'manifest_public_key': public(manifest_key),
+                                'content_key': base64.urlsafe_b64encode(content_key).rstrip(b'=').decode()}))
     return path
 
 
@@ -55,7 +57,8 @@ class Phase2(unittest.TestCase):
         cls.base = Path(cls.temp.name)
         cls.root_key = private(secrets.token_bytes(32))
         cls.manifest_key = private(secrets.token_bytes(32))
-        anchor = _anchor(cls.base, cls.root_key, cls.manifest_key)
+        cls.content = secrets.token_bytes(32)
+        anchor = _anchor(cls.base, cls.root_key, cls.manifest_key, cls.content)
 
         # Dev build (default features): CLI/in-process fallback available, used for integrity + serve.
         cls.app = _app_tree(cls.base, 'app')
@@ -160,6 +163,28 @@ class Phase2(unittest.TestCase):
             proc.terminate()
             try: proc.wait(timeout=10)
             except Exception: proc.kill()
+
+    # --- Vault content key (2B) --------------------------------------------
+    def test_content_key_gated_and_vault_round_trip(self):
+        import base64
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        import build_vault as bv
+        state = self.base / 'ck-state'
+        # Gated behind the license: no key before activation.
+        self.assertEqual(self.cli({'action': 'content_key'}, state=state)['status'], 'UNACTIVATED')
+        self.assertEqual(self.cli({'action': 'activate', 'token': self.issue()}, state=state)['status'], 'ACTIVE')
+        result = self.cli({'action': 'content_key'}, state=state)
+        self.assertEqual(result['status'], 'OK', result)
+        key = base64.urlsafe_b64decode(result['content_key'] + '=' * ((-len(result['content_key'])) % 4))
+        self.assertEqual(key, self.content)
+        # A vault file sealed with that key opens back to the source bytes.
+        (self.app / 'worker' / 'config' / 'names.json').write_text(
+            json.dumps({'version': 1, 'surnames': {'王': 'Vương'}}), encoding='utf-8')
+        bv.build(self.app, self.content, {'names': 'worker/config/names.json'})
+        raw = (self.app / 'worker' / 'vault' / 'names.vault').read_bytes()
+        self.assertTrue(raw.startswith(b'ATVAULT1\n'))
+        opened = AESGCM(key).decrypt(raw[9:21], raw[21:], b'names')
+        self.assertEqual(json.loads(opened)['surnames']['王'], 'Vương')
 
     # --- Fail closed when the service is down (release build) ---------------
     def test_release_blocks_without_service_even_if_python_patched(self):

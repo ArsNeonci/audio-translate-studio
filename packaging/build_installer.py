@@ -188,6 +188,24 @@ def build(product='audio-translate'):
         modules='sys, importlib.util, llama_cpp, cryptography, numpy, torch, torchaudio, transformers, funasr, yt_dlp, soundfile, soxr, audio_translate.core.storage, audio_translate.workflow.results'+('' if basic else ', onnxruntime, sea_g2p')
         absent='; assert importlib.util.find_spec("onnxruntime") is None and importlib.util.find_spec("sea_g2p") is None' if basic else ''
         subprocess.run([str(payload/'runtime'/'python'/'python.exe'),'-c',f'import {modules}{absent}; assert not any("Roaming" in p or ".venv" in p for p in sys.path); print("Portable runtime imports and isolation OK")'],env={**os.environ,'PYTHONNOUSERSITE':'1'},check=True)
+        # Phase 2B: encrypt asset data (1-5) into the vault and, for hardened builds, compile the
+        # asset code to .pyd. Admin supplies the 32-byte content key (AUDIO_CONTENT_KEY_FILE) whose
+        # value must equal the core's embedded content_key (trust anchor). The plaintext asset
+        # sources are dropped once the vault carries them.
+        content_key_file=os.getenv('AUDIO_CONTENT_KEY_FILE')
+        if content_key_file:
+            from build_vault import build as build_vault, load_key as load_content_key
+            vaulted=build_vault(payload/'app',load_content_key(content_key_file))
+            for rel in ['worker/config/genre-lexicon.json','worker/config/source-cleanup.json','worker/config/address-profiles.json','worker/config/names.json','worker/config/translation-prompts.json']:
+                (payload/'app'/rel).unlink(missing_ok=True)
+            print(f'Vault written: {", ".join(vaulted)}')
+            if os.getenv('AUDIO_RELEASE_HARDENED')=='1':
+                from build_protected import build as build_protected
+                print(f'Compiled asset modules: {", ".join(build_protected(payload/"app"/"worker"))}')
+        elif os.getenv('AUDIO_RELEASE_HARDENED')=='1':
+            raise RuntimeError('AUDIO_CONTENT_KEY_FILE required for a hardened release build')
+        else:
+            print('WARNING: AUDIO_CONTENT_KEY_FILE not set; assets ship as plaintext (vault unconfigured).')
         # Sign the payload manifest for install/runtime integrity. Admin supplies the manifest
         # private key out of band (AUDIO_MANIFEST_KEY_FILE, 32-byte hex); its public half must be in
         # the trust anchor (manifest_public_key). Without it the build is unsigned and the shipped

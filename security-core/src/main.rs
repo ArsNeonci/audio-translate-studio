@@ -175,6 +175,14 @@ fn execute(request: &Value) -> Result<Value> {
             app_integrity(&app_root()?, scope)?;
             Ok(json!({"status":"VERIFIED", "configured":manifest::configured(), "product_id":PRODUCT}))
         }
+        // Asset vault key (Phase 2B): released only after integrity and an offline license check.
+        // Phase 2C will prefer a lease-wrapped key over the embedded one.
+        "content_key" => {
+            app_integrity(&app_root()?, manifest::Scope::Runtime)?;
+            check(false)?;
+            if license::CONTENT_KEY.is_empty() { return Err("VAULT_UNCONFIGURED"); }
+            Ok(json!({"status":"OK", "content_key":license::CONTENT_KEY, "product_id":PRODUCT}))
+        }
         "check" => check(request["internet"].as_bool().unwrap_or(true)),
         "status" => {
             let result = (|| {

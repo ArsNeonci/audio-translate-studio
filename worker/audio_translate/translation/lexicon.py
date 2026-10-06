@@ -14,9 +14,14 @@ LIMIT = 40
 
 
 def config():
-    path = os.getenv('GENRE_LEXICON_CONFIG') or str(ROOT/'worker'/'config'/'genre-lexicon.json')
-    with open(path, encoding='utf-8-sig') as handle:
-        return json.load(handle)
+    override = os.getenv('GENRE_LEXICON_CONFIG')
+    if override:
+        with open(override, encoding='utf-8-sig') as handle:
+            return json.load(handle)
+    # Asset 4 (language data): load from the encrypted vault, falling back to the plaintext
+    # source in development (no vault file present).
+    from audio_translate.core import vault
+    return vault.load_json('genre-lexicon', ROOT/'worker'/'config'/'genre-lexicon.json')
 
 
 def entries(profile):

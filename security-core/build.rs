@@ -22,4 +22,12 @@ fn main() {
         None => String::new(),
     };
     println!("cargo:rustc-env=EMBEDDED_MANIFEST_PUBLIC_KEY={manifest}");
+    // Optional content key for the asset vault (Phase 2B). The service releases it only to an
+    // authorized caller; absent in dev builds, where the vault falls back to plaintext sources.
+    // Phase 2C replaces this embedded key with a lease-delivered key when a lease is present.
+    let content = match data.get("content_key").and_then(|v| v.as_str()) {
+        Some(c) => { assert_eq!(URL_SAFE_NO_PAD.decode(c).expect("invalid content key encoding").len(), 32); c.to_string() }
+        None => String::new(),
+    };
+    println!("cargo:rustc-env=EMBEDDED_CONTENT_KEY={content}");
 }

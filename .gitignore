@@ -80,3 +80,6 @@ __pycache__/
 /data/tts-cache/
 /data/logs/
 /data/settings/
+
+# Phase 2B: generated encrypted asset vault (built by packaging/build_vault.py)
+/worker/vault/
