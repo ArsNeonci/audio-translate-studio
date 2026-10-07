@@ -13,7 +13,7 @@ const RECHECK_MS = 10 * 60 * 1000;
 const shared = globalThis as typeof globalThis & { audioLease?: { at: number; pending?: Promise<LeaseOutcome>; last?: LeaseOutcome } };
 const state = shared.audioLease ?? (shared.audioLease = { at: 0 });
 
-async function endpoint(): Promise<string | null> {
+export async function gatewayEndpoint(): Promise<string | null> {
   try {
     const config = JSON.parse(await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ process.cwd(), "worker", "config", "genius.json"), "utf8"));
     const value = typeof config.endpoint === "string" ? config.endpoint : "";
@@ -33,7 +33,7 @@ async function renew(): Promise<LeaseOutcome> {
   const status = (await licenseCommand({ action: "lease_status" })) as Reply;
   const phase = typeof status.lease === "string" ? status.lease : "UNKNOWN";
   if (status.http_status !== 200 || status.renew !== true) return { lease: phase, renewed: false };
-  const base = await endpoint();
+  const base = await gatewayEndpoint();
   if (!base) return { lease: phase, renewed: false, error: "GATEWAY_NOT_CONFIGURED" };
   const [credential, key] = (await Promise.all([licenseCommand({ action: "credential" }), licenseCommand({ action: "machine_pubkey" })])) as Reply[];
   if (credential.status !== "ACTIVE" || typeof credential.token !== "string" || typeof key.machine_pubkey !== "string") {

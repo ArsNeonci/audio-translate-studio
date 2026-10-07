@@ -1,10 +1,12 @@
 import { licenseCommand } from "@/lib/server/license";
 import { edition } from "@/lib/server/edition";
 import { ensureLease } from "@/lib/server/lease";
+import { fetchRenewals } from "@/lib/server/billing-portal";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(request: Request) {
   void ensureLease(); // Opening the app renews the lease in the background when it is due.
+  void fetchRenewals(); // Installs a renewal that was paid for in the Billing portal (every few seconds right after it was opened).
   const [result, tier] = await Promise.all([licenseCommand({action:new URL(request.url).searchParams.get("machine") === "1" ? "machine" : "status"}), edition()]);
   return Response.json({...result, edition: tier},{status:result.http_status,headers:{"Cache-Control":"no-store"}});
 }

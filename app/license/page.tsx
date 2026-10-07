@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SiteHeader from "@/components/layout/site-header";
 import type { LicenseStatus } from "@/components/license/license-status";
 import { useNotice } from "@/components/common/use-notice";
 import { useLanguage } from "@/lib/i18n/language-context";
+import { openBillingPage } from "@/lib/shared/billing-client";
 
 export default function LicensePage() {
   const { language, t, tr } = useLanguage();
@@ -14,6 +15,10 @@ export default function LicensePage() {
   const [action, setAction] = useState("activate");
   const [message, setMessage] = useNotice();
   const [busy, setBusy] = useState(false);
+  const [billing, setBilling] = useState<{ code?: string; portal_url?: string; enabled: boolean } | null>(null);
+  const [watchUntil, setWatchUntil] = useState(0);
+  const sequence = useRef(0);
+  useEffect(() => { sequence.current = status.sequence ?? 0; }, [status.sequence]);
 
   useEffect(() => {
     let disposed = false;
@@ -35,6 +40,34 @@ export default function LicensePage() {
       disposed = true;
     };
   }, [setMessage, t.license.cannotRead]);
+
+  // The Customer Code is remembered while the licence is valid, so it is read again once the licence is known to be active.
+  useEffect(() => {
+    let disposed = false;
+    void fetch("/api/billing", { cache: "no-store" }).then((r) => r.json()).then((b) => { if (!disposed) setBilling(b); }).catch(() => undefined);
+    return () => { disposed = true; };
+  }, [status.status]);
+
+  // After the portal is opened, look for the paid renewal every few seconds (the server installs it) for 15 minutes.
+  useEffect(() => {
+    if (!watchUntil) return;
+    const timer = setInterval(() => {
+      if (Date.now() > watchUntil) { setWatchUntil(0); return; }
+      void fetch("/api/license", { cache: "no-store" }).then((r) => r.json()).then((s: LicenseStatus) => {
+        setStatus(s);
+        if ((s.sequence ?? 0) > sequence.current) { setMessage(tr("billingRenewed")); setWatchUntil(0); }
+      }).catch(() => undefined);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [watchUntil, setMessage, tr]);
+
+  async function openPortal(destination: "license" | "debt") {
+    setMessage("");
+    const result = await openBillingPage(destination);
+    if (!result.ok) { setMessage(tr(result.error === "BILLING_CODE_UNKNOWN" ? result.error : "billingUnavailable")); return; }
+    setMessage(tr(result.mode === "code" ? "billingOpenedCode" : "billingOpened"));
+    if (destination === "license") setWatchUntil(Date.now() + 15 * 60 * 1000);
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -73,6 +106,33 @@ export default function LicensePage() {
               )}`
             : ""}
         </p>
+
+        {billing?.enabled && (
+          <div className="license-box">
+            <h2>{tr("billingTitle")}</h2>
+            <p>{tr("billingIntro")}</p>
+            {billing.code && (
+              <>
+                <label htmlFor="customer-code">{tr("billingCode")}</label>
+                <div className="machine-row">
+                  <input id="customer-code" readOnly value={billing.code} />
+                  <button
+                    type="button"
+                    className="action-button"
+                    onClick={() => void navigator.clipboard.writeText(billing.code ?? "").then(() => setMessage(t.license.copied)).catch(() => setMessage(t.license.copyPrompt))}
+                  >
+                    {t.license.copy}
+                  </button>
+                </div>
+                <p><small>{tr("billingCodeHelp")}</small></p>
+              </>
+            )}
+            <div className="license-actions">
+              <button type="button" className="action-button" onClick={() => void openPortal("license")}>{tr("billingBuy")}</button>{" "}
+              <button type="button" className="action-button" onClick={() => void openPortal("debt")}>{tr("billingDebt")}</button>
+            </div>
+          </div>
+        )}
 
         <div className="license-box">
           <label htmlFor="machine-id">{t.license.machineId}</label>

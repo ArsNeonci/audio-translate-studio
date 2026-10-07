@@ -12,5 +12,13 @@
     "--product",
     "audio-translate-plus"
   ],
-  "artifact_path": "dist/AudioTranslate-Plus-1.2.0.exe"
+  "artifact_path": "dist/AudioTranslate-Plus-1.2.0.exe",
+  "gateway": {
+    "app_id": "audio-translates",
+    "app_name": "Audio Translate",
+    "services": [
+      "translation",
+      "tts"
+    ]
+  }
 }

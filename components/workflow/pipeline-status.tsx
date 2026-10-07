@@ -1,5 +1,6 @@
 "use client";
 import { useLanguage } from "@/lib/i18n/language-context";
+import { openBillingPage } from "@/lib/shared/billing-client";
 import {useEffect,useState} from "react";
 import type {Job,Step} from "@/lib/server/jobs";
 import {elapsed,percent,runNumber} from "@/lib/shared/format";
@@ -24,6 +25,7 @@ export default function PipelineStatus({job}:{job:Run;readOnly?:boolean}){
     {job.steps?.TRANSCRIPTION?.state==='RUNNING'&&job.asr_runtime?.tuning_deferred&&<p role="status">{tr('Hoãn hiệu chỉnh CPU khi RAM ít')}</p>}
     {job.status==='PAUSED'&&job.memory_pause_reason&&<p role="status">{tr(job.memory_pause_reason)}</p>}
     {job.status==='PAUSED'&&job.pause_reason&&<p role="alert">{tr(`pause.${job.pause_reason}`)}</p>}
+    {job.status==='PAUSED'&&job.pause_reason==='CREDIT_LIMIT'&&<p><button type="button" className="action-button" onClick={()=>void openBillingPage("debt").then(r=>{if(!r.ok)alert(tr(r.error==='BILLING_CODE_UNKNOWN'?r.error:'billingUnavailable'));})}>{tr('billingPayDebt')}</button></p>}
     {job.genius_progress&&<p role="status"><small>{tr('geniusProgress',{done:job.genius_progress.chunks_done,total:job.genius_progress.chunks_total,rows:job.genius_progress.rows_done,allRows:job.genius_progress.rows_total,chars:job.genius_progress.billed_chars.toLocaleString()})}</small></p>}
     {job.tts_remote_progress&&<p role="status"><small>{tr('ttsRemoteProgress',{units:job.tts_remote_progress.units_done,chars:job.tts_remote_progress.billed_chars.toLocaleString()})}</small></p>}
     {!!job.genius_progress?.flagged_rows.length&&<p role="status">{tr('geniusFlagged',{count:job.genius_progress.flagged_rows.length,rows:job.genius_progress.flagged_rows.slice(0,30).join(', ')+(job.genius_progress.flagged_rows.length>30?'…':'')})}</p>}

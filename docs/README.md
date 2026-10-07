@@ -13,6 +13,7 @@
 | [ADDRESS_FORMS.md](ADDRESS_FORMS.md) | Xưng hô, giới tính và thuật ngữ theo thể loại: bảng nhân vật, sửa giới tính, từ điển, kiểm tra khi dịch |
 | [PLAN_TTS_VPS.md](PLAN_TTS_VPS.md) | Basic tạo giọng qua VPS (FLAC, đoạn 1.200 ký tự), duyệt trước TTS + ô Auto, nền tảng nhiều app, số đo TTS: thiết kế + trạng thái triển khai (mục 0) |
 | [PLAN_GENIUS_BASIC_PLUS.md](PLAN_GENIUS_BASIC_PLUS.md) | Genius qua VPS, tính phí và hạn mức, gói Basic / Plus: thiết kế đã duyệt + trạng thái triển khai (mục 0) |
+| [PLAN_PAYMENTS_PAYOS.md](PLAN_PAYMENTS_PAYOS.md) | Thanh toán payOS/VietQR và cổng Billing (phí dịch vụ; gói license theo ngày hoặc 1/3/6/9/12 tháng): webhook, đối soát, renewal-worker ký gia hạn, bảng giá và hạn mức nợ theo app/khách, triển khai trên VM GCP (thiết kế, chưa triển khai) |
 | [TOOLS.md](TOOLS.md) | Bốn tool đơn lẻ: link YouTube, xưng hô, xóa khi đang chạy, chạy song song |
 | [WORKFLOW_LIFECYCLE.md](WORKFLOW_LIFECYCLE.md) | Vòng đời, tạm dừng và tiếp tục workflow |
 | [MULTI_WORKFLOW_SCHEDULER.md](MULTI_WORKFLOW_SCHEDULER.md) | Chạy nhiều workflow cùng lúc, chia luồng theo tài nguyên (đã triển khai) |
