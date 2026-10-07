@@ -584,7 +584,7 @@ Mỗi bước chạy đủ test và được chủ sản phẩm kiểm tra rồi
 ### 15.2 Khác với bản thiết kế phía trên (và lý do)
 
 1. **Mức tối thiểu của payOS là 1.000đ, không phải 2.000đ.** Đã thử trực tiếp: payOS nhận link 1.000đ. Hằng số `PAYOS_MIN_VND` trong `orders.py` là 1.000 (chưa thử mức thấp hơn).
-2. **License đã hết hạn không lấy được token từ lõi bảo mật.** Hàm `credential()` trong `security-core` từ chối license hết hạn, và máy này không có `cargo` để sửa lõi Rust. Vì vậy:
+2. **License đã hết hạn không lấy được token từ lõi bảo mật.** Hàm `credential()` trong `security-core` từ chối license hết hạn. Tôi **không sửa lõi này**: đó là thành phần bảo mật, đổi nó phải biên dịch lại, ký lại và kiểm thử lại cho cả hai gói. (Ghi chú sửa lỗi: lúc đầu tôi nêu lý do là máy không có `cargo`; điều đó chỉ đúng với PATH, vì máy có bộ Rust riêng ở `.toolsust` mà script build dùng.) Vì vậy:
    - Khi license còn hạn: app tạo liên kết một lần (đăng nhập sẵn, thấy token và app tự cài gia hạn trong vài giây).
    - Khi license đã hết hạn: app nhớ **Mã khách hàng** từ lúc còn hạn (`data/settings/billing.json`) và mở trang thanh toán với mã điền sẵn. Khách bấm Tiếp tục, trả tiền, rồi **sao chép mã gia hạn trên trang đơn hàng và dán vào ô Gia hạn** (cách dán tay vốn có). App không tự cài được trong trường hợp này.
    - Token trên trang đơn hàng chỉ hiện cho phiên của app, hoặc cho **chính phiên trình duyệt đã tạo đơn đó** (cột `session_hash`). Người khác có cùng Mã khách hàng không đọc được token của đơn cũ.
