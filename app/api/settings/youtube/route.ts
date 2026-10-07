@@ -1,3 +1,4 @@
+import { originAllowed } from "@/lib/server/origin";
 import { pythonCommand } from "@/lib/server/worker-client";
 
 export const runtime = "nodejs";
@@ -6,7 +7,7 @@ export const dynamic = "force-dynamic";
 function localRequest(request: Request) {
   const url = new URL(request.url);
   return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
-    && (!request.headers.get("origin") || request.headers.get("origin") === url.origin)
+    && originAllowed(request)
     && !["cross-site", "same-site"].includes(request.headers.get("sec-fetch-site") || "");
 }
 

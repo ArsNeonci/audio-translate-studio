@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { licenseCommand } from "@/lib/server/license";
-import { gatewayEndpoint } from "@/lib/server/lease";
+import { billingUrl, gatewayEndpoint } from "@/lib/server/lease";
 import { dataRoot } from "@/lib/server/python";
 
 // The Billing portal is a web page on the gateway where the customer pays service debt or buys a licence plan. Plans,
@@ -11,7 +11,7 @@ import { dataRoot } from "@/lib/server/python";
 // The native core only releases the licence token while the licence is valid, so an expired licence cannot make a one-time
 // link. The Customer Code, remembered from when it was valid, opens the portal with the code filled in instead; the customer
 // pays there and copies the renewal token from the order page.
-export type PortalLink = { url: string; mode: "app" | "code" };
+export type PortalLink = { url: string; mode: "app" | "code" | "home" };
 export type BillingInfo = { code?: string; portal_url?: string; enabled: boolean };
 type Reply = Record<string, unknown> & { http_status: number; status?: string };
 type Gateway = { status: number; body: Record<string, unknown> };
@@ -77,6 +77,12 @@ export async function openBilling(destination: "license" | "debt"): Promise<Port
   }
   const saved = await remembered(); // expired licence, or the gateway could not be reached
   if (saved.code && saved.portal_url) return { url: `${saved.portal_url}/?code=${encodeURIComponent(saved.code)}`, mode: "code" };
+  if (!token) {
+    // No active licence and no remembered code: open the portal's start page, where the customer types the Customer Code
+    // (the licence page shows it once the app is activated; the seller can also tell it).
+    const home = await billingUrl();
+    if (home) return { url: `${home}/`, mode: "home" };
+  }
   throw new Error(token ? "GATEWAY_UNREACHABLE" : "BILLING_CODE_UNKNOWN");
 }
 

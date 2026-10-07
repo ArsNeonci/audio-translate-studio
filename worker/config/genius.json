@@ -1,6 +1,7 @@
 {
   "version": 1,
   "endpoint": "https://audio-gateway.arsneonci.space",
+  "billing_url": "https://billing.arsneonci.space",
   "chunk_rows": 100,
   "context_rows": 12,
   "max_characters": 30,

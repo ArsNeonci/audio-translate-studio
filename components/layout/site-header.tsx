@@ -4,6 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useLanguage } from "@/lib/i18n/language-context";
+import ModelBanner from "@/components/layout/model-banner";
+import QuitButton from "@/components/layout/quit-button";
 
 export default function SiteHeader() {
   const { t, tr } = useLanguage();
@@ -20,6 +22,7 @@ export default function SiteHeader() {
   ];
 
   return (
+    <>
     <header className="header">
       <Link href="/" className="brand" aria-label={tr("Audio Studio Home")}>
         <Image
@@ -47,6 +50,9 @@ export default function SiteHeader() {
           );
         })}
       </nav>
+      <QuitButton />
     </header>
+    <ModelBanner />
+    </>
   );
 }

@@ -21,6 +21,16 @@ export async function gatewayEndpoint(): Promise<string | null> {
   } catch { return null; }
 }
 
+// The Billing portal's address from the same config file. It is known without a licence, so a customer whose licence is not active
+// (or not yet activated) can still reach the portal's page that asks for the Customer Code.
+export async function billingUrl(): Promise<string | null> {
+  try {
+    const config = JSON.parse(await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ process.cwd(), "worker", "config", "genius.json"), "utf8"));
+    const value = typeof config.billing_url === "string" ? config.billing_url : "";
+    return value.startsWith("https://") || value.startsWith("http://127.0.0.1") ? value.replace(/\/$/, "") : null;
+  } catch { return null; }
+}
+
 // The installed build's version, so the gateway wraps that release's own vault key.
 async function appVersion(): Promise<string | undefined> {
   try {

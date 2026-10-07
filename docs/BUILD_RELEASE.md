@@ -131,3 +131,35 @@ Khi bạn có chứng chỉ, đặt các biến này rồi chạy `build_edition
 - Không đặt file khóa `.key` trong thư mục repo hoặc gửi cho ai; script từ chối ghi vào trong repo.
 - Không sửa tay `dist\release-*.json` hay các file `.exe` đã phát hành.
 - Không build khi đang chạy workflow dịch hoặc tạo giọng.
+
+---
+
+## 7. Lỗi đã gặp: `FileNotFoundError WinError 3` khi chép thư viện Python
+
+Nguyên nhân (đã xác nhận 2026-10-07): hai file của `modelscope` có đường dẫn đích dài 262 và 260 ký tự, vượt giới hạn 259 của Windows (máy này `LongPathsEnabled=0`). Tên thư mục staging dài (`staging-audio-translate-basic-1.2.0`) làm vượt ngưỡng. Đã sửa: staging đặt tên ngắn (`s` + 6 ký tự băm) trong `packaging/build_installer.py`. Nếu sau này thêm thư viện có đường dẫn rất dài mà vẫn lỗi `WinError 3`, hãy kiểm tra độ dài đường dẫn trước tiên.
+
+Hai file 4894 MB và 4934 MB build lần đầu **không chạy được** (xem mục 8) và đã bị bỏ. Build lại sau khi tách model ra, 2026-10-07: `AudioTranslate-Basic-1.2.0.exe` (552 MB) và `AudioTranslate-Plus-1.2.0.exe` (592 MB), cả hai đã qua audit. Chưa cài thử, chưa push lease, và model chưa có trên bucket nên chưa tải được.
+
+## 8. Giới hạn 4 GiB của file .exe
+
+Bộ cài bản 1.2.0 đầu tiên (4,9 GB) **không chạy được**: Windows từ chối mọi `.exe` lớn hơn 4 GiB ("This app can't run on your PC"); đã thử với một exe thật được nối thêm dữ liệu. Vì vậy model dịch 4,6 GB không còn nằm trong bộ cài mà tải sau khi kích hoạt (xem `MODEL_DOWNLOAD.md`). Bộ cài vẫn phải kiểm model trên máy build khớp hash ghim sẵn, nhưng không đóng gói file `.gguf`. Mỗi lần build nên xem kích thước file trong `dist`: nếu gần 4 GiB thì có thêm thứ gì đó quá nặng lọt vào.
+
+## 9. Lỗi đã gặp: cài xong nhưng app không mở được (2026-10-07)
+
+Bộ cài báo "installed" nhưng bấm shortcut không thấy gì. Có hai lỗi trong `packaging/launcher.py`, đã sửa và kiểm chứng bằng cách cài thật bản Plus im lặng (`AUDIO_INSTALL_DIR=<thư mục tạm>` và tham số `/Q`):
+
+1. `from paths import ...` lỗi `ModuleNotFoundError`: `python312._pth` của runtime đi kèm tắt mục thư mục-của-script trong `sys.path`. Sửa: launcher tự thêm thư mục của nó vào `sys.path`.
+2. Lần khởi động nguội đầu tiên, `/api/license` trả lời chậm hơn 2 giây nên launcher gặp `TimeoutError` (chỉ bắt `URLError`) rồi sập, dù server đã lên. Sửa: timeout dài hơn và bắt cả `OSError`.
+
+Shortcut dùng `pythonw.exe` nên lỗi khởi động trước đây bị nuốt. Giờ launcher ghi lỗi vào `%LOCALAPPDATA%\AudioTranslate\launcher-error.log` và hiện hộp thoại.
+
+**Ghi chú:** đoạn "cài lại thì bộ cài không làm gì" ở bản đầu đã được thay bằng cập nhật đè (mục 10). Máy build cần RAM trống: `build_edition.py` đòi 5 GiB (ngưỡng tôi đặt rộng); đo thực tế khi build, RAM trống giảm khoảng 1 GiB, nên chạy `--force` được nếu còn trên khoảng 3,3 GiB để vẫn chừa 2 GiB cho hệ thống.
+
+## 10. Cài, cập nhật, gỡ và thoát app (2026-10-07)
+
+- **Cài lại cùng phiên bản = cập nhật đè:** bộ cài dừng app đang chạy, xóa sạch thư mục cài cũ (chỉ khi thư mục có `installation.json` do chính bộ cài tạo) rồi giải nén bản mới. Dữ liệu, kích hoạt và kết quả nằm ở `%LOCALAPPDATA%\AudioTranslate`, ngoài thư mục cài nên được giữ.
+- **Installed apps:** bộ cài ghi mục gỡ cài đặt theo người dùng (`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\AudioTranslate-<Edition>-<version>`, không cần quyền admin) và đặt `uninstall.exe` trong thư mục cài (`packaging/uninstaller.cs`). Mỗi phiên bản có một mục riêng.
+- **Gỡ:** `uninstall.exe` hỏi xác nhận, dừng app, xóa shortcut (chỉ khi còn trỏ vào thư mục này), xóa mục registry rồi xóa thư mục cài. Nếu không còn bản cài nào khác thì hỏi thêm có xóa dữ liệu (kích hoạt, kết quả, model đã tải) không, mặc định là **không**. `/Q` gỡ im lặng giữ dữ liệu, `/Q /DATA` xóa cả dữ liệu. Từ chối chạy nếu thư mục không có `installation.json`.
+- **Thoát app:** nút **Thoát app** trên thanh đầu trang gọi `/api/quit`; launcher (`launcher.py --quit`) dừng mọi tiến trình có file chương trình nằm trong thư mục cài (web server, worker, llama-server). Đang có workflow chạy thì hỏi xác nhận trước. Mỗi lần mở app, launcher cũng dọn tiến trình sót của lần trước, và khóa `launcher.lock` ngăn bấm shortcut hai lần dọn nhầm server đang khởi động.
+- **Kiểm chứng:** `packaging/test_install_flow.py` (chạy trong thư mục `packaging`: `..\.venv\Scripts\python.exe -m unittest test_install_flow`) dùng đúng hai stub .NET với edition riêng "Test" 9.9.9: cài, cài lại đè (dừng tiến trình giả, xóa file thừa), gỡ, và từ chối gỡ thư mục lạ; không bao giờ dùng `/DATA`. Đã chạy thêm bằng bộ cài Basic thật đè lên bản đang chạy: tiến trình bị dừng, mục Installed apps xuất hiện, thoát qua API dừng hết tiến trình trong 2 giây, mở lại bình thường.
+- **Chưa kiểm chứng:** bấm Gỡ từ trang Installed apps của Windows và hộp thoại hỏi xóa dữ liệu (cần thao tác tay); nút Thoát khi có workflow đang chạy; icon trên file `.exe` và shortcut bằng mắt.

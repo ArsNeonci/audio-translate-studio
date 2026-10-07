@@ -65,7 +65,7 @@ export default function LicensePage() {
     setMessage("");
     const result = await openBillingPage(destination);
     if (!result.ok) { setMessage(tr(result.error === "BILLING_CODE_UNKNOWN" ? result.error : "billingUnavailable")); return; }
-    setMessage(tr(result.mode === "code" ? "billingOpenedCode" : "billingOpened"));
+    setMessage(tr(result.mode === "home" ? "billingOpenedHome" : result.mode === "code" ? "billingOpenedCode" : "billingOpened"));
     if (destination === "license") setWatchUntil(Date.now() + 15 * 60 * 1000);
   }
 

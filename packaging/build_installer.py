@@ -68,6 +68,14 @@ def source_hash(product='audio-translate'):
     for path in sorted(files):sha.update(str(path.relative_to(WORKSPACE)).encode());sha.update(path.read_bytes())
     return sha.hexdigest()
 
+def compile_stub(source_name,output,work,product,version,edition):
+    """Compile one of the .NET stubs (installer.cs, uninstaller.cs) with the version and edition filled in."""
+    compiler=Path(os.environ['WINDIR'])/'Microsoft.NET'/'Framework64'/'v4.0.30319'/'csc.exe'
+    if not compiler.is_file():raise RuntimeError('WINDOWS_DOTNET_BUILD_TOOLS_REQUIRED')
+    source=(ROOT/'packaging'/source_name).read_text(encoding='utf-8').replace('@@VERSION@@',version).replace('@@PRODUCT@@',product).replace('@@EDITION@@',edition)
+    file=Path(work)/(Path(source_name).stem+'-stub.cs');file.write_text(source,encoding='utf-8')
+    subprocess.run([str(compiler),'/nologo','/target:winexe','/optimize+','/win32icon:'+str(ROOT/'packaging'/'app-icon.ico'),'/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll','/r:System.Windows.Forms.dll','/out:'+str(output),str(file)],check=True,creationflags=subprocess.CREATE_NO_WINDOW)
+
 def copy_tree(source,target,ignore=None):
     shutil.copytree(source,target,dirs_exist_ok=True,ignore=ignore or shutil.ignore_patterns('__pycache__','*.pyc','.git'))
 
@@ -127,7 +135,8 @@ def build(product='audio-translate', customer=None):
             if record['source_sha256']!=fingerprint:raise RuntimeError('VERSION_ALREADY_RELEASED: bump version before changing code')
             if not artifact.exists() or digest(artifact)!=record['installer_sha256']:raise RuntimeError('RELEASE_ARTIFACT_MISSING_OR_MODIFIED')
             print('Existing installer verified; no rebuild.');return
-        staging=dist/f'staging-{label}';staging.mkdir(exist_ok=True)
+        # Short on purpose: modelscope ships files whose staged path is ~260 characters, and Windows stops copying at 259 (LongPathsEnabled is off).
+        staging=dist/('s'+hashlib.sha1(label.encode()).hexdigest()[:6]);staging.mkdir(exist_ok=True)
         payload=staging/'payload';payload.mkdir(exist_ok=True)
         # Compile this edition's core into staging; the development binary stays untouched.
         # Release hardening (AUDIO_RELEASE_HARDENED=1) builds the core without the dev_fallback
@@ -184,7 +193,7 @@ def build(product='audio-translate', customer=None):
             copy_tree(vieneu/'src',payload/'providers'/'VieNeu'/'src')
             for name in ['LICENSE','LICENSE.md']:
                 if (vieneu/name).exists():shutil.copy2(vieneu/name,payload/'providers'/'VieNeu'/name)
-        # Ship the exact verified offline model, never a source clone or HF cache.
+        # Verify the exact offline model that the gateway serves; never ship a source clone or HF cache.
         model_dir=ROOT/'models'/'Hy-MT2-7B-Q4_K_M'
         model_record=json.loads((model_dir/'provenance.json').read_text())
         from importlib.util import spec_from_file_location, module_from_spec
@@ -196,9 +205,14 @@ def build(product='audio-translate', customer=None):
             raise RuntimeError('HY_MT_MODEL_CHECKSUM_MISMATCH')
         destination=payload/'app'/'models'/'Hy-MT2-7B-Q4_K_M'
         destination.mkdir(parents=True,exist_ok=True)
-        for name in [expected.FILENAME,'provenance.json','LICENSE','MODEL_CARD.md']:
+        # The weights are checked above but not shipped: the installer must stay under 4 GiB (Windows will not run a larger .exe).
+        # The app downloads them after activation from the gateway's signed link and checks the same SHA-256 (lib/server/model-download.ts).
+        for name in ['provenance.json','LICENSE','MODEL_CARD.md']:
             shutil.copy2(model_dir/name,destination/name)
         shutil.copy2(ROOT/'packaging'/'launcher.py',payload/'launcher.py')
+        shutil.copy2(ROOT/'packaging'/'app-icon.ico',payload/'app.ico')  # the Start-menu shortcut's icon (installer.cs)
+        # The uninstaller ships inside the installation (Windows "Installed apps" runs it); it is covered by the signed payload manifest below.
+        compile_stub('uninstaller.cs',payload/'uninstall.exe',staging,product,version,edition)
         shutil.copy2(ROOT/'packaging'/'paths.py',payload/'paths.py')
         (payload/'runtime-inventory.json').write_text(json.dumps(packages,indent=2),encoding='utf-8')
         # Resolve from the shipped server and reject any development-repo fallback.
@@ -248,12 +262,8 @@ def build(product='audio-translate', customer=None):
         with zipfile.ZipFile(staging/'payload.zip','w',zipfile.ZIP_DEFLATED,compresslevel=1) as archive:
             for path in sorted(payload.rglob('*')):
                 if path.is_file():archive.write(path,path.relative_to(payload))
-        compiler=Path(os.environ['WINDIR'])/'Microsoft.NET'/'Framework64'/'v4.0.30319'/'csc.exe'
-        if not compiler.is_file():raise RuntimeError('WINDOWS_DOTNET_BUILD_TOOLS_REQUIRED')
-        source=(ROOT/'packaging'/'installer.cs').read_text().replace('@@VERSION@@',version).replace('@@PRODUCT@@',product).replace('@@EDITION@@',edition)
-        bootstrap=staging/'bootstrap.cs';bootstrap.write_text(source,encoding='utf-8')
         executable=staging/'bootstrap.exe'
-        subprocess.run([str(compiler),'/nologo','/target:winexe','/optimize+','/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll','/r:System.Windows.Forms.dll','/out:'+str(executable),str(bootstrap)],check=True,creationflags=subprocess.CREATE_NO_WINDOW)
+        compile_stub('installer.cs',executable,staging,product,version,edition)
         # A bounded stream in the bootstrap exposes this appended archive.
         with artifact.open('wb') as output:
             with executable.open('rb') as source:shutil.copyfileobj(source,output)

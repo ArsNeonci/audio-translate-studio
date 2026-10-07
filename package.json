@@ -10,6 +10,8 @@
     "check:i18n": "node scripts/check-i18n.cjs",
     "check:theme": "node scripts/check-theme.cjs",
     "check:billing": "node scripts/check-billing-portal.cjs",
+    "check:model": "node scripts/check-model-download.cjs",
+    "check:origin": "node scripts/check-origin.cjs",
     "package:windows": "python packaging/build_installer.py"
   },
   "dependencies": {

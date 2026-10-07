@@ -15,6 +15,7 @@ const installed = [];
 const gatewayCalls = [];       // {method, url, headers, body}
 let routes = {};               // 'METHOD /path' -> {status, body} | function
 let leaseRenewals = 0;
+let billingHome = 'https://billing.test'; // the portal address from the app's config, known without a licence
 const fakes = {
   '@/lib/server/license': { licenseCommand: async (payload) => {
     commands.push(payload.action);
@@ -23,7 +24,7 @@ const fakes = {
     if (payload.action === 'renew') { if (payload.token.startsWith('BAD')) return { http_status: 400, status: 'INVALID' }; installed.push(payload.token); sequence += 1; return { http_status: 200, status: 'ACTIVE', sequence }; }
     return { http_status: 404, status: 'INVALID' };
   } },
-  '@/lib/server/lease': { gatewayEndpoint: async () => 'https://api.test', ensureLease: async () => { leaseRenewals += 1; } },
+  '@/lib/server/lease': { gatewayEndpoint: async () => 'https://api.test', billingUrl: async () => billingHome, ensureLease: async () => { leaseRenewals += 1; } },
   '@/lib/server/python': { dataRoot },
 };
 global.fetch = async (url, init) => {
@@ -77,7 +78,16 @@ const reset = () => { commands.length = 0; gatewayCalls.length = 0; installed.le
   fs.rmSync(path.join(dataRoot, 'settings', 'billing.json'));
   await assert.rejects(portal.openBilling('license'), /GATEWAY_UNREACHABLE/);
   credential = { status: 'EXPIRED' };
+  // An expired or not-yet-activated licence with no remembered code still reaches the portal: its start page asks for the Customer Code.
+  reset();
+  assert.deepEqual({ ...(await portal.openBilling('license')) }, { url: 'https://billing.test/', mode: 'home' });
+  assert.equal(gatewayCalls.length, 0);
+  credential = { status: 'UNACTIVATED' };
+  assert.deepEqual({ ...(await portal.openBilling('debt')) }, { url: 'https://billing.test/', mode: 'home' });
+  // Only when the build has no portal address either is there nothing to open.
+  billingHome = null;
   await assert.rejects(portal.openBilling('license'), /BILLING_CODE_UNKNOWN/);
+  billingHome = 'https://billing.test';
 
   // Renewals: installed in order, using the sequence the core already has; a bad token stops the chain.
   reset(); credential = { status: 'ACTIVE', token: 'LIC.TOKEN' }; sequence = 4;

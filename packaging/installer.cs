@@ -1,10 +1,14 @@
 // Windows .NET Framework bootstrap; appended ZIP contains only Product payload.
+// Installing again over the same version updates it in place (the running app is stopped first); user data lives outside this folder and is kept.
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 sealed class PayloadStream : Stream {
     readonly Stream source;
@@ -36,8 +40,34 @@ static class Installer {
     // "Basic"/"Plus"; empty for the legacy single product. Data stays shared across editions.
     const string Edition="@@EDITION@@";
     static string Title { get { return Edition.Length>0?"Audio Translate "+Edition:"Audio Translate"; } }
+    static string UninstallKey { get { return @"Software\Microsoft\Windows\CurrentVersion\Uninstall\AudioTranslate-"+(Edition.Length>0?Edition+"-":"")+Version; } }
     static void Set(object instance,string name,object value) {
         instance.GetType().InvokeMember(name,BindingFlags.SetProperty,null,instance,new object[]{value});
+    }
+    // Stops every process started from the installation folder (the web server, its workers, llama-server). Two passes: a worker may start another.
+    static void StopApp(string root) {
+        string prefix=root.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
+        int self=Process.GetCurrentProcess().Id;
+        for(int pass=0;pass<2;pass++) {
+            foreach(Process process in Process.GetProcesses()) {
+                try {
+                    if(process.Id==self) continue;
+                    if(process.MainModule.FileName.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)) { process.Kill(); process.WaitForExit(5000); }
+                } catch { }
+            }
+        }
+    }
+    static void Wipe(string target) {
+        // A running program or an open window can hold a file for a moment after it was stopped.
+        for(int attempt=0;;attempt++) {
+            try { if(Directory.Exists(target)) Directory.Delete(target,true); return; }
+            catch { if(attempt>=5) throw; Thread.Sleep(1000); }
+        }
+    }
+    static long SizeOf(string folder) {
+        long total=0;
+        foreach(string file in Directory.GetFiles(folder,"*",SearchOption.AllDirectories)) { try { total+=new FileInfo(file).Length; } catch { } }
+        return total;
     }
     [STAThread]
     static int Main(string[] args) {
@@ -47,7 +77,9 @@ static class Installer {
             string target=Path.GetFullPath(String.IsNullOrEmpty(custom)?Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","AudioTranslate",Edition.Length>0?Edition+"-"+Version:Version):custom);
             string marker=Path.Combine(target,"installation.json");
-            if(File.Exists(marker)) return 0;
+            bool update=File.Exists(marker);
+            // Only a folder this installer created (it has the marker) is ever emptied. The user's data is elsewhere (%LOCALAPPDATA%\AudioTranslate).
+            if(update) { StopApp(target); Wipe(target); }
             string prefix=target.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
             using(FileStream source=File.OpenRead(Assembly.GetExecutingAssembly().Location)) {
                 if(source.Length<16) throw new IOException("Missing payload");
@@ -74,13 +106,29 @@ static class Installer {
                 Set(shortcut,"TargetPath",Path.Combine(target,"runtime","python","pythonw.exe"));
                 Set(shortcut,"Arguments","\""+Path.Combine(target,"launcher.py")+"\"");
                 Set(shortcut,"WorkingDirectory",target);
+                Set(shortcut,"IconLocation",Path.Combine(target,"app.ico"));
                 shortcut.GetType().InvokeMember("Save",BindingFlags.InvokeMethod,null,shortcut,new object[0]);
+                // Windows "Installed apps" entry (per user, so no administrator rights): its Uninstall button runs uninstall.exe from this folder.
+                string remover=Path.Combine(target,"uninstall.exe");
+                using(RegistryKey key=Registry.CurrentUser.CreateSubKey(UninstallKey)) {
+                    key.SetValue("DisplayName",Title+" "+Version);
+                    key.SetValue("DisplayVersion",Version);
+                    key.SetValue("Publisher","Ars Neonci");
+                    key.SetValue("InstallLocation",target);
+                    key.SetValue("DisplayIcon",Path.Combine(target,"app.ico"));
+                    key.SetValue("UninstallString","\""+remover+"\"");
+                    key.SetValue("QuietUninstallString","\""+remover+"\" /Q");
+                    key.SetValue("InstallDate",DateTime.Now.ToString("yyyyMMdd"));
+                    key.SetValue("EstimatedSize",(int)Math.Min(int.MaxValue,SizeOf(target)/1024),RegistryValueKind.DWord);
+                    key.SetValue("NoModify",1,RegistryValueKind.DWord);
+                    key.SetValue("NoRepair",1,RegistryValueKind.DWord);
+                }
             }
             File.WriteAllText(marker,"{\"product_id\":\""+Product+"\",\"version\":\""+Version+"\",\"installed_at\":\""+DateTime.UtcNow.ToString("o")+"\"}",new UTF8Encoding(false));
-            if(!quiet) MessageBox.Show(Title+" installed. Open "+Title+" from the Start menu.",Title);
+            if(!quiet) MessageBox.Show(Title+(update?" updated. ":" installed. ")+"Open "+Title+" from the Start menu.",Title);
             return 0;
         } catch {
-            if(!quiet) MessageBox.Show("Installation failed. Check available disk space and write access to the install directory.",Title);
+            if(!quiet) MessageBox.Show("Installation failed. Close "+Title+" if it is open, then check free disk space and write access to the install directory.",Title);
             return 1;
         }
     }

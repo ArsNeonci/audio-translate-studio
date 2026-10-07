@@ -72,6 +72,8 @@ const shared = globalThis as typeof globalThis & {
   audioStudioRetry?: ReturnType<typeof setTimeout>;
 };
 const active = shared.audioStudioActive ?? (shared.audioStudioActive = new Map<string, ChildProcess>());
+// How many workflows have a worker running right now (the Quit button warns before stopping them).
+export function activeJobCount() { return active.size; }
 
 export function validYoutubeUrl(value: string): boolean {
   try {

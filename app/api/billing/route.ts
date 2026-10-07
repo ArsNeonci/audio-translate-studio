@@ -1,3 +1,4 @@
+import { originAllowed } from "@/lib/server/origin";
 import { billingInfo, openBilling } from "@/lib/server/billing-portal";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,8 +11,7 @@ export async function GET() {
 
 // Opens the Billing portal: returns the address to open in the browser. The customer never sees the licence token.
 export async function POST(request: Request) {
-  const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) return Response.json({ error: "Origin rejected" }, { status: 403 });
+  if (!originAllowed(request)) return Response.json({ error: "Origin rejected" }, { status: 403 });
   try {
     const data = (await request.json()) as { destination?: string };
     return Response.json(await openBilling(data.destination === "debt" ? "debt" : "license"), { headers: NO_STORE });
