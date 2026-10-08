@@ -40,7 +40,7 @@ Script chỉ nối các bước với nhau và dừng ở bước lỗi đầu t
 4. **Build bộ cài:** biên dịch lõi bảo mật Rust, build Next.js, gom Python/Node và model, mã hóa tài sản, quét bí mật, nén và ghép bộ cài.
 5. **Kiểm tra bộ cài:** `audit_package.py` quét xem có khóa riêng, token hay dữ liệu khách lọt vào không.
 
-Cuối cùng, nếu chưa dùng `--push-lease`, vào **admin → Billing → Push lease materials** (mục 4).
+Cuối cùng, nếu chưa dùng `--push-lease`, vào **admin → Billing → *Đẩy khóa phiên bản (lease)* (Push Lease Keys)** (mục 4).
 
 ---
 
@@ -75,7 +75,7 @@ cd C:\Workspace\Audio-translate\admin-system
 
 ## 4. Sau khi build xong
 
-1. **Đẩy khóa phiên bản lên gateway** (nếu chưa dùng `--push-lease`): admin → Billing → *Push lease materials*. Thiếu bước này thì app của khách không xin được lease cho phiên bản mới.
+1. **Đẩy khóa phiên bản lên gateway** (nếu chưa dùng `--push-lease`): admin → Billing → *Đẩy khóa phiên bản (lease)* (Push Lease Keys). Thiếu bước này thì app của khách không xin được lease cho phiên bản mới.
 2. **Thử cài** bộ cài trên một máy thử (hoặc thư mục tạm): kích hoạt bằng một token thử và kiểm tra các trang License, nút **Mua / gia hạn gói**.
 3. **Phát cho khách:** gửi file `.exe` trong `dist`. Cùng một bộ cài dùng cho mọi khách của gói đó; mỗi khách chỉ khác nhau ở token license.
 4. **Ngừng hỗ trợ bản cũ** (tùy chọn): admin gọi `retire_version` cho phiên bản cũ để khách phải cập nhật; xem `Doc-Admin.md`.
@@ -93,7 +93,7 @@ cd C:\Workspace\Audio-translate\admin-system
 
 **Tăng phiên bản** (bắt buộc khi đã build một phiên bản rồi mà mã đã đổi, nếu không script dừng với `VERSION_ALREADY_RELEASED`): trong **cả hai** file `products\basic\product.manifest.json` và `products\plus\product.manifest.json`, sửa `version` (ví dụ `1.2.0` thành `1.2.1`) **và** `artifact_path` cho khớp (`dist/AudioTranslate-Basic-1.2.1.exe`). Rồi chạy lại `build_edition.py`; bước 1 tự đăng ký phiên bản mới với admin.
 
-Mỗi phiên bản có khóa nội dung riêng, nên sau mỗi lần build phiên bản mới nhớ **Push lease materials**.
+Mỗi phiên bản có khóa nội dung riêng, nên sau mỗi lần build phiên bản mới nhớ **đẩy khóa phiên bản (lease)**.
 
 ---
 

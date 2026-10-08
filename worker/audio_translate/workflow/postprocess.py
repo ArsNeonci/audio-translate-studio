@@ -526,6 +526,9 @@ def synthesize(job_dir, adapter=None):
     job_dir = Path(job_dir)
     # This is the ONLY text input for TTS. Missing moderation is a hard failure.
     source = job_dir / "transcript.vi.moderated.jsonl"
+    # Before the paid voice step: take out any Chinese/Japanese/Korean characters still in the text (see tts/voice_check.py).
+    from audio_translate.tts.voice_check import clean_foreign
+    clean_foreign(job_dir)
     config = adapter_settings(job_dir)["tts"]
     signature = digest([file_digest(source), config])
     from audio_translate.tts.voice_styles import units

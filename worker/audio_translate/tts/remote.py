@@ -40,12 +40,22 @@ class RemoteTTS:
         if not self.endpoint and send is None: genius.pause(job_dir, 'GATEWAY_UNAVAILABLE')
         try: self.token = token or genius.credential()
         except genius.GatewayError: genius.pause(job_dir, 'LICENSE_REJECTED')
+        # The chunk size is set on the server (admin > Billing > voice settings), so a long script can be re-tuned without a new build.
+        if send is None: self.chunk_chars = self._server_chunk(self.chunk_chars)
         self.state_path = self.job_dir/'working'/'tts-remote-state.json'
         self.state = read_json(self.state_path) if self.state_path.exists() else {'billing_job_id': str(uuid.uuid4()), 'billed': {}}
         atomic_json(self.state_path, self.state)
         job = read_json(self.job_dir/'job.json')
         self.meta = {'kind': 'tool' if job.get('storage_scope') == 'tools' else 'workflow', 'label': str(job.get('name') or '')[:200]}
         self.done_units, self.failures = 0, {}
+
+    def _server_chunk(self, fallback):
+        """The chunk size from the gateway, never above its cap; the local value only when the gateway cannot be asked."""
+        try:
+            reply = genius.get(self.endpoint, '/v1/tts/settings', self.token, 15)
+            size = int(reply['chunk_chars']); cap = int(reply.get('max_chunk_chars', size))
+        except Exception: return fallback
+        return max(100, min(size, cap))
 
     def full(self, batch):
         """Batch boundary for synthesize(): several chunks, so requests overlap with downloads."""

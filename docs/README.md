@@ -15,6 +15,7 @@
 | [PLAN_GENIUS_BASIC_PLUS.md](PLAN_GENIUS_BASIC_PLUS.md) | Genius qua VPS, tính phí và hạn mức, gói Basic / Plus: thiết kế đã duyệt + trạng thái triển khai (mục 0) |
 | [PLAN_PAYMENTS_PAYOS.md](PLAN_PAYMENTS_PAYOS.md) | Thanh toán payOS/VietQR và cổng Billing (phí dịch vụ; gói license theo ngày hoặc 1/3/6/9/12 tháng): webhook, đối soát, renewal-worker ký gia hạn, bảng giá và hạn mức nợ theo app/khách, triển khai trên VM GCP (đã triển khai 2026-10-07; mục 15 ghi trạng thái và cách thử giao dịch thật) |
 | [BUILD_RELEASE.md](BUILD_RELEASE.md) | Tự build bộ cài Basic/Plus bằng một lệnh (`packaging/build_edition.py`), quy tắc tăng phiên bản, lỗi thường gặp, bản phát hành cứng |
+| [ADMIN_ACTIONS.md](ADMIN_ACTIONS.md) | Các nút trong admin: làm gì, lấy giá trị ở đâu; gia hạn cộng dồn; lỗi `LEASE_VERSION_UNSUPPORTED` |
 | [MODEL_DOWNLOAD.md](MODEL_DOWNLOAD.md) | Model dịch 4,6 GB tải sau khi cài (bộ cài .exe không được quá 4 GiB): luồng, link ký sẵn từ gateway, việc phải làm ở GCP, đổi model |
 | [ADMIN_ONLINE.md](ADMIN_ONLINE.md) | Admin chạy liên tục trên VM sau Cloudflare Access: kiến trúc, rủi ro khi khóa ký nằm trên server, việc cần làm trên Cloudflare, chuyển quyền từ máy bạn, máy build, vận hành (đã cài ở trạng thái đóng, chưa chuyển dữ liệu) |
 | [TOOLS.md](TOOLS.md) | Bốn tool đơn lẻ: link YouTube, xưng hô, xóa khi đang chạy, chạy song song |

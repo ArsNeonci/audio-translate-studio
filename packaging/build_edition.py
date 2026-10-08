@@ -134,7 +134,8 @@ def main():
                 else 'from core import Authority; from billing import Billing; print(Billing(Authority("data/admin.sqlite3")).push_lease_materials())')
         run([admin_python, '-c', code], ADMIN, dry=args.dry_run)
     else:
-        print('\n5/5 Not pushing lease materials (no --push-lease). Do it in Admin > Billing > Push lease materials before giving the installer to anyone.')
+        print('\n5/5 Not pushing lease materials (no --push-lease). Do it in Admin > Billing > Push Lease Keys (or rerun with --push-lease) before giving the installer to anyone.\n'
+              '     Without it the gateway answers LEASE_VERSION_UNSUPPORTED, the app never gets its usage key and the voice list stays on "loading".')
     artifact = ROOT / manifest['artifact_path']
     print(f'\nDone. Installer: {artifact}' if not args.dry_run else '\nDry run finished; nothing was changed.')
 

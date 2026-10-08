@@ -15,6 +15,7 @@ from audio_translate.core import edition  # noqa: E402
 from audio_translate.core.control import Cancelled  # noqa: E402
 from audio_translate.core.storage import atomic_json, read_json  # noqa: E402
 from audio_translate.translation import genius  # noqa: E402
+from audio_translate.tts.remote import RemoteTTS  # noqa: E402
 from audio_translate.workflow.postprocess import audio_info, synthesize  # noqa: E402
 
 ROWS = ['Trương Thiến Thiến về đến nhà, cô rất mệt.', 'Lý Cường hỏi hôm nay cô đi đâu.', 'Cô nói cô đến bệnh viện thăm mẹ.',
@@ -117,6 +118,26 @@ class RemoteTTSTests(unittest.TestCase):
         genius.credential.side_effect = genius.GatewayError(401, 'EXPIRED')
         with self.assertRaises(Cancelled): synthesize(self.job)
         self.assertEqual(read_json(self.job/'job.json')['pause_reason'], 'LICENSE_REJECTED')
+
+
+
+
+class ServerChunkSizeTests(unittest.TestCase):
+    """The gateway sets the chunk size (admin > Billing > voice settings); the app only falls back to its own when it cannot ask."""
+    def make(self):
+        remote = RemoteTTS.__new__(RemoteTTS); remote.endpoint, remote.token = 'https://gateway.test', 'tok'; return remote
+
+    def test_the_server_value_is_used_and_capped(self):
+        remote = self.make()
+        with patch.object(genius, 'get', return_value={'chunk_chars': 5000, 'max_chunk_chars': 3000}): self.assertEqual(remote._server_chunk(1200), 3000)
+        with patch.object(genius, 'get', return_value={'chunk_chars': 800, 'max_chunk_chars': 3000}): self.assertEqual(remote._server_chunk(1200), 800)
+        with patch.object(genius, 'get', return_value={'chunk_chars': 10, 'max_chunk_chars': 3000}): self.assertEqual(remote._server_chunk(1200), 100)
+
+    def test_any_failure_keeps_the_local_value(self):
+        remote = self.make()
+        for failure in (genius.GatewayError(0, 'UNREACHABLE'), genius.GatewayError(404, 'NOT_FOUND'), ValueError('bad json'), KeyError('chunk_chars')):
+            with patch.object(genius, 'get', side_effect=failure): self.assertEqual(remote._server_chunk(1200), 1200)
+        with patch.object(genius, 'get', return_value={'unexpected': True}): self.assertEqual(remote._server_chunk(1200), 1200)
 
 
 if __name__ == '__main__': unittest.main()

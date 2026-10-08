@@ -260,7 +260,7 @@ export const translations: Record<Language, Translations> = {
       continueTranslate: "Tiếp tục dịch và đọc →",
       emptyTitle: "Không có quy trình đang xử lý",
       emptyDesc: "Quy trình hoàn tất được lưu trong lịch sử. Nhập URL YouTube để bắt đầu.",
-      footer: "Audio Studio · Tiếng Trung sang tiếng Việt",
+      footer: "Audio Studio · Tiếng Trung sang Tiếng Việt",
       resourceWarningTitle: "Chưa đủ tài nguyên dự phòng để chạy thêm cùng lúc",
       existingWorkflows: "{count} quy trình đang chạy hoặc chờ. Bộ kiểm tra không khởi động mô hình.",
       queueWait: "Xếp hàng chờ",

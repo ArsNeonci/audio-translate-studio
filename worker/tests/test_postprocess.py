@@ -132,9 +132,13 @@ class PostprocessTests(unittest.TestCase):
         translate(self.job, FakeTranslator())
         self.rules.mutate("add", {"source": "thế giới", "replacement": "các bạn"})
         moderate(self.job, self.rules)
-        immutable = {name: file_digest(self.job / name) for name in ["transcript.vi.jsonl", "transcript.vi.moderated.jsonl"]}
+        immutable = {"transcript.vi.jsonl": file_digest(self.job / "transcript.vi.jsonl")}
         with self.assertRaises(RuntimeError):
             synthesize(self.job, FakeTTS(fail_after=2))
+        # The fake translator copies the Chinese source into its output. The voice step takes those characters out once (tts/voice_check.py)
+        # before it starts; after that the moderated text must stay exactly as it is, however many times the step is resumed.
+        immutable["transcript.vi.moderated.jsonl"] = file_digest(self.job / "transcript.vi.moderated.jsonl")
+        self.assertTrue(all("你" not in r["text_vi_moderated"] for r in self.read_rows("transcript.vi.moderated.jsonl")))
         wav_times = [(self.job / "voice" / f"{i:06d}.wav").stat().st_mtime_ns for i in (1, 2)]
         resumed = FakeTTS()
         translate(self.job, FakeTranslator(fail_after=0))

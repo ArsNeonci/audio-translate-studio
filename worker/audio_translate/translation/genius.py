@@ -68,6 +68,18 @@ def post(endpoint, path, body, token, timeout):
         raise GatewayError(0, 'UNREACHABLE') from None
 
 
+def get(endpoint, path, token, timeout):
+    request = urllib.request.Request(endpoint.rstrip('/') + path, headers={'Authorization': f'License {token}', 'User-Agent': USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response: return json.load(response)
+    except urllib.error.HTTPError as error:
+        try: code = json.load(error).get('error', 'GATEWAY_ERROR')
+        except Exception: code = 'GATEWAY_ERROR'
+        raise GatewayError(error.code, code) from None
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
+        raise GatewayError(0, 'UNREACHABLE') from None
+
+
 def pause(job_dir, reason):
     """Stop like a user pause; Continue (resume) clears the reason and the signal."""
     update_job(job_dir, pause_reason=reason)
