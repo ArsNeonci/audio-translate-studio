@@ -1,5 +1,7 @@
 # Tải audio YouTube: các lỗi, nạp file thay thế, và đánh giá tải qua máy chủ
 
+> **Cập nhật 2026-10-11:** kênh cập nhật yt-dlp nằm trên VPS (`MODEL_DIR/youtube/`), không còn ở bucket. Phát hành: `packaging/publish_youtube_update.py --ssh ubuntu@15.235.207.5 --key %USERPROFILE%\.ssh\ovh_audio`. Chỗ nào bên dưới nói `--bucket`/`gcloud` là cách cũ. Xem `MIGRATION_GCP_TO_VPS.md`.
+
 Trạng thái: 2026-10-09. yt-dlp 2026.08.19 (bản mới nhất trên PyPI lúc viết, cùng bản trong app đã cài). Mục 4 đến 6 mô tả phần đã làm cùng ngày.
 
 ## 1. Các dạng lỗi đã gặp hoặc có thể gặp

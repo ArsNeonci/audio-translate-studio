@@ -17,6 +17,7 @@
 | [BUILD_RELEASE.md](BUILD_RELEASE.md) | Tự build bộ cài Basic/Plus bằng một lệnh (`packaging/build_edition.py`), quy tắc tăng phiên bản, lỗi thường gặp, bản phát hành cứng |
 | [ADMIN_ACTIONS.md](ADMIN_ACTIONS.md) | Các nút trong admin: làm gì, lấy giá trị ở đâu; gia hạn cộng dồn; lỗi `LEASE_VERSION_UNSUPPORTED` |
 | [MODEL_DOWNLOAD.md](MODEL_DOWNLOAD.md) | Model dịch 4,6 GB tải sau khi cài (bộ cài .exe không được quá 4 GiB): luồng, link ký sẵn từ gateway, việc phải làm ở GCP, đổi model |
+| [MIGRATION_GCP_TO_VPS.md](MIGRATION_GCP_TO_VPS.md) | Chuyển gateway, admin, TTS từ VM GCP sang VPS OVH (đã cắt chuyển 2026-10-11): trạng thái VPS, đo TTS, mã đã đổi, cách cắt chuyển và quay lại |
 | [ADMIN_ONLINE.md](ADMIN_ONLINE.md) | Admin chạy liên tục trên VM sau Cloudflare Access: kiến trúc, rủi ro khi khóa ký nằm trên server, việc cần làm trên Cloudflare, chuyển quyền từ máy bạn, máy build, vận hành (đã cài ở trạng thái đóng, chưa chuyển dữ liệu) |
 | [TOOLS.md](TOOLS.md) | Bốn tool đơn lẻ: link YouTube, xưng hô, xóa khi đang chạy, chạy song song |
 | [WORKFLOW_LIFECYCLE.md](WORKFLOW_LIFECYCLE.md) | Vòng đời, tạm dừng và tiếp tục workflow |

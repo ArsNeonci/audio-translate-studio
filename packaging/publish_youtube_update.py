@@ -6,6 +6,8 @@
     python packaging/publish_youtube_update.py --bucket audio-translate-models-8386 [--yt-dlp 2026.8.19] [--attempts JSON] [--dry-run]
         downloads the yt-dlp wheel (and the yt-dlp-ejs version it pins) from PyPI, checks PyPI's SHA-256, checks that both import,
         uploads them to youtube/ in the bucket (never replacing an object), then signs and uploads youtube/manifest.json + .sig.
+    python packaging/publish_youtube_update.py --ssh ubuntu@HOST --key ~/.ssh/ovh_audio [same options]
+        the same onto the gateway server's MODEL_DIR (youtube/ folder) instead of a bucket; the manifest and signature are replaced, wheels never.
 
 The gateway relays the manifest (POST /v1/youtube/update) and signs links to the wheels; it never holds the signing key. Apps check
 for a new manifest every check_hours and after a download where every attempt failed.
@@ -110,24 +112,47 @@ def smoke(wheels):
         return result.stdout.split()[0]
 
 
-def current_manifest(bucket):
+def current_manifest(bucket, store=None):
+    if store:
+        raw = store.cat(f'{PREFIX}manifest.json')
+        try: return json.loads(raw) if raw else None
+        except ValueError: return None
     result = gcloud('storage', 'cat', f'gs://{bucket}/{PREFIX}manifest.json')
     if result.returncode: return None
     try: return json.loads(result.stdout)
     except ValueError: return None
 
 
+def upload_to_server(store, paths, packages, folder, raw, signature):
+    """Wheels first (never replaced), checked by size on the server, then the manifest and its signature (replaced)."""
+    for path in paths: store.put(path, f'{PREFIX}{path.name}')
+    sizes = store.sizes(PREFIX.rstrip('/'))
+    for item in packages:
+        if sizes.get(item['path']) != item['size']: raise SystemExit(f"{item['path']}: the server holds another size; not publishing the manifest.")
+    (Path(folder) / 'manifest.json').write_bytes(raw)
+    (Path(folder) / 'manifest.sig').write_text(signature, encoding='ascii')
+    for name in ('manifest.json', 'manifest.sig'): store.put(Path(folder) / name, f'{PREFIX}{name}', replace=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--init-key', action='store_true')
-    parser.add_argument('--bucket')
+    parser.add_argument('--bucket', help='Cloud Storage bucket (the older way)')
+    parser.add_argument('--ssh', metavar='USER@HOST', help='publish to the gateway server instead (its MODEL_DIR)')
+    parser.add_argument('--key', type=Path, help='private key for --ssh')
+    parser.add_argument('--remote-dir', default='/var/lib/audio-gateway/files', help='the gateway MODEL_DIR on the server')
     parser.add_argument('--yt-dlp', dest='version', help='yt-dlp version on PyPI (default: the latest)')
     parser.add_argument('--attempts', help='JSON list of {"client": name or null, "cookies": bool} (default: keep the published order, else the built-in one)')
     parser.add_argument('--check-hours', type=int, default=6)
     parser.add_argument('--dry-run', action='store_true', help='build, check and sign locally; upload nothing')
     args = parser.parse_args()
     if args.init_key: return init_key()
-    if not args.bucket: parser.error('--bucket is required')
+    if bool(args.bucket) == bool(args.ssh): parser.error('give exactly one of --bucket or --ssh')
+    if args.ssh:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from remote_files import SshFiles
+        store = SshFiles(args.ssh, args.key, args.remote_dir)
+    else: store = None
     from audio_translate.transcription import ytdlp_update
 
     private = load_key()
@@ -138,7 +163,7 @@ def main():
     version = release['info']['version']
     pins = [re.match(r'yt-dlp-ejs\s*==\s*([0-9A-Za-z.+-]+)', r) for r in release['info'].get('requires_dist') or [] if 'yt-dlp-ejs' in r and "extra == 'default'" in r.replace('"', "'")]
     pins = [m[1] for m in pins if m]
-    previous = current_manifest(args.bucket)
+    previous = current_manifest(args.bucket, store)
     attempts = json.loads(args.attempts) if args.attempts else (previous or {}).get('attempts') or [dict(s) for s in ytdlp_update.DEFAULT_ATTEMPTS]
 
     with tempfile.TemporaryDirectory() as folder:
@@ -156,6 +181,10 @@ def main():
         print(f'yt-dlp {version} (imports as {imported})' + (f' + yt-dlp-ejs {pins[0]}' if pins else '') + f'; serial {serial}; attempts {json.dumps(attempts)}')
         if args.dry_run:
             print('Dry run: nothing uploaded.'); return
+        if store:
+            upload_to_server(store, paths, packages, folder, raw, signature)
+            print('Published. Apps pick it up within check_hours, or at once after a failed download (the gateway caches for 5 minutes).')
+            return
         for path in paths:
             result = gcloud('storage', 'cp', '--no-clobber', str(path), f'gs://{args.bucket}/{PREFIX}{path.name}')
             if result.returncode: raise SystemExit(f'Upload of {path.name} failed:\n' + result.stderr[-800:])

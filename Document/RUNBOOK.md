@@ -10,7 +10,7 @@ Lệnh và quy trình đã dùng được. Kiến trúc: `ARCHITECTURE.md`. Bẫ
    foreach($d in 'audio-translates','billing-gateway','admin-system','shared-license-sdk'){ "== $d"; git -C $d status --short; git -C $d log --oneline -3 }
    ```
    Có thay đổi chưa commit thì hỏi người dùng đó là gì trước khi làm tiếp, đừng tự commit.
-3. Kiểm tra hạ tầng còn sống (VM Spot có thể đã dừng, xem `PITFALLS.md` D8): mở `https://admin.arsneonci.space` (qua Cloudflare Access) và kiểm gateway `audio-gateway.arsneonci.space`.
+3. Kiểm tra hạ tầng còn sống (VPS OVH `15.235.207.5`; `ssh -i ~/.ssh/ovh_audio ubuntu@15.235.207.5 'systemctl is-active audio-gateway audio-admin cloudflared'`): mở `https://admin.arsneonci.space` (qua Cloudflare Access) và kiểm gateway `audio-gateway.arsneonci.space`.
 4. Chạy bộ test (mục 3) để biết nền có còn xanh không.
 
 ## 2. Chạy app ở máy dev (từ `ROOT\audio-translates`)
@@ -65,24 +65,26 @@ Thay đổi nào cần build lại:
 | `admin-system` | Không | Deploy admin (mục 5) |
 | Thứ tự client YouTube, yt-dlp mới | Không | Mục 6 |
 
-## 5. Deploy lên VM
+## 5. Deploy lên VPS
+
+Mặc định hai script deploy đi qua ssh tới VPS `ubuntu@15.235.207.5` bằng khóa `~/.ssh/ovh_audio` (`--ssh`/`--key` để chọn máy khác, `--gcloud` cho VM GCP cũ). Tài khoản `ubuntu` có sudo không mật khẩu, cần cho các script này. Chi tiết chuyển máy: `docs/MIGRATION_GCP_TO_VPS.md`.
 
 - **Gateway:** `billing-gateway\deploy\deploy_gateway.py`. Cài mới: `deploy/vm-install.sh`. Cloudflare Tunnel: `deploy/tunnel/` (Terraform). Hướng dẫn: `billing-gateway/README.md`.
 - **Admin:** `python admin-system\deploy\deploy_admin.py` (giữ nguyên DB, khóa và cấu hình). Chuyển dữ liệu lần đầu: `migrate_to_server.py --freeze-to`, rồi `deploy_admin.py --db ... --replace-db` (đã làm, không lặp lại).
-- Xem log trên VM: `journalctl -u audio-admin` (không chứa khóa/token).
+- Xem log trên VPS: `journalctl -u audio-admin` / `-u audio-gateway` / `-u cloudflared` (không chứa khóa/token).
 - Đăng ký sản phẩm trên server bằng đường build: `release_config.py --remote` (trang UI chỉ đọc đường dẫn file trên máy server).
 - Máy build cần biến người dùng: `ADMIN_REMOTE_URL`, `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` (đã đặt trên máy build hiện tại).
-- Sao lưu: DB admin lên bucket 03:30 giờ VN hằng ngày (`admin.sqlite3.gz`); gateway sao lưu hằng ngày và báo cáo tháng lên `gs://audio-gateway-backup-erp-project-8386`.
+- Sao lưu: DB admin 03:30 giờ VN vào `/var/backups/audio-admin`; gateway 03:00 và báo cáo tháng vào `/var/backups/audio-gateway` (cùng ổ đĩa VPS). **Kéo bản ngoài máy định kỳ:** `python billing-gateway\deploy\pull_backups.py --ssh ubuntu@15.235.207.5 --key %USERPROFILE%\.ssh\ovh_audio --dest C:\Users\Linh\audio-translate-backups`.
 - **Khôi phục admin:** dừng dịch vụ → chép DB đã giải nén vào `/var/lib/audio-admin/admin.sqlite3` (quyền `600`, chủ `audio-admin`) → đặt đúng master key → khởi động lại. Rollback chuyển quyền chỉ khi chưa cấp gì trên server (`docs/ADMIN_ONLINE.md` mục 5).
 
 ## 6. Phát hành bản cập nhật yt-dlp (không cần build lại app)
 
-Chạy trên máy có khóa ký (`C:\Users\Linh\.audio-translate\youtube-update-signing.pem`) và `gcloud`:
+Chạy trên máy có khóa ký (`C:\Users\Linh\.audio-translate\youtube-update-signing.pem`) và khóa ssh của VPS:
 
 ```
 cd ROOT\audio-translates
-.venv\Scripts\python.exe packaging\publish_youtube_update.py --bucket audio-translate-models-8386 --dry-run
-.venv\Scripts\python.exe packaging\publish_youtube_update.py --bucket audio-translate-models-8386
+.venv\Scripts\python.exe packaging\publish_youtube_update.py --ssh ubuntu@15.235.207.5 --key %USERPROFILE%\.ssh\ovh_audio --dry-run
+.venv\Scripts\python.exe packaging\publish_youtube_update.py --ssh ubuntu@15.235.207.5 --key %USERPROFILE%\.ssh\ovh_audio
 ```
 
 - Chọn bản: `--yt-dlp <phiên bản>`. Quay lui: phát hành lại bản cũ (serial mới vẫn lớn hơn).
@@ -92,8 +94,8 @@ cd ROOT\audio-translates
 
 ## 7. Đổi model dịch hoặc model ASR
 
-- **Model dịch:** đổi `FILENAME/SIZE/SHA256` ở `worker/tools/download_translation_model.py` và `MODEL` ở `lib/server/model-download.ts`; thêm id vào `MODELS` ở `billing-gateway/gateway.py`; upload bằng `audio-translates\packaging\upload_model.py`; build lại hai gói. App cũ vẫn dùng id cũ nên không hỏng.
-- **Model ASR:** `python packaging\make_asr_manifest.py --source <thư mục chứa models/<org>--<tên>/snapshots/master>` (ghi `worker/config/asr-models.json` và `billing-gateway/asr_models.json`), upload lên `models/asr/<tên>/` trong bucket, deploy gateway, build lại.
+- **Model dịch:** đổi `FILENAME/SIZE/SHA256` ở `worker/tools/download_translation_model.py` và `MODEL` ở `lib/server/model-download.ts`; thêm id vào `MODELS` ở `billing-gateway/gateway.py`; upload bằng `audio-translates\packaging\upload_model.py --ssh ubuntu@15.235.207.5 --key %USERPROFILE%\.ssh\ovh_audio` (kiểm SHA-256 trên server); build lại hai gói. App cũ vẫn dùng id cũ nên không hỏng.
+- **Model ASR:** `python packaging\make_asr_manifest.py --source <thư mục chứa models/<org>--<tên>/snapshots/master>` (ghi `worker/config/asr-models.json` và `billing-gateway/asr_models.json`), upload bằng `upload_model.py --ssh ... --asr <cùng thư mục>` (vào `models/asr/<tên>/` trên VPS), deploy gateway, build lại.
 
 ## 8. Thao tác thường ngày ở admin
 

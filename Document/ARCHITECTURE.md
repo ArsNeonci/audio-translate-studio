@@ -33,10 +33,10 @@ Hạ tầng ngoài:
 
 | Thành phần | Chi tiết |
 |---|---|
-| VM GCP `instance-20261006-200055` | Spot, hành động kết thúc = STOP, Debian. Chạy gateway + admin (`127.0.0.1:8787`, dịch vụ `audio-admin`) |
+| VPS OVH `vps-6629050b` (`15.235.207.5`) | Từ 2026-10-11. VPS-1: 2 vCPU, 4 GB RAM (+2 GB swap), 40 GB, Singapore, Ubuntu 24.04. Chạy gateway (`127.0.0.1:8790`, 1 worker TTS × 2 luồng, ~51 giây/1000 ký tự), admin (`127.0.0.1:8787`) và cloudflared. Không mở cổng nào ngoài SSH (chỉ khóa). Vào bằng `ssh -i ~/.ssh/ovh_audio ubuntu@15.235.207.5`. VM GCP cũ đã tắt dịch vụ, chủ dự án tự xóa |
 | Tên miền (Cloudflare Tunnel) | `audio-gateway.arsneonci.space` (API, app khách gọi), `billing.arsneonci.space` (cổng khách + webhook payOS), `admin.arsneonci.space` (admin, sau Cloudflare Access) |
-| Bucket `audio-translate-models-8386` | Riêng tư. Model dịch, 21 tệp model ASR, `youtube/manifest.json(.sig)` + wheel yt-dlp |
-| Bucket `audio-gateway-backup-erp-project-8386` | Sao lưu hằng ngày + báo cáo tháng |
+| Model trên VPS `/var/lib/audio-gateway/files` (`MODEL_DIR`) | Model dịch, 21 tệp model ASR, `youtube/manifest.json(.sig)` + wheel yt-dlp. Gateway tự phát qua `https://audio-gateway.arsneonci.space/files/...` bằng link HMAC 1 giờ (hỗ trợ tải nối), chỉ cấp cho license hợp lệ |
+| Sao lưu `/var/backups/audio-gateway`, `/var/backups/audio-admin` (`BACKUP_DIR`) | Hằng ngày 03:00/03:30 giờ VN + báo cáo tháng; tự dọn 35 ngày (daily) / 180 ngày (weekly). Bản ngoài máy: `billing-gateway/deploy/pull_backups.py` kéo về `C:\Users\Linh\audio-translate-backups` (chạy tay; lịch sử bucket cũ ở `gcp-bucket-archive/`) |
 | payOS | Thanh toán VietQR; webhook đã đăng ký |
 
 ## 3. Pipeline xử lý
@@ -88,7 +88,7 @@ Mô hình: không tin mã Python/Node trên máy khách; quyết định cấp p
 - **Lease**: do admin/gateway ký (domain `machine-lease-v1`), mang **content key gói riêng cho máy** (ECIES X25519 → HKDF-SHA256 → AES-256-GCM). Thời hạn lease 1–90 ngày, ân hạn offline 0–30 ngày, đặt ở server. Bản release **bỏ khóa nhúng**, bắt buộc có lease (`LEASE_REQUIRED`, `LICENSE_EXPIRED`). Mỗi phiên bản app có **content key riêng**; có thể ngừng hỗ trợ bản cũ (`retire_version`). Thu hồi có hiệu lực ngay.
 - **Gateway** giữ khóa ký lease riêng (domain `product-lease-key-v1`, không ký được license) và mã hóa tài liệu khi lưu bằng `LEASE_MASTER_KEY`. Thiếu key này thì dịch vụ lease tắt.
 - **Vault**: các cấu hình/prompt/danh sách tên được mã hóa và nạp qua content key của service (gate integrity + license). Nuitka compile một số module.
-- **Phase 3** (đã code, một phần cần chứng chỉ): xác minh tiến trình trên pipe, anti-debug, quét secret cuối build, hook Authenticode, build theo khách. **Bản "phát hành cứng"** (`AUDIO_RELEASE_HARDENED=1`) cần chứng chỉ `.pfx` và khóa chữ ký payload; **chưa thiết lập**. Rủi ro còn lại: kẻ có quyền admin trên máy khách sửa binary dịch vụ, và ai có root trên VM đọc được master key (chỉ lấy được khóa ký lease).
+- **Phase 3** (đã code, một phần cần chứng chỉ): xác minh tiến trình trên pipe, anti-debug, quét secret cuối build, hook Authenticode, build theo khách. **Bản "phát hành cứng"** (`AUDIO_RELEASE_HARDENED=1`) cần chứng chỉ `.pfx` và khóa chữ ký payload; **chưa thiết lập**. Rủi ro còn lại: kẻ có quyền admin trên máy khách sửa binary dịch vụ, và ai có root trên VPS đọc được master key (chỉ lấy được khóa ký lease).
 
 Quy ước giữ ổn định: **không đổi tên hoặc di chuyển 7 shim ở `worker/`** (`manage`, `retry`, `orchestrator`, `rules`, `results`, `youtube_session`, `compute_settings`). Allowlist của security-core (Rust) và `lib/server/worker-client.ts` gọi theo tên; đổi thì phải build lại Rust và tăng version.
 
@@ -97,7 +97,7 @@ Quy ước giữ ổn định: **không đổi tên hoặc di chuyển 7 shim �
 Chi tiết: `docs/YOUTUBE_DOWNLOAD.md`. Kết luận kiến trúc: **tải từ IP nhà khách**, không tải hộ qua server (IP GCP bị chặn 12/12 lượt, kèm rủi ro pháp lý và băng thông).
 
 - **Thứ tự client** (`transcription/pipeline.py: download`): mặc định ẩn danh → mweb ẩn danh → mặc định + cookie phiên Edge đã kết nối (hoặc `YTDLP_COOKIES_FILE`) → mweb + cookie → tv + cookie. Dừng ngay khi lỗi mà client khác không cứu được (429, riêng tư, đã gỡ, hội viên, chưa phát, bản quyền). Mọi lần thử ghi vào `working/download-attempts.json`.
-- **Kênh cập nhật yt-dlp có chữ ký**: app gọi gateway `POST /v1/youtube/update`; gateway trả manifest Ed25519 + link ký các wheel `yt-dlp` và `yt-dlp-ejs` từ bucket. App chỉ nhận khi khớp khóa công khai ghim trong `worker/config/youtube-update-keys.json`, `serial` không lùi, SHA-256 và kích thước đúng. Cài vào `%LOCALAPPDATA%\AudioTranslate\data\ytdlp\releases\<serial>\`. Hỏng hết thì app hỏi gateway ngay (tối đa 15 phút một lần).
+- **Kênh cập nhật yt-dlp có chữ ký**: app gọi gateway `POST /v1/youtube/update`; gateway trả manifest Ed25519 + link ký các wheel `yt-dlp` và `yt-dlp-ejs` từ `MODEL_DIR` trên VPS. App chỉ nhận khi khớp khóa công khai ghim trong `worker/config/youtube-update-keys.json`, `serial` không lùi, SHA-256 và kích thước đúng. Cài vào `%LOCALAPPDATA%\AudioTranslate\data\ytdlp\releases\<serial>\`. Hỏng hết thì app hỏi gateway ngay (tối đa 15 phút một lần).
 - **Phiên YouTube** là hồ sơ Edge riêng của app; Edge ẩn chạy trong Windows Job Object `KILL_ON_JOB_CLOSE`, dọn bằng `browser_cleanup.py`.
 - **Dự phòng cuối**: người dùng nạp file audio tiếng Trung. File đó là bản duy nhất (`source_upload`), Rerun bước Tải không xóa nó.
 - Audio gốc được xuất thành kết quả `SOURCE_AUDIO` của bước Tải, hiện ở trang Lịch sử và thẻ Studio.
@@ -118,7 +118,7 @@ Chi tiết: `docs/PLAN_PAYMENTS_PAYOS.md` (mục 15 = hiện trạng), `docs/ADM
 
 ## 9. Admin online
 
-Admin chạy liên tục trên VM sau **Cloudflare Access** (quản lý ở giao diện Cloudflare, không còn trong Terraform state). Bản trên PC đã **đóng băng** (`AUTHORITY_MOVED`) để không có hai nơi cùng cấp license. Admin tự kiểm lại JWT của Access và `ADMIN_EMAILS` (đóng khi lỗi). Master key = 64 hex ở `/etc/audio-admin/master.key`; khóa ký trong DB được mã hóa bằng nó. Máy build dùng service token và `ADMIN_REMOTE_URL` (chỉ `/api/build/*`). Người dùng chấp nhận rủi ro: khóa ký nằm trên server nên nếu lộ thì không thu hồi được. **Không đặt Access lên `billing.*` hay `audio-gateway.*`** (sẽ chặn payOS và app khách).
+Admin chạy liên tục trên VPS sau **Cloudflare Access** (quản lý ở giao diện Cloudflare, không còn trong Terraform state). Bản trên PC đã **đóng băng** (`AUTHORITY_MOVED`) để không có hai nơi cùng cấp license. Admin tự kiểm lại JWT của Access và `ADMIN_EMAILS` (đóng khi lỗi). Master key = 64 hex ở `/etc/audio-admin/master.key`; khóa ký trong DB được mã hóa bằng nó. Máy build dùng service token và `ADMIN_REMOTE_URL` (chỉ `/api/build/*`). Người dùng chấp nhận rủi ro: khóa ký nằm trên server nên nếu lộ thì không thu hồi được. **Không đặt Access lên `billing.*` hay `audio-gateway.*`** (sẽ chặn payOS và app khách).
 
 ## 10. Bố cục mã nguồn app
 
@@ -130,7 +130,7 @@ Admin chạy liên tục trên VM sau **Cloudflare Access** (quản lý ở giao
 
 ## 11. Việc chưa làm (tính đến 2026-10-10)
 
-- Cài tác vụ Windows `AudioTranslateRenewalWorker` (ngoài ra gia hạn chỉ được ký khi admin online; admin trên VM đã ký nên mức ưu tiên thấp hơn, kiểm lại).
+- Cài tác vụ Windows `AudioTranslateRenewalWorker` (ngoài ra gia hạn chỉ được ký khi admin online; admin trên VPS đã ký nên mức ưu tiên thấp hơn, kiểm lại).
 - **Chưa có giao dịch tiền thật** từ đầu đến cuối (cách thử: `docs/PLAN_PAYMENTS_PAYOS.md` mục 15.4).
 - Chưa thử tải model đầy đủ từ app với license thật đã kích hoạt; chưa thử lời gọi cập nhật yt-dlp bằng license thật.
 - Chưa đặt hạn mức nợ cho khách; chưa cài installer thử trên máy Windows thứ hai.

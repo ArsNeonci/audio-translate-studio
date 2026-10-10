@@ -1,5 +1,7 @@
 # Admin online (chạy liên tục trên VM, sau Cloudflare Access)
 
+> **Cập nhật 2026-10-11:** admin đã chuyển từ VM GCP sang VPS OVH `15.235.207.5` (cùng tên miền, cùng Cloudflare Access, cùng master key). Deploy mặc định qua ssh (`deploy_admin.py`, `--gcloud` cho máy cũ); backup vào `/var/backups/audio-admin`. Mọi chỗ nói "VM"/IAP/bucket bên dưới là bối cảnh cũ. Xem `MIGRATION_GCP_TO_VPS.md`.
+
 Trạng thái: **đã chạy thật từ 2026-10-07** tại `https://admin.arsneonci.space`.
 
 - Ứng dụng Cloudflare Access "Audio Translate admin" (policy: email `quanglinh1286@gmail.com`, đăng nhập bằng mã PIN; thêm một policy *Service Auth* cho service token của máy build) đã được tạo, rồi **chuyển sang quản lý bằng giao diện Cloudflare** để bạn tự sửa (Terraform không còn đụng tới).

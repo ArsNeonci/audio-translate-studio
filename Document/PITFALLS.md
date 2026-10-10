@@ -116,13 +116,23 @@ Chỉ giữ thứ mà nếu không biết thì dễ làm sai hoặc mất nhiề
 - Trước đây gia hạn chỉ được ký khi giao diện admin hoặc `renewal_worker` chạy; admin trên VM giờ ký tự động (`ADMIN_FULFILLMENT=on`). Nếu đơn "đã trả mà chưa gia hạn", kiểm tra admin trên VM đang chạy và kênh duyệt trực tiếp.
 - Khi sửa webhook: chữ ký đúng → 200, giả → 400; kiểm sau mỗi lần đổi Cloudflare/Tunnel.
 
-### D7. Gemini key bị chặn theo IP (sự cố mở, 2026-10-08)
-- `403 API_KEY_IP_ADDRESS_BLOCKED`: khóa chỉ cho phép IP của VM cũ đã xóa. IP ngoài VM Spot là IP tạm, đổi sau mỗi lần STOP/START.
-- **Sửa:** thêm IP hiện tại vào danh sách cho phép hoặc bỏ giới hạn IP, giữ giới hạn theo API Generative Language; tốt hơn là **đặt IP tĩnh** cho VM. Tới nay chưa xác nhận đã sửa; kiểm tra trước khi tin Genius đang chạy.
+### D7. Gemini key bị chặn theo IP (đã xử lý 2026-10-11)
+- `403 API_KEY_IP_ADDRESS_BLOCKED`: khóa giới hạn IP chỉ cho phép IP của máy cũ. Chủ dự án đã bỏ giới hạn; đã gọi thử từ VPS `15.235.207.5` trả 200.
+- **Nếu đổi máy chủ lần nữa** hoặc đặt lại giới hạn IP: thêm IP mới trước khi cắt chuyển rồi gọi thử từ chính máy đó.
 - Mã tính phí: ước tính trước dùng tỉ lệ Việt/Trung 3,5; số đo thật 3,08 (2,91–3,20).
 
-### D8. VM Spot bị dừng
-- Spot với `terminate = STOP`: máy có thể dừng bất cứ lúc nào. VM thử cũ `instance-20261006-011041` tự xóa sau 10 giờ; VM đang dùng là `instance-20261006-200055`. Sau khi VM khởi động lại, kiểm tra gateway, admin và tunnel, và IP ngoài (xem D7).
+### D8. Máy chủ: VPS OVH (VM Spot GCP đã bỏ 2026-10-11)
+- Không còn rủi ro Spot tự dừng. Máy chỉ có 4 GB RAM: đủ **một** worker TTS; đừng tăng `TTS_WORKERS` khi chưa nâng gói.
+- Mọi thứ (model, backup) nằm trên một ổ đĩa: **kéo backup về máy định kỳ** bằng `deploy/pull_backups.py`, nếu không mất VPS là mất hết. Có thể bật thêm Automated backup của OVH.
+- Mất khóa ssh `~/.ssh/ovh_audio`: SSH bằng mật khẩu đã tắt, vào bằng console KVM hoặc rescue mode của OVH.
+
+### D9. Bẫy khi deploy/chuyển máy (gặp lúc chuyển sang VPS)
+- **Script deploy luôn báo "Done" dù cài lỗi:** lệnh từ xa là `cài; dọn`, nên mã thoát là của bước dọn. Đã sửa thành `cài; status=$?; dọn; exit $status` ở cả hai script. Mọi lần deploy trước 2026-10-11 có thể đã lỗi âm thầm.
+- **`vm-install.sh` dừng âm thầm** khi file secrets thiếu một khóa: `set -euo pipefail` + `VAR=$(grep ...)` không khớp. Hàm `get` phải có `|| true`.
+- **`gcloud compute scp` trên Windows (pscp) không hiểu `~`:** dùng đường dẫn tương đối với home (`instance:migrate.tgz`).
+- **Tên tệp model bắt đầu bằng dấu chấm** (`.gitattributes` trong bộ ASR) là tệp thật app sẽ xin; bộ kiểm tra tên trong `files.py` phải cho phép (có test đối chiếu `asr_models.json`).
+- **Quyền thư mục backup:** `chmod 0750` xóa bit setgid, làm thư mục con mất nhóm `ubuntu` và `pull_backups.py` không đọc được. Dùng `0o2750`; tệp lưu trữ báo cáo phải `0640` (mkstemp tạo `0600`).
+- **Cài thử trên máy mới để lại dữ liệu thử:** gateway cài thử sẽ tạo báo cáo tháng từ DB thử vào `BACKUP_DIR/reports` và không bao giờ ghi đè. Xóa `reports/` thử sau khi cắt chuyển.
 
 ## E. Môi trường dev / công cụ
 

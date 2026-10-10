@@ -1,5 +1,7 @@
 # Tải model dịch sau khi cài
 
+> **Cập nhật 2026-10-11:** model và bộ ASR không còn ở bucket GCS. Chúng nằm trên VPS (`/var/lib/audio-gateway/files`, `MODEL_DIR`), gateway tự phát qua `https://audio-gateway.arsneonci.space/files/...` bằng link HMAC 1 giờ (có Range). App không đổi. Upload: `packaging/upload_model.py --ssh ...`. Các đoạn nói về bucket/`gcloud` bên dưới là cách cũ. Xem `MIGRATION_GCP_TO_VPS.md`.
+
 Trạng thái: 2026-10-07. Mã đã viết và có test (gateway 84 test, `scripts/check-model-download.cjs`, lint, tsc, i18n). **Phần GCP (bucket, quyền, upload, cấu hình gateway) chưa làm được lúc viết** vì lệnh tạo bucket và cấp quyền IAM bị chặn chờ bạn duyệt; xem mục 3. Chưa thử tải model thật từ bucket.
 
 ## 1. Vì sao

@@ -1,12 +1,15 @@
-"""Upload the on-device models to the private model bucket that the gateway serves from (run once per model version).
+"""Upload the on-device models to where the gateway serves them from (run once per model version): a folder on the gateway server
+(--ssh) or the private model bucket (--bucket, the older way).
 
     python packaging/upload_model.py --bucket audio-translate-models-8386                  the translation model (Hy-MT2-7B)
     python packaging/upload_model.py --bucket audio-translate-models-8386 --asr <folder>   the speech models (files listed in worker/config/asr-models.json)
+    python packaging/upload_model.py --ssh ubuntu@HOST --key ~/.ssh/ovh_audio [--asr <folder>]   the same, onto the server's MODEL_DIR (files end up owned by audio-gateway, mode 640)
 
 The file is checked against the size and SHA-256 pinned in worker/tools/download_translation_model.py first, so a damaged local copy
 is never uploaded. An object that already exists is never replaced (--no-clobber). After the upload the stored size and CRC32C
 are compared with the local file (gcloud always stores CRC32C; its parallel upload stores no MD5). Needs `gcloud` logged in with
-write access to the bucket. Nothing secret is printed.
+write access to the bucket. With --ssh the server's own SHA-256 of each file is compared with the pinned one instead, and a file that is already
+there is left alone. Nothing secret is printed.
 """
 import argparse
 import hashlib
@@ -35,6 +38,41 @@ def gcloud(*args):
     tool = shutil.which('gcloud') or shutil.which('gcloud.cmd')
     if not tool: raise SystemExit('gcloud was not found on PATH.')
     return subprocess.run([tool, *args], capture_output=True, text=True)
+
+
+def asr_files(source):
+    """[(local path, object name, size, sha256)] for every speech-model file, each verified against the manifest first."""
+    manifest = json.loads((ROOT / 'worker' / 'config' / 'asr-models.json').read_text(encoding='utf-8'))
+    files = []
+    for model in manifest['models']:
+        base = Path(source) / 'models' / model['dir'] / 'snapshots' / 'master'
+        for item in model['files']:
+            path = base / item['path']
+            if not path.is_file() or path.stat().st_size != item['size'] or digest(path, 'sha256').hexdigest() != item['sha256']:
+                raise SystemExit(f"{model['dir']}/{item['path']} does not match the manifest; not uploading.")
+            files.append((path, f"{ASR_PREFIX}{model['dir']}/{item['path']}", item['size'], item['sha256']))
+    return files
+
+
+def upload_asr_ssh(store, source):
+    files = asr_files(source)
+    print(f'{len(files)} files verified locally. Uploading to the server...')
+    for path, name, _, _ in files:
+        print('  ' + ('uploaded' if store.put(path, name) else 'already there') + f': {name}')
+    hashes = store.sha256([name for _, name, _, _ in files])
+    wrong = [name for _, name, _, sha in files if hashes.get(name) != sha]
+    if wrong: raise SystemExit('The server does not hold these files with the pinned SHA-256: ' + ', '.join(wrong[:5]))
+    print(f'OK: {len(files)} files under {ASR_PREFIX} on the server with the pinned SHA-256.')
+
+
+def upload_model_ssh(store, file):
+    if not file.is_file(): raise SystemExit(f'Not found: {file}')
+    if file.stat().st_size != pinned.SIZE or digest(file, 'sha256').hexdigest() != pinned.SHA256:
+        raise SystemExit('The local model does not match the pinned size/SHA-256; not uploading.')
+    print('Local file verified. Uploading to the server (4.6 GB)...')
+    print('  ' + ('uploaded' if store.put(file, OBJECT) else 'already there'))
+    if store.sha256([OBJECT]).get(OBJECT) != pinned.SHA256: raise SystemExit('The server copy does not match the pinned SHA-256. Do not use it.')
+    print(f'OK: {OBJECT} on the server ({pinned.SIZE} bytes, SHA-256 matches).')
 
 
 def upload_asr(bucket, source):
@@ -66,10 +104,18 @@ def upload_asr(bucket, source):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--bucket', required=True)
+    parser.add_argument('--bucket', help='Cloud Storage bucket (the older way)')
+    parser.add_argument('--ssh', metavar='USER@HOST', help='upload to the gateway server instead (its MODEL_DIR)')
+    parser.add_argument('--key', type=Path, help='private key for --ssh')
+    parser.add_argument('--remote-dir', default='/var/lib/audio-gateway/files', help='the gateway MODEL_DIR on the server')
     parser.add_argument('--file', type=Path, default=ROOT / 'models' / 'Hy-MT2-7B-Q4_K_M' / pinned.FILENAME)
     parser.add_argument('--asr', type=Path, help='folder that holds models/<org>--<name>/snapshots/master for the speech models')
     args = parser.parse_args()
+    if bool(args.bucket) == bool(args.ssh): parser.error('give exactly one of --bucket or --ssh')
+    if args.ssh:
+        from remote_files import SshFiles
+        store = SshFiles(args.ssh, args.key, args.remote_dir)
+        return upload_asr_ssh(store, args.asr) if args.asr else upload_model_ssh(store, args.file)
     if args.asr: return upload_asr(args.bucket, args.asr)
     if not args.file.is_file(): raise SystemExit(f'Not found: {args.file}')
     if args.file.stat().st_size != pinned.SIZE or digest(args.file, 'sha256').hexdigest() != pinned.SHA256:
