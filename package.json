@@ -12,6 +12,7 @@
     "check:billing": "node scripts/check-billing-portal.cjs",
     "check:model": "node scripts/check-model-download.cjs",
     "check:origin": "node scripts/check-origin.cjs",
+    "check:upload": "node scripts/check-workflow-upload.cjs",
     "package:windows": "python packaging/build_installer.py"
   },
   "dependencies": {

@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const text = await request.text();
     if (text.length > 1024) return Response.json({ error: "Request too large" }, { status: 400 });
     const payload = JSON.parse(text);
-    if (!payload || !["open", "check", "disconnect"].includes(payload.action)) return Response.json({ error: "Invalid action" }, { status: 400 });
+    if (!payload || !["open", "check", "disconnect", "close_browser"].includes(payload.action)) return Response.json({ error: "Invalid action" }, { status: 400 });
     return respond(payload.action);
   } catch {
     return Response.json({ error: "Invalid request" }, { status: 400 });

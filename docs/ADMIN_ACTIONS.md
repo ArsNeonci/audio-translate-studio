@@ -64,3 +64,11 @@ Vì vậy ngay trước bước tạo giọng, `worker/audio_translate/tts/voice
 ## 6. Sự cố đang mở: khóa Gemini bị chặn theo IP
 
 Ngày 2026-10-08 mọi lệnh gọi Gemini bằng khóa trong cấu hình gateway đều trả `403 PERMISSION_DENIED`: *"The provided API key has an IP address restriction. The originating IP address of the call (34.97.47.166) violates this restriction"*. 34.97.47.166 là IP ra ngoài hiện tại của VM (cũng bị chặn từ máy cá nhân). Nhiều khả năng khóa đang chỉ cho phép IP của VM cũ đã xóa. Hệ quả: dịch Genius của khách đang hỏng. Cách sửa (làm trong Google AI Studio / Cloud Console, phần giới hạn của khóa): thêm IP hiện tại của VM vào danh sách cho phép, hoặc bỏ giới hạn IP và chỉ giới hạn theo API "Generative Language". Lưu ý VM là Spot (`STOP`) và IP ngoài là IP tạm: nên **đặt IP tĩnh** cho VM, nếu không IP có thể đổi sau mỗi lần VM dừng/khởi động và lỗi này lặp lại.
+
+## 7. Nút trong chi tiết khách (2026-10-09)
+
+Mã khách, Cấp lại mã khách và Gia hạn tác động lên **cả license** (mọi bản ghi thứ tự của nó), nên trong **Customers > Xem chi tiết** chúng nằm ở **dòng sản phẩm** (bảng quyền sử dụng), mỗi license một lần, và lấy bản ghi mới nhất làm gốc. Quyền sử dụng chưa kích hoạt chưa có license nên chưa có ba nút này. Bảng giấy phép bên dưới chỉ còn nút **Token Giấy phép** trên từng bản ghi. Trang **Giấy phép** chung vẫn giữ đủ bốn nút trên mọi hàng.
+
+**Định danh khi thanh toán không phụ thuộc vào mã khách.** License còn hạn: app gửi token license (đã ký, chứa `license_id`, `customer_id`, `product_id`) để xin link một lần, nên cổng biết đúng khách và license từ chữ ký. Mã khách chỉ là đường vào cho license đã hết hạn. Mỗi đơn thanh toán lưu `customer_id`, `license_id`, `product_id` lúc tạo; đối soát payOS đi theo mã đơn, nên đổi mã khách không ảnh hưởng đơn đang có hay đã trả.
+
+**Cột khách hàng (2026-10-09):** các bảng Quyền sử dụng, Máy và Giấy phép hiện **tên khách hàng** thay cho mã 32 ký tự (cột "Khách hàng" / "Customer"). Mã vẫn nằm trong dữ liệu của từng dòng nên tìm kiếm theo mã vẫn dùng được và các nút vẫn dùng đúng khách; bộ lọc theo khách ở trang Giấy phép liệt kê tên. Khách đã bị xóa thì hiện lại mã. Bảng Khách hàng giữ cột mã.

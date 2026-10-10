@@ -12,19 +12,12 @@ import sys
 import time
 
 from audio_translate.core.storage import atomic_json, file_lock, LockedError, read_json
+from audio_translate.transcription import browser_cleanup as cleanup
+from audio_translate.transcription.browser_cleanup import session_root
 
 
 class YouTubeSessionError(RuntimeError):
     pass
-
-
-def session_root():
-    custom = os.getenv('YOUTUBE_SESSION_ROOT')
-    if custom:
-        return Path(custom).resolve()
-    if os.name == 'nt':
-        return Path(os.environ['LOCALAPPDATA']) / 'AudioTranslate' / 'youtube'
-    return Path(os.getenv('XDG_DATA_HOME', str(Path.home() / '.local' / 'share'))) / 'AudioTranslate' / 'youtube'
 
 
 def browser_binary():
@@ -60,7 +53,24 @@ def status():
     return {'enabled': bool(state.get('enabled')), 'state': state.get('state', 'NOT_CONNECTED'),
             'last_checked': state.get('last_checked'), 'browser_available': browser_binary() is not None,
             'legacy_cookie_override': bool(os.getenv('YTDLP_COOKIES_FILE')) and not state.get('enabled', False),
-            'profile_path': str(session_root() / 'profile')}
+            'profile_path': str(session_root() / 'profile'), 'downloader': downloader(), 'browser_running': browser_running()}
+
+
+def browser_running():
+    """{'hidden': processes of a hidden browser, 'window': a sign-in window is open}: what the "close browser" button would close."""
+    try:
+        return cleanup.running()
+    except Exception:
+        return None
+
+
+def downloader():
+    """Which yt-dlp the next download uses (bundled or a signed update from the gateway) and when the gateway was last asked."""
+    try:
+        from audio_translate.transcription.ytdlp_update import info
+        return info()
+    except Exception:
+        return None
 
 
 def endpoint():
@@ -82,10 +92,10 @@ def socket_for(url):
         yield ws
 
 
-def command(ws, method, params=None):
+def command(ws, method, params=None, session=None):
     command.sequence = getattr(command, 'sequence', 0) + 1
     identity = command.sequence
-    ws.send(json.dumps({'id': identity, 'method': method, 'params': params or {}}))
+    ws.send(json.dumps({'id': identity, 'method': method, 'params': params or {}, **({'sessionId': session} if session else {})}))
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         response = json.loads(ws.recv(timeout=max(.1, deadline-time.monotonic())))
@@ -116,14 +126,20 @@ def launch(interactive):
     profile.mkdir(parents=True, exist_ok=True)
     # A stale port file must not make a new process connect to an old endpoint.
     (profile / 'DevToolsActivePort').unlink(missing_ok=True)
-    args = [binary, f'--user-data-dir={profile}', '--no-first-run', '--no-default-browser-check',
-            '--disable-background-mode', '--restore-last-session']
+    # No --restore-last-session: it reopened every tab of the previous run and added one more, so each launch left another
+    # about:blank (hidden) or youtube.com (sign-in window) behind. The login cookies are persistent, so nothing is lost.
+    args = [binary, f'--user-data-dir={profile}', '--no-first-run', '--no-default-browser-check', '--disable-background-mode']
     if not interactive:
+        # Extensions are not needed to read cookies; their service workers cost memory.
         args.extend(['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1',
-                     '--headless=new', '--disable-gpu'])
+                     '--headless=new', '--disable-gpu', '--disable-extensions'])
     args.append('https://www.youtube.com/' if interactive else 'about:blank')
-    process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                               creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+    if interactive:
+        process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=cleanup.browser_env(),
+                                   creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+    else:
+        # In a job object: if this process ends for any reason, the hidden browser and its children end with it.
+        process = cleanup.start_hidden(args)
     if interactive:
         # Authentication is manual in an ordinary installed browser, never CDP.
         # Chromium may hand the URL to an existing profile process then exit.
@@ -135,39 +151,43 @@ def launch(interactive):
         if url:
             save_state(browser_mode='interactive' if interactive else 'headless')
             return url, process
-        if process.poll() is not None:
+        # The first process may hand over to a restarted one and exit (Edge does this in some environments): only when nothing of the
+        # hidden browser is left is it a failure.
+        if process.poll() is not None and not cleanup.hidden_processes():
             break
         time.sleep(.15)
     if process.poll() is None:
         process.terminate()
+    cleanup.stop_hidden()
     raise YouTubeSessionError('Không mở được profile YouTube. Đóng cửa sổ profile riêng rồi thử lại; kiểm tra chính sách trình duyệt.')
 
 
 def manual_profile_running():
     """Only inspect this app's explicit profile, not personal browser cookies."""
-    import psutil
-    profile=(session_root()/'profile').resolve()
-    for process in psutil.process_iter(['cmdline']):
+    return bool(cleanup.profile_processes())
+
+
+def close_hidden():
+    """End a hidden browser: politely first (it saves its profile), then whatever is left of it. Returns how many processes were stopped."""
+    url = live_endpoint()
+    if url:
         try:
-            args=process.info.get('cmdline') or []
-            for arg in args:
-                if arg.startswith('--user-data-dir=') and Path(arg.split('=',1)[1]).resolve()==profile:
-                    return True
-        except (psutil.Error,OSError,ValueError):
-            continue
-    return False
+            with socket_for(url) as ws:
+                command(ws, 'Browser.close')
+        except Exception:
+            pass
+        for _ in range(40):
+            if not cleanup.hidden_processes():
+                break
+            time.sleep(.15)
+    return cleanup.stop_hidden()
 
 
 def open_login():
     with file_lock(session_root()/'session.lock'):
         url = live_endpoint()
         if url and configuration().get('browser_mode') == 'headless':
-            with socket_for(url) as ws:
-                command(ws, 'Browser.close')
-            for _ in range(30):
-                if not live_endpoint():
-                    break
-                time.sleep(.1)
+            close_hidden()
             url = None
         if url:
             save_state(state='CLOSE_LOGIN_WINDOW')
@@ -200,34 +220,30 @@ def cookie_objects(raw):
     return cookies
 
 
-def refresh_page(url):
-    """Visit YouTube in a background tab so the browser can update its own session."""
+def refresh_page(url, page='https://www.youtube.com/'):
+    """Visit YouTube in the browser's existing blank tab so the browser can update its own session, then leave the tab blank again.
+    Extra tabs are closed; a tab is created only when there is none."""
     with socket_for(url) as ws:
-        target = command(ws, 'Target.createTarget', {'url': 'https://www.youtube.com/', 'background': True})['targetId']
-    try:
-        # Use a target-scoped CDP session; no cookie values cross the web API.
-        with socket_for(url) as ws:
-            session = command(ws, 'Target.attachToTarget', {'targetId': target, 'flatten': True})['sessionId']
+        pages = [t['targetId'] for t in command(ws, 'Target.getTargets').get('targetInfos', []) if t.get('type') == 'page']
+        for extra in pages[1:]:
+            try: command(ws, 'Target.closeTarget', {'targetId': extra})
+            except Exception: pass
+        target = pages[0] if pages else command(ws, 'Target.createTarget', {'url': 'about:blank'})['targetId']
+        # Target-scoped CDP session; no cookie values cross the web API.
+        session = command(ws, 'Target.attachToTarget', {'targetId': target, 'flatten': True})['sessionId']
+        try:
+            command(ws, 'Page.navigate', {'url': page}, session)
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline:
-                command.sequence = getattr(command, 'sequence', 0) + 1
-                identity = command.sequence
-                ws.send(json.dumps({'id': identity, 'sessionId': session, 'method': 'Runtime.evaluate',
-                                    'params': {'expression': 'document.readyState', 'returnByValue': True}}))
-                response = json.loads(ws.recv(timeout=2))
-                while response.get('id') != identity:
-                    response = json.loads(ws.recv(timeout=2))
-                if response.get('result', {}).get('result', {}).get('value') == 'complete':
+                state = command(ws, 'Runtime.evaluate', {'expression': 'document.readyState', 'returnByValue': True}, session)
+                if state.get('result', {}).get('value') == 'complete':
                     break
                 time.sleep(.2)
-    except Exception:
-        pass  # Offline/slow page: persisted cookies may still work for yt-dlp.
-    finally:
-        try:
-            with socket_for(url) as ws:
-                command(ws, 'Target.closeTarget', {'targetId': target})
         except Exception:
-            pass
+            pass  # Offline/slow page: persisted cookies may still work for yt-dlp.
+        finally:
+            try: command(ws, 'Page.navigate', {'url': 'about:blank'}, session)
+            except Exception: pass
 
 
 def cookies_for_download():
@@ -235,13 +251,15 @@ def cookies_for_download():
         return None
     owned = None
     with file_lock(session_root()/'session.lock'):
-        url = live_endpoint()
+        url = None
         try:
-            if not url:
-                if manual_profile_running():
-                    save_state(state='CLOSE_LOGIN_WINDOW')
-                    raise YouTubeSessionError('Hãy đăng nhập xong và đóng các cửa sổ YouTube của profile Audio Studio trước, rồi bấm Kiểm tra kết nối. App không điều khiển cửa sổ đăng nhập.')
-                url, owned = launch(False)
+            # A hidden browser that this call did not start is a leftover (its owner was stopped before it could close it):
+            # it is ended, not reused, so it cannot stay in memory for ever.
+            close_hidden()
+            if manual_profile_running():
+                save_state(state='CLOSE_LOGIN_WINDOW')
+                raise YouTubeSessionError('Hãy đăng nhập xong và đóng các cửa sổ YouTube của profile Audio Studio trước, rồi bấm Kiểm tra kết nối. App không điều khiển cửa sổ đăng nhập.')
+            url, owned = launch(False)
             refresh_page(url)
             with socket_for(url) as ws:
                 cookies = cookie_objects(command(ws, 'Storage.getCookies').get('cookies', []))
@@ -266,6 +284,7 @@ def cookies_for_download():
                     owned.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     owned.terminate()
+                cleanup.stop_hidden()   # nothing of it stays behind, whatever happened above
 
 
 def mark_auth_required():
@@ -273,6 +292,14 @@ def mark_auth_required():
         # A download may fail after a later interactive login; serialize metadata writes.
         with file_lock(session_root()/'session.lock'):
             save_state(state='SIGN_IN_REQUIRED')
+
+
+def close_browser():
+    """The close-browser button: end a hidden browser, and ask a sign-in window to close (never a kill: Edge saves the session)."""
+    with file_lock(session_root()/'session.lock'):
+        close_hidden()
+        window_open = bool(cleanup.window_processes()) and not cleanup.close_window()
+    return {**status(), 'window_open': window_open}
 
 
 def disconnect():
@@ -298,10 +325,15 @@ def main():
         elif action == 'open':
             result = open_login()
         elif action == 'check':
+            # Also ask the gateway for a newer yt-dlp now (at most every 15 minutes); a failure here never blocks the check.
+            from audio_translate.transcription.ytdlp_update import refresh
+            refresh(force=True)
             if not configuration().get('enabled'):
                 raise YouTubeSessionError('Bấm Kết nối YouTube và đăng nhập trước khi kiểm tra.')
             cookies_for_download()
             result = status()
+        elif action == 'close_browser':
+            result = close_browser()
         elif action == 'disconnect':
             result = disconnect()
         else:

@@ -28,8 +28,23 @@ FILES = {
 }
 
 
+# The Chinese audio the workflow worked from (downloaded from YouTube or uploaded) is published as the Download stage's result,
+# so it can be played and saved like the voice. Its extension is the file's own (yt-dlp gives webm or m4a), recorded in job.json.
+AUDIO_EXTENSIONS = {'.wav', '.mp3', '.m4a', '.flac', '.ogg', '.opus', '.aac', '.webm', '.mp4'}
+
+
+def source_audio(job_dir):
+    """The finished source audio of a job (not a partial download), or None."""
+    found = [p for p in (Path(job_dir) / 'source').glob('audio.*')
+             if p.is_file() and '.part' not in p.name and not p.name.endswith(('.ytdl', '.tmp'))]
+    return found[0] if found else None
+
+
 def output_files(job):
     files = FILES
+    ext = job.get('source_ext')
+    if ext in AUDIO_EXTENSIONS and 'DOWNLOAD' in (job.get('tool_steps') or ['DOWNLOAD']):
+        files = {'DOWNLOAD': [('SOURCE_AUDIO', 'source/audio' + ext, 'download/source-audio' + ext)], **FILES}
     if not job.get("workflow_no"): return files
     from audio_translate.workflow.manage import filename
     return {step:[(kind,source,str(Path(relative).parent/filename(job["workflow_no"],Path(relative).name)).replace("\\","/")) for kind,source,relative in items] for step,items in files.items()}
@@ -99,7 +114,7 @@ def metadata(job_dir):
     job_id = job.get('id', '')
     if not ID.fullmatch(job_id): return  # Unit fixtures are not public jobs.
     directory = destination(job_id)
-    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'tts_auto', 'review_skipped', 'stages', 'tool_steps']}
+    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'tts_auto', 'review_skipped', 'stages', 'tool_steps', 'source_ext']}
     # No adapter paths, raw errors, credentials or private worker metadata.
     summary['compute_device'] = job.get('compute_device')
     summary['steps'] = {key: {k:value.get(k) for k in ['state','retry_count','attempt','progress','started_at','completed_at','duration_ms','error']}
@@ -124,7 +139,7 @@ def publish_step(job_dir, step):
     if not ID.fullmatch(job_id): return
     with file_lock(job_dir/'working'/'results.lock'):
         metadata(job_dir)
-        if step not in FILES: return
+        if step not in output_files(job): return
         directory = destination(job_id)
         manifest = read_json(directory/'outputs.json')
         entries = {item['type']: item for item in manifest['files']}
@@ -188,6 +203,16 @@ def import_existing(job_dir):
         zh = job_dir/'transcript.zh.jsonl'
         if not zh.exists(): zh = job_dir/'transcript.jsonl'
         if job.get('reprocess_pending') or job.get('status') in ['CANCELLED','DELETING']: return
+        # Jobs made before the source audio was published: record its extension once, then publish it like any finished stage.
+        source = source_audio(job_dir)
+        steps = job.get('steps', {})
+        if source and source.suffix.lower() in AUDIO_EXTENSIONS and 'DOWNLOAD' in (job.get('tool_steps') or ['DOWNLOAD']) \
+                and steps.get('DOWNLOAD', {}).get('state') == 'COMPLETED':
+            if job.get('source_ext') != source.suffix.lower():
+                from audio_translate.core.storage import update_job
+                job = update_job(job_dir, source_ext=source.suffix.lower())
+            if not archived('DOWNLOAD'):
+                publish_step(job_dir, 'DOWNLOAD')
         if not archived('TRANSCRIPTION') and zh.is_file() and (job_dir/'transcript.zh.md').is_file():
             count_rows(zh, 'text')
             publish_step(job_dir, 'TRANSCRIPTION')

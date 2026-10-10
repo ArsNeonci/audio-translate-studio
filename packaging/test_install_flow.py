@@ -128,6 +128,42 @@ class InstallFlow(unittest.TestCase):
         self.assertIsNone(self.registered())
         self.assertEqual(sorted(p.name for p in self.base.iterdir()) if self.base.exists() else [], self.real)
 
+    def test_the_installer_window_reports_every_step_and_closes_itself_when_told_to(self):
+        """Without /Q a window shows the steps. AUDIO_INSTALL_LOG records them and AUDIO_INSTALL_NOWAIT closes the window when done (test hooks)."""
+        log = self.work / 'progress.log'
+        target = self.work / 'windowed'
+        env = {**os.environ, 'AUDIO_INSTALL_DIR': str(target), 'AUDIO_INSTALL_LOG': str(log), 'AUDIO_INSTALL_NOWAIT': '1'}
+        self.assertEqual(subprocess.run([str(self.setup)], env=env, timeout=120).returncode, 0)
+        self.assertEqual((target / 'app' / 'marker.txt').read_text(), 'version one')
+        steps = [line.split('|', 2) for line in log.read_text(encoding='utf-8').splitlines()]
+        percents = [int(p) for p, _, _ in steps]
+        self.assertEqual(percents[-1], 100)
+        self.assertEqual(sorted(p for p in percents if p >= 0), [p for p in percents if p >= 0])          # never goes backwards
+        self.assertTrue(any('95' == str(p) for p in percents))                                              # the unpacking reaches 95 %
+        self.assertTrue(any('Tệp ' in more or 'File ' in more for _, _, more in steps))                    # a file counter is shown
+        # An update shows the "stopping / removing" steps before unpacking, and says it was an update.
+        log.unlink()
+        server = fake_server(target)
+        time.sleep(0.5)
+        try:
+            self.assertEqual(subprocess.run([str(self.setup)], env=env, timeout=120).returncode, 0)
+            self.assertIsNotNone(server.wait(10))
+        finally:
+            if server.poll() is None: server.kill()
+        texts = [text for _, text, _ in (line.split('|', 2) for line in log.read_text(encoding='utf-8').splitlines())]
+        self.assertTrue(any('dừng' in t or 'Stopping' in t for t in texts))
+        self.assertTrue(any('gỡ' in t or 'Removing' in t for t in texts))
+        shutil.rmtree(target, ignore_errors=True)
+
+    def test_a_failed_windowed_install_exits_with_an_error_and_logs_it(self):
+        broken = self.work / 'broken.exe'
+        broken.write_bytes((self.work / 'setup.exe').read_bytes())                                          # an installer with no payload at all
+        log = self.work / 'broken.log'
+        env = {**os.environ, 'AUDIO_INSTALL_DIR': str(self.work / 'never'), 'AUDIO_INSTALL_LOG': str(log), 'AUDIO_INSTALL_NOWAIT': '1'}
+        self.assertEqual(subprocess.run([str(broken)], env=env, timeout=60).returncode, 1)
+        self.assertIn('FAILED', log.read_text(encoding='utf-8'))
+        self.assertFalse((self.work / 'never' / 'installation.json').exists())
+
     def test_the_uninstaller_refuses_a_folder_that_is_not_an_installation(self):
         stray = self.work / 'not-an-install'; stray.mkdir()
         shutil.copy2(self.work / 'uninstall.exe', stray / 'uninstall.exe'); (stray / 'precious.txt').write_text('keep')

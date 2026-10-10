@@ -89,7 +89,7 @@ def preflight():
     return assess(snapshot, jobs, allocation, threads, basis)
 
 
-def convert(url, voice=None, queue_only=False, style=None, address=None, mode=None, auto=False):
+def convert(url, voice=None, queue_only=False, style=None, address=None, mode=None, auto=False, upload=None, input_name=None, mime=''):
     from audio_translate.core.license_gate import assert_allowed
     from audio_translate.core.storage import file_lock
     from audio_translate.workflow.manage import create
@@ -98,5 +98,6 @@ def convert(url, voice=None, queue_only=False, style=None, address=None, mode=No
     with file_lock(DATA/'management-locks'/'convert-admission.lock'):
         # The lane broker admits queued workflows when resources allow; Convert only queues.
         assessment = preflight()
-        job = create(url, voice, style=style, address=address, mode=mode, auto=auto)
+        source = {'upload':upload,'input_name':input_name,'mime':mime} if upload else {}
+        job = create(url, voice, style=style, address=address, mode=mode, auto=auto, **source)
         return {'status':200, 'job':job, 'assessment':assessment}

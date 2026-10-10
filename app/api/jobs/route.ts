@@ -1,3 +1,7 @@
+import {randomUUID} from "node:crypto";
+import path from "node:path";
+import {mkdir,open,unlink} from "node:fs/promises";
+import {dataRoot} from "@/lib/server/python";
 import { listJobs, schedule, validYoutubeUrl } from "@/lib/server/jobs";
 import { licenseDenial } from "@/lib/server/license";
 import { pythonCommand } from "@/lib/server/worker-client";
@@ -16,6 +20,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const denied = await licenseDenial(); if (denied) return denied;
+  if(!(request.headers.get("content-type")||"").startsWith("application/json"))return uploadWorkflow(request);
   let url: unknown; let voice:unknown; let style:unknown; let address:unknown; let queue_only:unknown; let mode:unknown; let auto:unknown;
   try { ({ url, voice, style, address, queue_only, mode, auto } = await request.json()); } catch { return Response.json({ error: "JSON không hợp lệ." }, { status: 400 }); }
   if(auto!==undefined&&typeof auto!=="boolean")return Response.json({error:"Invalid auto option"},{status:400});
@@ -33,4 +38,31 @@ export async function POST(request: Request) {
     if(status===200)void schedule();
     return Response.json(body,{status:status===200?201:status,headers:{"Cache-Control":"no-store"}});
   }catch{return Response.json({error:"Không kiểm tra được tài nguyên. Chưa tạo workflow; hãy thử lại."},{status:503});}
+}
+
+const UPLOAD_LIMIT=2*1024**3;
+
+// Main workflow from a Chinese audio file (instead of a YouTube link): same checks and
+// queue as a link; the worker validates the audio and skips the YouTube download.
+async function uploadWorkflow(request:Request){
+  const params=new URL(request.url).searchParams,name=params.get("name")||"";
+  if(!name||name.length>255||/[\\/\x00]/.test(name))return Response.json({error:"Tên file không hợp lệ."},{status:400});
+  const style=params.get("style")||undefined;if(style!==undefined&&!isVoiceStyle(style))return Response.json({error:"Invalid voice style"},{status:400});
+  const mode=params.get("mode")||undefined;if(mode!==undefined&&!isTranslationMode(mode))return Response.json({error:"Invalid translation mode"},{status:400});
+  const address=mode==="genius"?undefined:params.get("address")||undefined;if(address!==undefined&&!isAddressProfile(address))return Response.json({error:"Invalid address profile"},{status:400});
+  const voice=params.get("voice")||undefined;
+  if(Number(request.headers.get("content-length"))>UPLOAD_LIMIT)return Response.json({error:"File quá lớn (tối đa 2 GB)."},{status:413});
+  const root=path.join(/*turbopackIgnore: true*/ dataRoot,"uploads");await mkdir(/*turbopackIgnore: true*/ root,{recursive:true});
+  const upload=path.join(/*turbopackIgnore: true*/ root,`${randomUUID()}.upload`),file=await open(/*turbopackIgnore: true*/ upload,"wx");let bytes=0;
+  try{
+    if(!request.body)throw new Error("Empty upload");
+    const reader=request.body.getReader();
+    try{while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>UPLOAD_LIMIT){await reader.cancel();return Response.json({error:"File quá lớn (tối đa 2 GB)."},{status:413});}let offset=0;while(offset<value.length){const written=await file.write(value,offset,value.length-offset);offset+=written.bytesWritten;}}}finally{reader.releaseLock();}
+    await file.sync();await file.close();
+    await ensureHistory();
+    const {status,...body}=await pythonCommand<{status:number;error?:string;job?:unknown}>("manage.py",{action:"convert",url:"",upload,input_name:name,mime:request.headers.get("content-type")||"",voice,style,address,mode,auto:params.get("auto")==="1",queue_only:params.get("queue_only")==="1"});
+    if(status===200)void schedule();
+    return Response.json(body,{status:status===200?201:status,headers:{"Cache-Control":"no-store"}});
+  }catch{return Response.json({error:"Không nhận được file. Hãy kiểm tra file audio và dung lượng ổ đĩa."},{status:400});}
+  finally{await file.close().catch(()=>{});await unlink(upload).catch(()=>{});}
 }

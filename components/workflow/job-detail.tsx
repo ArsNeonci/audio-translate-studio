@@ -2,12 +2,13 @@
 import { useLanguage } from "@/lib/i18n/language-context";
 import {useLicense} from "@/components/license/license-status";
 import { useEffect, useState } from "react";
+import AudioPlayer from "@/components/common/audio-player";
 import PipelineStatus from "@/components/workflow/pipeline-status";
 import type { Artifact, Job } from "@/lib/server/jobs";
 import StepErrors from "@/components/workflow/step-errors";
 import Link from "next/link";
 
-const artifacts: [Artifact, string][] = [["zh", "Chinese Transcript"], ["vi", "Vietnamese Transcript"], ["moderated", "Moderated Vietnamese"], ["voice", "Vietnamese Voice"]];
+const artifacts: [Artifact, string][] = [["source", "Chinese Source Audio"], ["zh", "Chinese Transcript"], ["vi", "Vietnamese Transcript"], ["moderated", "Moderated Vietnamese"], ["voice", "Vietnamese Voice"]];
 
 
 function Preview({ url }: { url: string }) {
@@ -43,10 +44,10 @@ export default function JobDetail({ job, onClose }: { job: Job; onClose: () => v
       const url = `/api/jobs/${job.id}/artifacts/${kind}`;
       const ready = job.artifacts?.[kind];
       return <article className={`artifact-card ${ready ? "ready" : ""}`} key={kind}><div><span className="artifact-state">{ready ? tr("SẴN SÀNG") : tr("CHƯA CÓ OUTPUT")}</span><h4>{tr(label)}</h4></div>
-        {ready ? <>{kind === "voice" ? (license.allowed ? <audio controls preload="metadata" src={url} aria-label={tr("Vietnamese voice")} /> : <p>{tr("License cần ACTIVE để phát audio.")}</p>) :
+        {ready ? <>{kind === "voice" || kind === "source" ? (license.allowed ? <AudioPlayer src={url} label={tr(label)} /> : <p>{tr("License cần ACTIVE để phát audio.")}</p>) :
           <button className="text-button" disabled={!license.allowed} onClick={() => setPreview(preview === kind ? null : kind)}>{preview === kind ? tr("Close view") : tr("View")}</button>}
-          <div className="artifact-links"><a href={`${url}?download=1`}>{tr("Download")} {kind === "voice" ? "WAV" : "MD"} ↓</a>
-            {kind !== "voice" && <a href={`${url}?format=jsonl&download=1`}>JSONL ↓</a>}</div></> : <p>{tr("Sẽ xuất hiện khi bước xử lý hoàn tất.")}</p>}
+          <div className="artifact-links"><a href={`${url}?download=1`}>{kind === "source" ? tr("Tải xuống audio") : `${tr("Download")} ${kind === "voice" ? "WAV" : "MD"}`} ↓</a>
+            {kind !== "voice" && kind !== "source" && <a href={`${url}?format=jsonl&download=1`}>JSONL ↓</a>}</div></> : <p>{tr("Sẽ xuất hiện khi bước xử lý hoàn tất.")}</p>}
       </article>;
     })}</div>
     {license.allowed && preview && job.artifacts?.[preview] && <div className="transcript-panel"><div className="transcript-head"><strong>{tr(artifacts.find(([key]) => key === preview)?.[1] || "")}</strong></div>

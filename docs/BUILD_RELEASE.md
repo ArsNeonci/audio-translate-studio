@@ -163,3 +163,20 @@ Shortcut dùng `pythonw.exe` nên lỗi khởi động trước đây bị nuố
 - **Thoát app:** nút **Thoát app** trên thanh đầu trang gọi `/api/quit`; launcher (`launcher.py --quit`) dừng mọi tiến trình có file chương trình nằm trong thư mục cài (web server, worker, llama-server). Đang có workflow chạy thì hỏi xác nhận trước. Mỗi lần mở app, launcher cũng dọn tiến trình sót của lần trước, và khóa `launcher.lock` ngăn bấm shortcut hai lần dọn nhầm server đang khởi động.
 - **Kiểm chứng:** `packaging/test_install_flow.py` (chạy trong thư mục `packaging`: `..\.venv\Scripts\python.exe -m unittest test_install_flow`) dùng đúng hai stub .NET với edition riêng "Test" 9.9.9: cài, cài lại đè (dừng tiến trình giả, xóa file thừa), gỡ, và từ chối gỡ thư mục lạ; không bao giờ dùng `/DATA`. Đã chạy thêm bằng bộ cài Basic thật đè lên bản đang chạy: tiến trình bị dừng, mục Installed apps xuất hiện, thoát qua API dừng hết tiến trình trong 2 giây, mở lại bình thường.
 - **Chưa kiểm chứng:** bấm Gỡ từ trang Installed apps của Windows và hộp thoại hỏi xóa dữ liệu (cần thao tác tay); nút Thoát khi có workflow đang chạy; icon trên file `.exe` và shortcut bằng mắt.
+
+## 11. Lỗi tải YouTube "The page needs to be reloaded" (2026-10-08)
+
+Triệu chứng: workflow dừng ở bước tải với `Không tải được audio YouTube: ERROR: [youtube] <id>: The page needs to be reloaded.`
+Nguyên nhân (đã tái hiện bằng runtime của bản cài, cùng máy, cùng video): phiên YouTube đã lưu trong "Kết nối YouTube" (21 cookie) bị YouTube từ chối. **Có cookie thì mọi cách đi (client) đều lỗi; không có cookie thì tải được.** `yt-dlp` 2026.08.19 đã là bản mới nhất, nên không phải do bản cũ.
+Sửa (`worker/audio_translate/transcription/pipeline.py`, hàm `download`): thử **không cookie trước**; chỉ khi YouTube đòi đăng nhập ("Sign in to confirm") mới mở phiên đã lưu (hoặc `YTDLP_COOKIES_FILE`) và thử lần hai. Nếu chính phiên đã lưu bị từ chối thì báo rõ: mở Settings → Kết nối YouTube, đăng nhập lại. Test: `tests/test_pipeline.py` (3 test mới) và `tests/test_youtube_session.py`. Đã kiểm bằng cách tải thật một video 19 giây bằng runtime của bản cài trong khi phiên lỗi vẫn còn: tải được và phiên không bị dùng.
+Lưu ý: video thật sự cần đăng nhập vẫn cần một phiên YouTube còn tốt; phiên hiện tại của máy thử đã hỏng và cần đăng nhập lại.
+
+## 12. Cửa sổ tiến trình khi chạy file cài (2026-10-08)
+
+Trước đây chạy file exe thì không thấy gì cho tới khi hiện hộp thoại cuối, nên khách không biết nó đang chạy hay treo. Giờ khi chạy không có `/Q`, bộ cài hiện một cửa sổ nhỏ (`packaging/installer.cs`):
+- Dòng trạng thái từng bước: dừng app đang chạy, gỡ phiên bản cũ (dữ liệu giữ lại), **giải nén có thanh tiến trình** kèm "Tệp i/n - x MB / y MB", tạo shortcut, đăng ký vào Installed apps, hoàn tất.
+- Xong thì hiện nút **Mở ứng dụng** và **Đóng**; lỗi thì hiện thông báo màu đỏ và nút Đóng. Chữ theo ngôn ngữ Windows (tiếng Việt hoặc tiếng Anh).
+- `/Q` vẫn cài im lặng, không cửa sổ (dùng cho kiểm thử và cài hàng loạt).
+- Hai biến chỉ dùng khi kiểm thử: `AUDIO_INSTALL_LOG=<tệp>` ghi từng bước dạng `phần trăm|chữ|chi tiết`, `AUDIO_INSTALL_NOWAIT=1` tự đóng cửa sổ khi xong.
+- Test: `packaging/test_install_flow.py` chạy thật chế độ có cửa sổ (cài mới, cài đè dừng được app giả và xóa file thừa, tiến độ không đi lùi và chạm 95% khi giải nén xong, lỗi thì thoát mã 1 và ghi `FAILED`).
+- Chưa kiểm chứng bằng mắt: hình dạng thật của cửa sổ trên màn hình (kiểm bằng nhật ký và test, không có ảnh chụp).

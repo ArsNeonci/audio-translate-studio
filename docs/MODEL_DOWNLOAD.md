@@ -62,3 +62,22 @@ Cuối cùng cấu hình gateway: thêm `MODEL_BUCKET=audio-translate-models-838
 - Giao diện giờ: nếu license chưa hợp lệ thì thanh báo hiện "chưa kích hoạt" kèm nút mở trang Giấy phép, không có nút tải. Khi đang tải: thanh tiến trình, phần trăm, GB đã tải / tổng, tốc độ MB/giây và thời gian còn lại; khi đang kiểm hash thì hiện tiến độ kiểm. Cập nhật 1,5 giây một lần.
 - Chống lặp lệnh: nút bị khóa từ lúc bấm tới lúc server trả lời và biến mất khi đang tải; ở server, việc kiểm tra và giành quyền tải nằm trong cùng một bước đồng bộ nên ba lần bấm cùng lúc chỉ tạo **một** lượt tải và **một** link (không tốn hạn mức 12 link mỗi ngày). `scripts/check-model-download.cjs` kiểm cả hai.
 
+## 8. Mô hình nhận dạng giọng nói cũng lấy từ kho này (2026-10-08)
+
+Trước đây mô hình nhận dạng giọng nói (3 mô hình, 2,04 GB) do FunASR tự tải từ ModelScope **ngay trong lúc worker chép lời khởi động**, và bước đó bị giới hạn 180 giây: lần chạy đầu thường chết ở khoảng 54% mô hình 990 MB (`ASR model startup timed out`), chạy lại cũng vậy.
+
+Giờ có một bước tải riêng **trước khi worker bắt đầu đếm giờ** (`worker/audio_translate/transcription/model_prefetch.py`):
+- Nguồn chính là cùng bucket `audio-translate-models-8386`, thư mục `models/asr/<tên mô hình>/<tệp>`, qua link ký 1 giờ của gateway cho license hợp lệ: `POST /v1/model/url {"model":"asr-zh","paths":[...]}` trả `{"urls":{đường dẫn: link}}`. Cả bộ tính **một** lượt trong hạn mức 12 link mỗi ngày mỗi license. Chỉ các tệp có trong `asr_models.json` mới được cấp.
+- `worker/config/asr-models.json` ghim kích thước và SHA-256 của từng tệp (21 tệp). Tải vào `<tệp>.part`, tải tiếp bằng Range nếu đứt, so SHA-256 rồi mới đổi tên; tệp sai bị xóa, không giữ. Link hết hạn thì xin lại. Tối đa 6 lần mỗi tệp, không giới hạn thời gian.
+- Tiến độ hiện ngay trên công việc: "Đang tải mô hình nhận dạng giọng nói (chỉ lần đầu): x / y GB, tệp i/n".
+- **Dự phòng:** nếu gateway không dùng được (chưa có license, mất mạng, gói chưa được đăng) thì tải từ ModelScope như FunASR vẫn làm, nhưng vẫn không có hạn 180 giây.
+- Chỉ tải thứ còn thiếu. Tệp nào đã có đúng kích thước thì không tải lại.
+
+Đổi hoặc thêm mô hình:
+1. Có thư mục chứa đủ mô hình (cấu trúc `models/<org>--<tên>/snapshots/master`), chạy `python packaging\make_asr_manifest.py --source <thư mục>` (ghi `worker/config/asr-models.json` và `billing-gateway/asr_models.json`).
+2. `python packaging\upload_model.py --bucket audio-translate-models-8386 --asr <thư mục>` (kiểm SHA-256 từng tệp trước, không ghi đè, so kích thước sau khi lên).
+3. Triển khai gateway (`deploy_gateway.py`, đã gồm `asr_models.json`) rồi build lại hai gói.
+
+Đã kiểm chứng: 21 tệp trên bucket đều khớp SHA-256 ghim (VM tải về trong 13 giây); gateway ký được link cho cả bộ; 14 test của bước tải (tải tiếp, link hết hạn, tệp sai, gateway hỏng, ModelScope dự phòng). Chưa kiểm chứng đầu-cuối trong app thật: cần kích hoạt license rồi chạy bước chép lời trên máy chưa có `model-cache`.
+
+Tổng dung lượng khách phải tải sau khi cài: 4,6 GB mô hình dịch (sau khi kích hoạt, bấm "Tải model"; chỉ cần cho chế độ Normal) và 2,04 GB mô hình nhận dạng giọng nói (tự tải ở lần chép lời đầu tiên).

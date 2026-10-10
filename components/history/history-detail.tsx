@@ -2,6 +2,7 @@
 import { useLanguage } from "@/lib/i18n/language-context";
 import {useLicense} from "@/components/license/license-status";
 import { useEffect, useState } from "react";
+import AudioPlayer from "@/components/common/audio-player";
 import PipelineStatus from "@/components/workflow/pipeline-status";
 import StepErrors from "@/components/workflow/step-errors";
 import {runNumber} from "@/lib/shared/format";
@@ -9,7 +10,7 @@ import Link from "next/link";
 import type { HistoryFile, HistoryJob } from "@/lib/server/history";
 import {DownloadIcon} from '@/components/common/action-icons';
 
-const labels: Record<string, string> = {ZH_JSONL: "Chinese JSONL", ZH_MD: "Chinese Markdown", VI_JSONL: "Vietnamese JSONL", VI_MD: "Vietnamese Markdown", MODERATED_JSONL: "Moderated Vietnamese JSONL", MODERATED_MD: "Moderated Vietnamese Markdown", MODERATION_RESULT: "Moderation Result", VOICE_WAV: "Vietnamese Voice", VOICE_MANIFEST: "Voice Manifest", ZH_TXT: "Chinese Text", VOICE_M4A: "Vietnamese Voice"};
+const labels: Record<string, string> = {SOURCE_AUDIO: "Chinese Source Audio", ZH_JSONL: "Chinese JSONL", ZH_MD: "Chinese Markdown", VI_JSONL: "Vietnamese JSONL", VI_MD: "Vietnamese Markdown", MODERATED_JSONL: "Moderated Vietnamese JSONL", MODERATED_MD: "Moderated Vietnamese Markdown", MODERATION_RESULT: "Moderation Result", VOICE_WAV: "Vietnamese Voice", VOICE_MANIFEST: "Voice Manifest", ZH_TXT: "Chinese Text", VOICE_M4A: "Vietnamese Voice"};
 const size = (bytes: number) => bytes < 1048576 ? `${(bytes/1024).toFixed(1)} KB` : `${(bytes/1048576).toFixed(1)} MB`;
 type Chunk = {content: string; offset: number; next_offset: number | null; size: number};
 
@@ -61,14 +62,14 @@ export default function HistoryDetail({id,scope="history"}: {id:string;scope?:"h
     {job && <><div className="history-heading"><span className="eyebrow">{tr("SAVED JOB ·")} {tr(job.status)}</span><h1>#{runNumber(job.workflow_no)} · {job.name}</h1><small>{id}</small><p>{job.url}</p></div>
       <PipelineStatus job={job} />
       <StepErrors job={job} />
-      {["TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS"].map(step => {
+      {["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS"].map(step => {
         const files = job.files.filter(file => file.step === step);
         if (!files.length) return null;
         return <section className="history-stage" key={step}><h2>{tr(step)}</h2><div className="artifact-grid">{files.map(file => {
           const url = `/api/${scope}/${id}/files/${file.id}`;
-          const audio = /\.(wav|m4a)$/.test(file.path);
+          const audio = /\.(wav|m4a|mp4|mp3|webm|ogg|opus|flac|aac)$/.test(file.path);
           return <article className="artifact-card ready" key={file.id}><span className="artifact-state">{tr(file.status)} · {size(file.size)}</span><div className="artifact-file-heading"><h4>{tr(labels[file.type] || file.type)}</h4>{file.status==='AVAILABLE'&&<a className="rule-icon file-download" href={scope==='tools'?`${url}?download=1`:`${url}/download`} title={tr('Download ↓')} aria-label={`${tr('Download ↓')} ${file.path}`}><DownloadIcon/></a>}</div>
-            {file.status!=="AVAILABLE"?<p>{tr(file.status)} · {tr("Kết quả cần được tạo lại.")}</p>:audio ? (license.allowed ? <audio controls preload="metadata" src={url} aria-label={tr(labels[file.type] || file.type)} /> : <p>{tr("License cần ACTIVE để phát audio.")}</p>) : <button className="text-button" disabled={!license.allowed} onClick={() => setSelected(selected?.id === file.id ? null : file)}>{selected?.id === file.id ? tr("Close view") : tr("View")}</button>}
+            {file.status!=="AVAILABLE"?<p>{tr(file.status)} · {tr("Kết quả cần được tạo lại.")}</p>:audio ? (license.allowed ? <AudioPlayer src={url} label={tr(labels[file.type] || file.type)} /> : <p>{tr("License cần ACTIVE để phát audio.")}</p>) : <button className="text-button" disabled={!license.allowed} onClick={() => setSelected(selected?.id === file.id ? null : file)}>{selected?.id === file.id ? tr("Close view") : tr("View")}</button>}
             <small>{file.path}</small></article>;
         })}</div></section>;
       })}

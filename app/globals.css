@@ -1101,7 +1101,7 @@ button:disabled {
 
 .history-source {
   display: block;
-  max-width: 250px;
+  max-width: 190px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1495,3 +1495,78 @@ button:disabled {
   color: #66736a;
   font-size: 13px;
 }
+
+/* Audio source (YouTube link or a file): the same chips and fields on Studio and Tools. */
+.source-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.source-options-studio { margin-top: 38px; margin-bottom: 12px; }
+.source-options-studio + .convert-form { margin-top: 0; }
+.source-options .source-chip {
+  padding: 9px 20px;
+  border: 1.5px solid #8ca48f;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #243328;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.source-options .source-chip.selected { background: #284b37; border-color: #1e3a29; color: #ffffff; }
+.tool-form .link-input {
+  display: block;
+  width: 100%;
+  max-width: 880px;
+  height: 52px;
+  margin: 0 0 18px;
+  padding: 0 16px;
+  border: 1.5px solid #8ca48f;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #243328;
+  font-size: 16px;
+  outline: 0;
+}
+.tool-form .link-input:focus { border-color: #244b32; box-shadow: 0 0 0 3px rgba(36, 75, 50, 0.15); }
+.tool-form .link-input::placeholder { color: #7b877e; }
+.convert-form .file-picker {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 58px;
+  padding: 0 14px;
+  border: 1.5px solid #8ca48f;
+  border-radius: 9px;
+  background: #ffffff;
+  cursor: pointer;
+}
+.file-picker-button {
+  flex: none;
+  padding: 7px 16px;
+  border: 1.5px solid #8ca48f;
+  border-radius: 7px;
+  background: #e4eee0;
+  color: #173822;
+  font-size: 14px;
+  font-weight: 600;
+}
+.file-picker:hover .file-picker-button { background: #dbead8; border-color: #3b6345; }
+.source-hint { max-width: 880px; margin: 8px 0 0; color: #66736a; font-size: 14px; }
+
+.downloader-state { color: #66736a; font-size: 14px; }
+.tool-form .file-picker { margin: 0 12px 18px 0; }
+
+/* Audio player (source audio and voice): full width of its card; a visible message when the file cannot be played. */
+.audio-player { display: block; width: 100%; max-width: 100%; margin: 12px 0; border-radius: 999px; }
+.audio-error {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1.5px solid #c9a39e;
+  border-radius: 8px;
+  background: #fbece9;
+  color: #8a2f27;
+  font-size: 14px;
+}
+
+.history-list th, .history-list td { padding-left: 11px; padding-right: 11px; }

@@ -14,6 +14,9 @@ type Connection = {
   browser_available: boolean;
   legacy_cookie_override: boolean;
   profile_path: string;
+  browser_running?: { hidden: number; window: boolean } | null;
+  window_open?: boolean;
+  downloader?: { version: string | null; source: "gateway" | "bundled"; checked_at: number | null; error: string | null } | null;
 };
 
 export default function Settings() {
@@ -45,7 +48,7 @@ export default function Settings() {
     };
   }, [setMessage, t.settings.loadError]);
 
-  async function act(action: "open" | "check" | "disconnect") {
+  async function act(action: "open" | "check" | "disconnect" | "close_browser") {
     setBusy(true);
     setMessage("");
     setFailed(false);
@@ -63,6 +66,8 @@ export default function Settings() {
           ? t.settings.openNotice
           : action === "check"
           ? t.settings.checkNotice
+          : action === "close_browser"
+          ? tr(data.window_open ? "Cửa sổ đăng nhập YouTube vẫn đang mở. Hãy đóng nó bằng nút X của cửa sổ." : "Đã đóng trình duyệt YouTube.")
           : t.settings.disconnectNotice
       );
     } catch (error) {
@@ -159,6 +164,25 @@ export default function Settings() {
                 <li>{t.settings.ytStep3}</li>
                 <li>{t.settings.ytStep4}</li>
               </ol>
+              {(connection.browser_running?.hidden || connection.browser_running?.window) ? (
+                <p className="downloader-state">
+                  {connection.browser_running.hidden
+                    ? tr("Trình duyệt YouTube đang chạy ngầm và chiếm bộ nhớ.")
+                    : tr("Cửa sổ đăng nhập YouTube đang mở.")}
+                </p>
+              ) : null}
+              {connection.downloader && (
+                <p className="downloader-state">
+                  {tr("youtubeDownloader", {
+                    version: connection.downloader.version || "?",
+                    source: tr(connection.downloader.source === "gateway" ? "bản cập nhật từ máy chủ" : "bản đi kèm app"),
+                  })}
+                  {connection.downloader.checked_at
+                    ? " · " + tr("youtubeDownloaderChecked", { time: new Date(connection.downloader.checked_at * 1000).toLocaleString(language === "vi" ? "vi-VN" : "en-US") })
+                    : ""}
+                  {connection.downloader.error ? " · " + tr("youtubeDownloaderError") : ""}
+                </p>
+              )}
               {connection.state === "CLOSE_LOGIN_WINDOW" && (
                 <p role="status">{t.settings.closeWindowNotice}</p>
               )}
@@ -183,6 +207,13 @@ export default function Settings() {
                   onClick={() => void act("disconnect")}
                 >
                   {t.settings.disconnect}
+                </button>
+                <button
+                  className="text-button"
+                  disabled={busy || !(connection.browser_running?.hidden || connection.browser_running?.window)}
+                  onClick={() => void act("close_browser")}
+                >
+                  {tr("Đóng trình duyệt YouTube")}
                 </button>
               </div>
               {connection.last_checked && (

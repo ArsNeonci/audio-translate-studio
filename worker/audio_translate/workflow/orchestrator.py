@@ -45,7 +45,7 @@ def run_stage(job_dir, stage):
         measured = duration_ms(source)
         if measured <= 0:
             raise ValueError('Downloaded audio has no valid duration')
-        update_job(job_dir, duration_ms=measured)
+        update_job(job_dir, duration_ms=measured, source_ext=source.suffix.lower())
         progress(job_dir, 'download', 'DOWNLOADING', 1, 1)
     elif stage == "transcription":
         from audio_translate.transcription.pipeline import source_file, vad_pass, make_chunks, transcribe, merge

@@ -45,7 +45,7 @@ class SessionTests(unittest.TestCase):
 
     def test_manual_login_must_be_closed_before_cookie_reader_launches(self):
         session.save_state(enabled=True)
-        with patch.object(session,'live_endpoint',return_value=None),patch.object(session,'manual_profile_running',return_value=True),patch.object(session,'launch') as launch:
+        with patch.object(session,'close_hidden'),patch.object(session,'manual_profile_running',return_value=True),patch.object(session,'launch') as launch:
             with self.assertRaises(session.YouTubeSessionError):session.cookies_for_download()
         launch.assert_not_called();self.assertEqual(session.status()['state'],'CLOSE_LOGIN_WINDOW')
 
@@ -75,11 +75,20 @@ class SessionTests(unittest.TestCase):
     def fake_socket(self, _url):
         yield Mock()
 
+    def fake_browser(self):
+        """Patches so cookies_for_download starts no real browser: returns (launch mock, the owned process mock)."""
+        owned = Mock()
+        launch = patch.object(session, 'launch', return_value=('ws://127.0.0.1:9222/devtools/browser/abc', owned))
+        for item in (launch, patch.object(session, 'close_hidden'), patch.object(session, 'manual_profile_running', return_value=False),
+                     patch.object(session.cleanup, 'stop_hidden')):
+            item.start(); self.addCleanup(item.stop)
+        return launch, owned
+
     def test_each_download_reads_rotated_cookie_and_never_persists_values(self):
         session.save_state(enabled=True, state='SESSION_SAVED')
+        self.fake_browser()
         for value in ('first-secret', 'rotated-secret'):
-            with patch.object(session, 'live_endpoint', return_value='ws://127.0.0.1:9222/devtools/browser/abc'), \
-                 patch.object(session, 'socket_for', self.fake_socket), patch.object(session, 'refresh_page'), \
+            with patch.object(session, 'socket_for', self.fake_socket), patch.object(session, 'refresh_page'), \
                  patch.object(session, 'command', return_value={'cookies': [dict(name='SID', value=value, domain='.youtube.com', expires=time.time()+3600)]}):
                 self.assertEqual(session.cookies_for_download()[0].value, value)
                 self.assertNotIn(value, json.dumps(session.status()))
@@ -89,8 +98,8 @@ class SessionTests(unittest.TestCase):
     def test_missing_session_requires_relogin_and_disabled_keeps_guest_mode(self):
         self.assertIsNone(session.cookies_for_download())
         session.save_state(enabled=True)
-        with patch.object(session, 'live_endpoint', return_value='ws://127.0.0.1:9222/devtools/browser/abc'), \
-             patch.object(session, 'socket_for', self.fake_socket), patch.object(session, 'refresh_page'), \
+        self.fake_browser()
+        with patch.object(session, 'socket_for', self.fake_socket), patch.object(session, 'refresh_page'), \
              patch.object(session, 'command', return_value={'cookies': []}):
             with self.assertRaises(session.YouTubeSessionError) as error:
                 session.cookies_for_download()
@@ -128,12 +137,19 @@ class SessionTests(unittest.TestCase):
         atomic_json(job/'job.json', {'url': 'https://youtu.be/abcdefghijk', 'name': 'test'})
         cookie = session.cookie_objects([dict(name='SID', value='profile-secret', domain='.youtube.com', expires=-1)])[0]
         ydl = Mock()
+        calls = []
         def extract(_url, download):
+            # The first (anonymous) attempt is told to sign in; only then is the saved profile session used.
+            calls.append(1)
+            if len(calls) <= 2:   # the two anonymous attempts (default client, then mweb)
+                from yt_dlp.utils import DownloadError
+                raise DownloadError("Sign in to confirm you're not a bot")
             (job/'source'/'audio.webm').write_bytes(b'audio')
             return {'vcodec': 'none', 'duration': 5}
         ydl.extract_info.side_effect = extract
         with patch('audio_translate.core.license_gate.assert_allowed'), patch.object(session, 'cookies_for_download', return_value=[cookie]), \
-             patch('yt_dlp.YoutubeDL') as factory, patch.dict(os.environ, {'YTDLP_COOKIES_FILE': 'nonexistent-stale-cookie'}):
+             patch('audio_translate.transcription.ytdlp_update.refresh', return_value={'changed': False}), patch('audio_translate.transcription.ytdlp_update.activate', return_value=None), \
+             patch('audio_translate.transcription.ytdlp_update.local_manifest', return_value=None), patch('yt_dlp.YoutubeDL') as factory, patch.dict(os.environ, {'YTDLP_COOKIES_FILE': 'nonexistent-stale-cookie'}):
             factory.return_value.__enter__.return_value = ydl
             download(job)
             self.assertNotIn('cookiefile', factory.call_args.args[0])

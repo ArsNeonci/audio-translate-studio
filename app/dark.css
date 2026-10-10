@@ -207,3 +207,51 @@
 :root[data-theme="dark"] .character-empty {
   color: var(--dark-muted);
 }
+
+/* Audio source chips, link field and file picker (Studio and Tools). */
+/* :not(.selected) lifts the specificity above the generic ".tool-form button" primary-blue rule, so only the chosen chip is blue. */
+:root[data-theme="dark"] .source-options .source-chip:not(.selected) {
+  background: var(--dark-raised);
+  color: var(--foreground);
+  border-color: var(--dark-border);
+}
+
+:root[data-theme="dark"] .source-options .source-chip.selected.selected {
+  background: var(--dark-primary);
+  color: #fff;
+  border-color: #3684c9;
+}
+
+:root[data-theme="dark"] .tool-form .link-input,
+:root[data-theme="dark"] .convert-form .file-picker {
+  background: var(--dark-surface);
+  color: var(--foreground);
+  border-color: var(--dark-border);
+}
+
+:root[data-theme="dark"] .tool-form .link-input:focus {
+  border-color: var(--dark-accent);
+  box-shadow: 0 0 0 3px rgb(105 185 255 / 18%);
+}
+
+:root[data-theme="dark"] .file-picker-button {
+  background: var(--dark-raised);
+  color: var(--foreground);
+  border-color: #3684c9;
+}
+
+:root[data-theme="dark"] .file-picker:hover .file-picker-button {
+  background: #16395f;
+  border-color: var(--dark-accent);
+}
+
+:root[data-theme="dark"] .source-hint,
+:root[data-theme="dark"] .downloader-state {
+  color: var(--dark-muted);
+}
+
+:root[data-theme="dark"] .audio-error {
+  background: #351d2b;
+  border-color: #764250;
+  color: #ffaaa5;
+}

@@ -211,6 +211,12 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
         elif tool:
             job.update(tool_type=tool,input_file=input_name,tool_steps=TOOLS[tool],upload_file=Path(upload).name)
             normalize_input(directory,job,upload,input_name,mime)
+        elif upload:
+            # Main workflow from a Chinese audio file: the file becomes the Download result,
+            # so no YouTube request is made. source_upload keeps it through restarts.
+            if url: raise ValueError('Use either a YouTube link or an audio file, not both')
+            job.update(input_file=input_name,upload_file=Path(upload).name,source_upload=True)
+            normalize_input(directory,job,upload,input_name,mime)
         atomic_json(directory/'job.json',job)
         results.metadata(directory)
         return job
@@ -223,7 +229,7 @@ def normalize_input(directory,job,upload,name,mime):
     path = safe_directory(upload,DATA/'uploads')
     if not path.is_file() or not path.stat().st_size: raise ValueError('Empty upload')
     ext = Path(name or '').suffix.lower()
-    if job['tool_type'] == 'transcription':
+    if job.get('tool_type', 'transcription') == 'transcription':
         allowed = {'.wav','.mp3','.m4a','.flac','.ogg','.aac','.webm','.mp4'}
         if ext not in allowed or not (mime.startswith('audio/') or mime in ['video/mp4','video/webm','application/octet-stream']): raise ValueError('Unsupported audio type')
         import subprocess
@@ -234,6 +240,7 @@ def normalize_input(directory,job,upload,name,mime):
         containers = {'.wav':{'wav'},'.mp3':{'mp3'},'.m4a':{'mov','mp4','m4a'},'.mp4':{'mov','mp4'},'.flac':{'flac'},'.ogg':{'ogg'},'.aac':{'aac'},'.webm':{'matroska','webm'}}
         if not formats.intersection(containers[ext]): raise ValueError('Audio container does not match filename extension')
         job['duration_ms'] = int(float(info['format']['duration'])*1000)
+        job['source_ext'] = ext
         if job['duration_ms'] <= 0: raise ValueError('Invalid audio duration')
         shutil.copyfile(path,directory/'source'/('audio'+ext))
         return
@@ -335,7 +342,7 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None):
         if 'TRANSLATION' in affected:
             for name in ('translation-errors.json','translation-progress.json','translation-continue.json'):
                 (directory/'working'/name).unlink(missing_ok=True)
-        if 'DOWNLOAD' in affected:
+        if 'DOWNLOAD' in affected and not job.get('source_upload'):
             shutil.rmtree(safe_directory(directory/'source',directory)); (directory/'source').mkdir()
         if 'TRANSCRIPTION' in affected:
             for pattern in ['chunk-*.json','chunks.json','vad*','transcription-progress.json']:
@@ -487,7 +494,7 @@ def history(scope):
         try:
             live = read_json(results.workspace(job['id'])/'job.json')
             if live.get('id') == job['id'] and live.get('storage_scope') == scope:
-                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','selected_address_profile','translation_mode','pause_reason','tts_auto','review_skipped','retry_step']:
+                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','selected_address_profile','translation_mode','pause_reason','tts_auto','review_skipped','retry_step','source_ext']:
                     if key in live: job[key] = live[key]
                 job['steps'] = {step:{k:item.get(k) for k in ['state','progress','started_at','completed_at','duration_ms','attempt','retry_count','error']} for step,item in live.get('steps',{}).items()}
                 working=results.workspace(job['id'])/'working'
@@ -526,7 +533,7 @@ def main():
         elif action=='convert':
             from audio_translate.workflow.workflow_admission import convert
             if type(p.get('queue_only',False)) is not bool: raise ValueError('Invalid queue option')
-            response=convert(p.get('url',''),p.get('voice'),p.get('queue_only',False),p.get('style'),p.get('address'),p.get('mode'),p.get('auto') is True)
+            response=convert(p.get('url',''),p.get('voice'),p.get('queue_only',False),p.get('style'),p.get('address'),p.get('mode'),p.get('auto') is True,p.get('upload'),p.get('input_name'),p.get('mime',''))
             print(json.dumps(response,ensure_ascii=False)); return
         elif action=='reprocess': value={'job':reprocess(p['id'],p['step'],p.get('voice'),p.get('style'),p.get('address'),p.get('mode'))}
         elif action=='cancel': cancel(p['id']); value={}

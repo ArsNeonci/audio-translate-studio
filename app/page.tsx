@@ -12,20 +12,25 @@ import TranslationModeSelect from "@/components/voice/translation-mode-select";
 import AutoTtsToggle from "@/components/voice/auto-tts-toggle";
 import type {TranslationMode} from "@/lib/shared/translation-modes";
 import {addressForStyle} from "@/lib/shared/address-profiles";
-import {percent,runNumber} from "@/lib/shared/format";
+import {audioDuration,percent,runNumber} from "@/lib/shared/format";
 import SiteHeader from "@/components/layout/site-header";
 import Link from 'next/link';
 import {useNotice} from '@/components/common/use-notice';
 import WorkflowActions from '@/components/workflow/workflow-actions';
+import FilePicker from '@/components/common/file-picker';
 import { useLanguage } from "@/lib/i18n/language-context";
 
-const duration = (ms: number) => ms ? `${Math.floor(ms / 3600000)}h ${String(Math.floor(ms / 60000) % 60).padStart(2, "0")}m` : "—";
+const duration = audioDuration;
+const AUDIO_TYPES=".wav,.mp3,.m4a,.flac,.ogg,.aac,.webm,.mp4";
+type ConvertInput={url:string;file?:File;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean};
 type ResourceWarning={reasons:string[];ram_available_gib:number;required_available_gib:number;cpu_percent:number;existing_workflows:number;estimate_basis:string};
 
 export default function Home() {
   const { language, t , tr} = useLanguage();
   const license = useLicense();
   const [url, setUrl] = useState("");
+  // Source of the Chinese audio: a YouTube link, or a file when YouTube refuses the download.
+  const [source,setSource]=useState<"link"|"file">("link"),[file,setFile]=useState<File|null>(null);
   const [voice,setVoice]=useState(""),[style,setStyle]=useState(""),[address,setAddress]=useState("");
   const [mode,setMode]=useState<TranslationMode>("normal"),[auto,setAuto]=useState(false);
   const basic=license.edition==="basic";
@@ -35,7 +40,7 @@ export default function Home() {
   const [message, setMessage] = useNotice();
   const [selected, setSelected] = useState<string | null>(null);
   const [resourceWarning,setResourceWarning]=useState<ResourceWarning|null>(null);
-  const [pendingConvert,setPendingConvert]=useState<{url:string;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean}|null>(null);
+  const [pendingConvert,setPendingConvert]=useState<ConvertInput|null>(null);
   const studioJobs=jobs.filter(job=>job.status!=='COMPLETED');
 
   const refresh = useCallback(async () => {
@@ -55,23 +60,34 @@ export default function Home() {
   async function start(event: React.FormEvent) {
     event.preventDefault();
     // Genius handles forms of address itself, so none is sent.
-    const extra=basic?{auto}:{};
-    await convert(mode==="genius"?{url,voice:voice||undefined,style:style||undefined,mode,...extra}:{url,voice:voice||undefined,style:style||undefined,address:address||undefined,...extra});
+    const extra={...(basic?{auto}:{}),...(source==="file"&&file?{file}:{})};
+    if(source==="file"&&!file)return;
+    const link=source==="file"?"":url;
+    await convert(mode==="genius"?{url:link,voice:voice||undefined,style:style||undefined,mode,...extra}:{url:link,voice:voice||undefined,style:style||undefined,address:address||undefined,...extra});
   }
 
-  async function convert(input:{url:string;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean},queue_only=false){
+  async function send(input:ConvertInput,queue_only:boolean){
+    const {file:upload,...fields}=input;
+    if(!upload)return fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fields,queue_only }) });
+    const params=new URLSearchParams({name:upload.name});
+    for(const [key,value] of Object.entries(fields))if(key!=="url"&&value!==undefined&&value!==false)params.set(key,value===true?"1":String(value));
+    if(queue_only)params.set("queue_only","1");
+    return fetch(`/api/jobs?${params}`,{method:"POST",headers:{"Content-Type":upload.type||"application/octet-stream"},body:upload});
+  }
+
+  async function convert(input:ConvertInput,queue_only=false){
     if(busy)return;
     setBusy(true); setMessage("");setResourceWarning(null);
     try {
-      const response = await fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...input,queue_only }) });
+      const response = await send(input,queue_only);
       const data = await response.json();
       if(data.code==='RESOURCE_WARNING'){
         setResourceWarning(data.assessment);setPendingConvert(input);return;
       }
       if (!response.ok) throw new Error(data.error || tr("Không tạo được job."));
-      setPendingConvert(null);setUrl(""); await refresh();
+      setPendingConvert(null);setUrl("");setFile(null); await refresh();
       setMessage(t.home.queuedNotice);
-    } catch (error) { setMessage(error instanceof Error ? error.message : tr("Không tạo được job.")); }
+    } catch (error) { setMessage(error instanceof Error ? tr(error.message) : tr("Không tạo được job.")); }
     finally { setBusy(false); }
   }
 
@@ -104,7 +120,9 @@ export default function Home() {
       <div className="eyebrow">{t.home.eyebrow}</div>
       <h1>{t.home.title1}<br />{t.home.title2}</h1>
       <p>{t.home.description}</p>
-      <form onSubmit={start} className="convert-form"><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /><button type="submit" disabled={busy || !license.allowed}>{busy ? t.home.checking : t.home.convert} ↗</button></form>
+      <div className="source-options source-options-studio" role="radiogroup" aria-label={tr("Nguồn âm thanh")}>{(["link","file"] as const).map(value=><button key={value} type="button" role="radio" aria-checked={source===value} className={`source-chip${source===value?" selected":""}`} onClick={()=>{setSource(value);setResourceWarning(null);setPendingConvert(null);}}>{value==="link"?tr("Link YouTube"):tr("Tệp âm thanh tiếng Trung")}</button>)}</div>
+      <form onSubmit={start} className="convert-form">{source==="link"?<><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /></>:<FilePicker accept={AUDIO_TYPES} file={file} onChange={value=>{setFile(value);setResourceWarning(null);setPendingConvert(null);}} />}<button type="submit" disabled={busy || !license.allowed || (source==="file"&&!file)}>{busy ? t.home.checking : t.home.convert} ↗</button></form>
+      {source==="file"&&<p className="source-hint">{tr("Dùng khi YouTube chặn tải: tải audio bằng công cụ khác rồi chọn file ở đây (WAV, MP3, M4A, FLAC, OGG, AAC, WEBM, MP4; tối đa 2 GB). Workflow bỏ qua bước tải YouTube.")}</p>}
       <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={chooseStyle} />
       <TranslationModeSelect value={mode} onChange={setMode} />
       {mode==="normal"&&<AddressProfileSelect value={address} onChange={setAddress} />}

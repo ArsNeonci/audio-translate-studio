@@ -8,7 +8,7 @@ export async function savedFileResponse(request: Request, file: string, download
   try {
     const info = await handle.stat();
     const extension = path.extname(file).slice(1);
-    const mime: Record<string, string> = {wav: "audio/wav", m4a: "audio/mp4", md: "text/markdown; charset=utf-8", txt: "text/plain; charset=utf-8", json: "application/json; charset=utf-8", jsonl: "application/x-ndjson; charset=utf-8"};
+    const mime: Record<string, string> = {wav: "audio/wav", m4a: "audio/mp4", mp4: "audio/mp4", mp3: "audio/mpeg", webm: "audio/webm", ogg: "audio/ogg", opus: "audio/ogg", flac: "audio/flac", aac: "audio/aac", md: "text/markdown; charset=utf-8", txt: "text/plain; charset=utf-8", json: "application/json; charset=utf-8", jsonl: "application/x-ndjson; charset=utf-8"};
     const headers: Record<string, string> = {"Content-Type": mime[extension] || "application/octet-stream", "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${path.basename(file)}"`, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"};
     const params = new URL(request.url).searchParams;
     if (params.get("preview") === "1" && ["md", "txt", "json", "jsonl"].includes(extension)) {

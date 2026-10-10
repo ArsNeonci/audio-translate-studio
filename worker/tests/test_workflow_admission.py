@@ -42,6 +42,11 @@ class AdmissionTests(unittest.TestCase):
         check.assert_called_once();create.assert_called_once_with('url','voice',style=None,address=None,mode=None,auto=False)
         self.assertEqual(response['job']['status'],'QUEUED');self.assertFalse(response['assessment']['allowed'])
 
+    def test_audio_file_is_passed_to_create(self):
+        with patch.object(admission,'preflight',return_value=self.assess(available=8*GIB)),patch('audio_translate.workflow.manage.create',return_value={'id':'new','status':'QUEUED'}) as create,patch('audio_translate.core.license_gate.assert_allowed'):
+            admission.convert('','voice',upload='u.upload',input_name='clip.mp3',mime='audio/mpeg')
+        create.assert_called_once_with('','voice',style=None,address=None,mode=None,auto=False,upload='u.upload',input_name='clip.mp3',mime='audio/mpeg')
+
     def test_pending_allocations_reserved_and_loaded_model_not_double_counted(self):
         queued=[{'status':'QUEUED'}]
         self.assertFalse(self.assess(queued,available=6*GIB)['allowed'])

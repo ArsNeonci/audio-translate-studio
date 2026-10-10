@@ -37,6 +37,12 @@ def stop_app(root,keep=()):
     for process in alive:
         try: process.kill()
         except psutil.Error: pass
+    # The hidden Edge that reads the YouTube sign-in is not inside the installation folder, so the scan above never sees it. A worker stopped
+    # mid-download leaves it running (about 500 MB). Only a hidden browser on this app's own profile is ended, never the person's own Edge.
+    try:
+        from audio_translate.transcription import browser_cleanup
+        browser_cleanup.stop_hidden()
+    except Exception: pass
     return len(processes)
 
 def main():

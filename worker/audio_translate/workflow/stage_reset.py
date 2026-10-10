@@ -16,6 +16,9 @@ def reset(job_dir, step):
         'MODERATION':['transcript.vi.moderated.*','moderation-result*','working/moderation.done.json','working/replacement-rules.snapshot.json'],
         'TTS':['voice/*','voice.vi.wav*','working/voice-checkpoints/*','working/tts.done.json','working/tts-runtime.json','working/tts-worker-*.log','working/tts-calibration/*','working/tts-remote-state.json','working/tts-remote-progress.json'],
     }
+    job_file=job_dir/'job.json'
+    if step=='DOWNLOAD' and job_file.exists() and read_json(job_file).get('source_upload'):
+        patterns['DOWNLOAD']=[]  # The uploaded audio is the only copy: never delete it.
     targets=[]
     for pattern in patterns[step]:
         for path in job_dir.glob(pattern):

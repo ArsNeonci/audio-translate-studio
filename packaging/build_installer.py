@@ -74,7 +74,7 @@ def compile_stub(source_name,output,work,product,version,edition):
     if not compiler.is_file():raise RuntimeError('WINDOWS_DOTNET_BUILD_TOOLS_REQUIRED')
     source=(ROOT/'packaging'/source_name).read_text(encoding='utf-8').replace('@@VERSION@@',version).replace('@@PRODUCT@@',product).replace('@@EDITION@@',edition)
     file=Path(work)/(Path(source_name).stem+'-stub.cs');file.write_text(source,encoding='utf-8')
-    subprocess.run([str(compiler),'/nologo','/target:winexe','/optimize+','/win32icon:'+str(ROOT/'packaging'/'app-icon.ico'),'/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll','/r:System.Windows.Forms.dll','/out:'+str(output),str(file)],check=True,creationflags=subprocess.CREATE_NO_WINDOW)
+    subprocess.run([str(compiler),'/nologo','/target:winexe','/optimize+','/win32icon:'+str(ROOT/'packaging'/'app-icon.ico'),'/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll','/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/out:'+str(output),str(file)],check=True,creationflags=subprocess.CREATE_NO_WINDOW)
 
 def copy_tree(source,target,ignore=None):
     shutil.copytree(source,target,dirs_exist_ok=True,ignore=ignore or shutil.ignore_patterns('__pycache__','*.pyc','.git'))
@@ -82,6 +82,9 @@ def copy_tree(source,target,ignore=None):
 # Basic generates the voice on the VPS: no VieNeu source and no TTS-only packages in its payload.
 # (funasr imports onnxruntime only in its model-export utility, not for transcription.)
 TTS_ONLY = {'sea-g2p', 'onnxruntime'}
+
+# Everything yt-dlp[default] pulls in, plus what the YouTube update channel and the sign-in browser need.
+REQUIRED_PACKAGES=('yt-dlp','yt-dlp-ejs','certifi','mutagen','pycryptodomex','requests','urllib3','websockets','brotli','psutil','cryptography')
 
 def python_runtime(target, exclude=frozenset()):
     base=Path(sys.base_prefix); target.mkdir(parents=True,exist_ok=True)
@@ -109,8 +112,22 @@ def python_runtime(target, exclude=frozenset()):
                 destination=site/str(entry);destination.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,destination)
         for dependency in distribution.requires or []:
             child=Requirement(dependency)
-            if not child.marker or any(child.marker.evaluate({'extra':extra}) for extra in marker_context):pending.append(str(child))
+            if not child.marker or any(child.marker.evaluate({'extra':extra}) for extra in marker_context):
+                # The marker was just judged against the parent's extras. Keeping it made the child be judged again with no extra,
+                # so every `extra == 'default'` dependency of yt-dlp[default] was dropped, yt-dlp-ejs (YouTube's JS challenge solver)
+                # among them: the installed app then got "n challenge solving failed" / "Requested format is not available".
+                child.marker=None;pending.append(str(child))
+    # Python 3.12 dropped distutils, but funasr (SeacoParaformer, the punctuation model, ...) imports distutils.version. The development venv gets it
+    # from setuptools through a .pth hook, which this runtime skips, so ship setuptools' own copy as a plain package. Without it every first
+    # transcription failed with "model 'SeacoParaformer' is not registered".
+    import setuptools
+    shutil.copytree(Path(setuptools.__file__).parent/'_distutils',site/'distutils',ignore=shutil.ignore_patterns('__pycache__','*.pyc','tests'),dirs_exist_ok=True)
     (target/'python312._pth').write_text('Lib\nDLLs\nLib/site-packages\n.\n../../app/worker\n',encoding='utf-8')
+    # A dependency dropped by the walk above does not fail anything until a customer's download does (this happened to yt-dlp-ejs and the other
+    # `yt-dlp[default]` extras). So the packages that must be there are checked by name, and the build stops when one is missing.
+    present={canonicalize_name(item['name']) for item in inventory}
+    missing=sorted(name for name in REQUIRED_PACKAGES if canonicalize_name(name) not in present and name not in exclude)
+    if missing:raise RuntimeError('DEPENDENCY_DROPPED: '+', '.join(missing))
     return sorted({item['name']:item for item in inventory}.values(),key=lambda d:d['name'].lower())
 
 def build(product='audio-translate', customer=None):
@@ -219,7 +236,7 @@ def build(product='audio-translate', customer=None):
         resolver = "const p=require('path'),r=require('module').createRequire(process.argv[1]);for(const m of ['next/dist/compiled/next-server/app-route-turbo.runtime.prod.js','next/dist/compiled/next-server/app-page-turbo.runtime.prod.js']){const f=r.resolve(m);if(!f.startsWith(p.join(p.dirname(process.argv[1]),'node_modules')+p.sep))throw Error('EXTERNAL_RUNTIME_DEPENDENCY');}console.log('Standalone Node runtime isolation OK');"
         subprocess.run([str(payload/'runtime'/'node'/'node.exe'),'-e',resolver,str(payload/'app'/'server.js')],check=True)
         # Smoke the shipped runtime without host Python or user-site dependencies.
-        modules='sys, importlib.util, llama_cpp, cryptography, numpy, torch, torchaudio, transformers, funasr, yt_dlp, soundfile, soxr, audio_translate.core.storage, audio_translate.workflow.results'+('' if basic else ', onnxruntime, sea_g2p')
+        modules='sys, importlib.util, llama_cpp, cryptography, numpy, torch, torchaudio, transformers, funasr, distutils.version, funasr.models.seaco_paraformer.model, funasr.models.ct_transformer.model, yt_dlp, yt_dlp_ejs, certifi, mutagen, Cryptodome, brotli, soundfile, soxr, audio_translate.core.storage, audio_translate.workflow.results'+('' if basic else ', onnxruntime, sea_g2p')
         absent='; assert importlib.util.find_spec("onnxruntime") is None and importlib.util.find_spec("sea_g2p") is None' if basic else ''
         subprocess.run([str(payload/'runtime'/'python'/'python.exe'),'-c',f'import {modules}{absent}; assert not any("Roaming" in p or ".venv" in p for p in sys.path); print("Portable runtime imports and isolation OK")'],env={**os.environ,'PYTHONNOUSERSITE':'1'},check=True)
         # Phase 2B: encrypt asset data (1-5) into the vault and, for hardened builds, compile the

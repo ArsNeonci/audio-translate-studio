@@ -10,7 +10,7 @@ import { pythonCommand } from "@/lib/server/worker-client";
 import { licenseDenial } from "@/lib/server/license";
 
 export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING" | "AWAITING_REVIEW";
-export type Artifact = "zh" | "vi" | "moderated" | "voice";
+export type Artifact = "source" | "zh" | "vi" | "moderated" | "voice";
 export type Stage = "transcription" | "translation" | "moderation" | "tts";
 export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS";
 export type StepError = { step: Step; error_code: string; error_message: string; error_type: string; recoverable_manually: boolean; failed_at: string; retry_count: number };
@@ -52,7 +52,7 @@ export type Job = {
   artifacts?: Partial<Record<Artifact, boolean>>;
   steps?: Record<Step, StepState>;
   transcription_steps?: TranscriptionStep[];
-  asr_runtime?: {state:string;workers?:number;threads?:number;ram_available_gib?:number;required_available_gib?:number;thermal_available?:boolean;throttled?:boolean;tuning_deferred?:boolean;wait_started_at?:string;wait_timeout_seconds?:number};
+  asr_runtime?: {state:string;workers?:number;threads?:number;ram_available_gib?:number;required_available_gib?:number;thermal_available?:boolean;throttled?:boolean;tuning_deferred?:boolean;wait_started_at?:string;wait_timeout_seconds?:number;model_index?:number;model_total?:number;downloaded_gib?:number;total_gib?:number|null;file_index?:number;file_total?:number};
   translation_runtime?: {state:string;mode?:string;device?:string;slots?:number;allocated_slots?:number;threads?:number;n_batch?:number;available_gib?:number;required_available_gib?:number;required_vram_gib?:number;phase?:string;wait_seconds?:number;wait_timeout_seconds?:number;throttled?:boolean;start_free_gib?:number;extra_slot_gib?:number;reserve_gib?:number;cpu_target?:number;gpu_target?:number;temperature_limit?:number};
   memory_pause_reason?:string;
   auto_paused_for?:string|null;
@@ -104,7 +104,7 @@ export async function getJob(id: string): Promise<Job | null> {
     const manifest = JSON.parse(await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ saved,"outputs.json"),"utf8").catch(()=>'{"files":[]}')) as {files:{type:string;step:string;status:string}[]};
     const available=(type:string)=>manifest.files.some(f=>f.type===type&&f.status==="AVAILABLE");
     if(job.steps)for(const step of Object.keys(job.steps) as Step[])job.steps[step].output_manifest=manifest.files.filter(f=>f.step===step).map(f=>({status:f.status}));
-    job.artifacts={zh:available("ZH_MD"),vi:available("VI_MD"),moderated:available("MODERATED_MD"),voice:available("VOICE_WAV")};
+    job.artifacts={source:available("SOURCE_AUDIO"),zh:available("ZH_MD"),vi:available("VI_MD"),moderated:available("MODERATED_MD"),voice:available("VOICE_WAV")};
     const working = path.join(/*turbopackIgnore: true*/ dir, 'working');
     job.delete_requested=existsSync(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working,'delete-request.json'));
     const stop=await readFile(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ working,'cancel.signal'),'utf8').catch(()=>null);

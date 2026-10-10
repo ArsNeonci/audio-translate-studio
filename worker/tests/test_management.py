@@ -204,11 +204,46 @@ class ManagementTests(unittest.TestCase):
         j=manage.create(tool='transcription',upload=p,input_name='audio.wav',mime='audio/wav');d=results.workspace(j['id'])
         self.assertEqual(j['duration_ms'],500);self.assertTrue((d/'source'/'audio.wav').is_file())
         with self.assertRaises(ValueError):manage.create(tool='transcription',upload=p,input_name='audio.mp3',mime='audio/mpeg')
+    def test_34b_the_source_audio_appears_in_history_and_resolves_for_the_download_and_player(self):
+        """Regression: the audio was published but history() filtered it out (the public summary lacked source_ext), so the player got 404."""
+        import wave
+        p=self.data/'uploads'/'a.upload';p.parent.mkdir(parents=True,exist_ok=True)
+        with wave.open(str(p),'wb') as w:w.setnchannels(1);w.setsampwidth(2);w.setframerate(16000);w.writeframes(bytes(16000))
+        j=manage.create(voice=self.voice,upload=p,input_name='clip.wav',mime='audio/wav');d=results.workspace(j['id'])
+        steps=read_json(d/'job.json')['steps'];steps['DOWNLOAD']['state']='COMPLETED';update_job(d,steps=steps)
+        results.import_existing(d)                                   # publishes the Download stage
+        public=read_json(results.destination(j['id'])/'job.json')    # the summary every reader sees
+        self.assertEqual(public['source_ext'],'.wav');self.assertIsNone(public['tool_steps'])
+        listed=next(h for h in manage.history('workflows') if h['id']==j['id'])
+        self.assertEqual([(f['type'],f['step']) for f in listed['files']],[('SOURCE_AUDIO','DOWNLOAD')])
+        self.assertEqual(listed['steps']['DOWNLOAD']['output_manifest'][0]['type'],'SOURCE_AUDIO')
+        item=next(f for f in listed['files'] if f['id']=='SOURCE_AUDIO')
+        resolved=results.destination(j['id'])/item['path']
+        self.assertTrue(resolved.is_file());self.assertEqual(resolved.read_bytes(),(d/'source'/'audio.wav').read_bytes())
     def test_33_history_reads_live_progress_without_exposing_inputs(self):
         d=self.upload();transition(d,'TRANSLATION','RUNNING');progress(d,'translation','TRANSLATING',1,3)
         history=manage.history('tools')[0]
         self.assertEqual(history['progress'],33.33);self.assertEqual(history['steps']['TRANSLATION']['progress'],33.33)
         self.assertNotIn('upload_file',history);self.assertEqual(history['files'],[])
 
+    def test_34_workflow_from_audio_file_skips_youtube_and_keeps_source(self):
+        import wave
+        from audio_translate.transcription import pipeline
+        from audio_translate.workflow.stage_reset import reset
+        p=self.data/'uploads'/'audio.upload';p.parent.mkdir(parents=True)
+        with wave.open(str(p),'wb') as w:w.setnchannels(1);w.setsampwidth(2);w.setframerate(16000);w.writeframes(b'\0'*16000)
+        j=manage.create(voice=self.voice,upload=p,input_name='clip.wav',mime='audio/wav');d=results.workspace(j['id'])
+        self.assertEqual((j['storage_scope'],j['name'],j['url'],j['duration_ms']),('workflows','clip.wav','',500))
+        self.assertTrue(j['source_upload']);self.assertNotIn('tool_type',j);self.assertNotIn('tool_steps',j)
+        source=d/'source'/'audio.wav';self.assertTrue(source.is_file())
+        with patch('yt_dlp.YoutubeDL',side_effect=AssertionError('YouTube must not be called')):
+            self.assertEqual(pipeline.download(d),source)
+        reset(d,'DOWNLOAD');self.assertTrue(source.is_file())  # a fresh Download restart keeps the only copy
+        update_job(d,status='FAILED');manage.reprocess(d.name,'DOWNLOAD');self.assertTrue(source.is_file())
+        self.assertEqual([h['id'] for h in manage.history('workflows')],[j['id']]);self.assertEqual(manage.history('tools'),[])
+        source.unlink()
+        with self.assertRaisesRegex(ValueError,'tạo workflow mới'):pipeline.download(d)
+        with self.assertRaises(ValueError):manage.create('https://youtu.be/1JzKgwOESoM',self.voice,upload=p,input_name='clip.wav',mime='audio/wav')
+        with self.assertRaises(ValueError):manage.create(voice=self.voice,upload=p,input_name='clip.mp3',mime='audio/mpeg')
 import sqlite3
 if __name__=='__main__':unittest.main()

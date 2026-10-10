@@ -117,12 +117,23 @@ def validate_cookie_file(path):
 
 
 def download(job_dir):
-    from yt_dlp import YoutubeDL
-    from yt_dlp.utils import DownloadError
-
     existing = source_file(job_dir)
     if existing:
         return existing
+    from audio_translate.core.storage import read_json
+    saved = read_json(job_dir / "job.json")
+    if saved.get("source_upload"):
+        raise ValueError("File audio đã tải lên không còn trong workflow này. Hãy tạo workflow mới và chọn lại file.")
+    if not saved.get("url"):
+        raise ValueError("Workflow này không có link YouTube.")
+    # The yt-dlp release and the order of YouTube clients come from the gateway when one has been published (signed, see
+    # ytdlp_update); otherwise the bundled yt-dlp and the built-in order are used. This must happen before yt_dlp is imported.
+    from audio_translate.transcription import ytdlp_update
+    ytdlp_update.refresh()
+    version = ytdlp_update.activate()
+    from yt_dlp import YoutubeDL
+    from yt_dlp.utils import DownloadError
+
     job = update(job_dir, status="DOWNLOADING", progress=1, error=None)
     from audio_translate.core.storage import progress
     progress(job_dir,"download","DOWNLOADING",0,None)
@@ -155,33 +166,33 @@ def download(job_dir):
         "no_warnings": False,
     }
     from audio_translate.transcription.youtube_session import cookies_for_download
-    profile_cookies = cookies_for_download()
-    cookies_file = os.getenv("YTDLP_COOKIES_FILE") if profile_cookies is None else None
-    if cookies_file:
-        if not Path(cookies_file).is_file():
-            raise FileNotFoundError(f"Không tìm thấy YTDLP_COOKIES_FILE: {cookies_file}")
-        validate_cookie_file(cookies_file)
-        options["cookiefile"] = cookies_file
-    try:
-        with YoutubeDL(options) as ydl:
+
+    def fetch(client=None, profile_cookies=None, cookies_file=None):
+        chosen = dict(options)
+        if client:
+            chosen["extractor_args"] = {"youtube": {"player_client": [client]}}
+        if cookies_file:
+            if not Path(cookies_file).is_file():
+                raise FileNotFoundError(f"Không tìm thấy YTDLP_COOKIES_FILE: {cookies_file}")
+            validate_cookie_file(cookies_file)
+            chosen["cookiefile"] = cookies_file
+        with YoutubeDL(chosen) as ydl:
             if profile_cookies is not None:
                 for cookie in profile_cookies:
                     ydl.cookiejar.set_cookie(cookie)
-            info = ydl.extract_info(job["url"], download=True)
-    except DownloadError as exc:
-        detail = str(exc)
-        if "HTTP Error 429" in detail:
-            raise RuntimeError("YouTube giới hạn số lượt truy cập (HTTP 429). Hãy chờ trước khi thử lại; kiểm tra VPN/proxy hoặc thử mạng khác nếu lỗi kéo dài.") from exc
-        if "sign in to confirm" in detail.lower():
-            if profile_cookies is not None:
-                from audio_translate.transcription.youtube_session import mark_auth_required
-                mark_auth_required()
-                raise RuntimeError("YouTube yêu cầu xác thực lại. Mở Settings → Kết nối YouTube, đăng nhập trong profile riêng rồi Retry DOWNLOAD. Không cần xuất cookie hoặc đóng gói lại app.") from None
-            if cookies_file:
-                raise RuntimeError("YouTube vẫn yêu cầu xác thực dù đã dùng cookie. Hãy xuất lại cookie YouTube từ phiên trình duyệt xem được video, cập nhật file rồi bấm Thử lại.") from exc
-            raise RuntimeError("YouTube yêu cầu xác thực. Mở Settings → Kết nối YouTube rồi đăng nhập. Hoặc xuất cookie dạng Netscape, đặt YTDLP_COOKIES_FILE trong .env.local và khởi động lại server.") from exc
-        raise RuntimeError(f"Không tải được audio YouTube: {detail}") from exc
-    if not info or info.get("vcodec") not in (None, "none"):
+            return ydl.extract_info(job["url"], download=True)
+
+    info, attempts = try_attempts(job_dir, ytdlp_update.attempts(), fetch, DownloadError, cookies_for_download)
+    write_attempts(job_dir, attempts, version)
+    if info is None:
+        # Every way failed. Ask the gateway now (at most every 15 minutes) whether a newer yt-dlp or client order exists:
+        # it is installed for the next attempt, since yt_dlp is already loaded in this process.
+        result = ytdlp_update.refresh(force=True)
+        error = refused(attempts)
+        if result.get("changed"):
+            error = RuntimeError(f"{error} Đã nhận bản cập nhật bộ tải YouTube; bấm Thử lại.")
+        raise error
+    if info.get("vcodec") not in (None, "none"):
         raise RuntimeError("YouTube không cung cấp audio-only stream cho URL này.")
     path = source_file(job_dir)
     if not path:
@@ -189,6 +200,76 @@ def download(job_dir):
     update(job_dir, name=info.get("title") or job["name"], duration_ms=int((info.get("duration") or 0) * 1000), progress=10)
     progress(job_dir,"download","DOWNLOADING",1,1)
     return path
+
+
+# Errors that another YouTube client cannot fix: stop trying, and do not spend more requests (429 makes it worse).
+FINAL_ERRORS = ("http error 429", "private video", "has been removed", "members-only", "members only",
+                "live event will begin", "premieres in", "copyright")
+
+
+def try_attempts(job_dir, plan, fetch, error_type, load_cookies):
+    """Run the attempts in order until one returns info. Returns (info or None, [(attempt, used cookies kind, error text or None)]).
+    The saved sign-in is read only when an attempt needs it; attempts that need cookies are skipped when there are none."""
+    attempts, cookies, loaded = [], (None, None), False
+    for step in plan:
+        if step.get("cookies"):
+            if not loaded:
+                profile = load_cookies()
+                cookies, loaded = (profile, None if profile is not None else os.getenv("YTDLP_COOKIES_FILE") or None), True
+            if cookies == (None, None):
+                continue
+        if attempts:
+            # A partial file from a failed attempt may belong to another format; never resume into it.
+            for leftover in (job_dir / "source").glob("audio.*"):
+                if leftover.name.endswith((".part", ".ytdl")) or ".part-" in leftover.name:
+                    leftover.unlink(missing_ok=True)
+        kind = None if not step.get("cookies") else ("profile" if cookies[0] is not None else "file")
+        try:
+            info = fetch(step.get("client"), *(cookies if step.get("cookies") else (None, None)))
+            attempts.append((step, kind, None))
+            if info: return info, attempts
+        except error_type as exc:
+            attempts.append((step, kind, str(exc)))
+            if any(marker in str(exc).lower() for marker in FINAL_ERRORS):
+                break
+    return None, attempts
+
+
+def write_attempts(job_dir, attempts, version):
+    """What was tried, for support: client, whether a sign-in was used, and the first part of the error. No cookie values."""
+    from audio_translate.core.storage import atomic_json
+    rows = [{"client": step.get("client") or "default", "cookies": kind, "ok": error is None, "error": (error or "")[-300:] or None}
+            for step, kind, error in attempts]
+    (job_dir / "working").mkdir(exist_ok=True)
+    atomic_json(job_dir / "working" / "download-attempts.json", {"yt_dlp": version or "bundled", "attempts": rows})
+
+
+def refused(attempts):
+    """The one error the owner sees after every attempt failed, chosen from what YouTube said."""
+    errors = [(kind, error) for _, kind, error in attempts if error]
+    if not attempts:
+        return RuntimeError("YouTube yêu cầu xác thực. Mở Settings → Kết nối YouTube rồi đăng nhập.")
+    if not errors:
+        return RuntimeError("yt-dlp không trả về thông tin video.")
+    texts = [error.lower() for _, error in errors]
+    if any("http error 429" in text for text in texts):
+        return RuntimeError("YouTube giới hạn số lượt truy cập (HTTP 429). Hãy chờ trước khi thử lại; kiểm tra VPN/proxy hoặc thử mạng khác nếu lỗi kéo dài.")
+    with_cookies = [(kind, error) for kind, error in errors if kind]
+    if not with_cookies and any("sign in to confirm" in text for text in texts):
+        # Only anonymous attempts ran: there is no saved sign-in to use.
+        return RuntimeError("YouTube yêu cầu xác thực. Mở Settings → Kết nối YouTube rồi đăng nhập. Hoặc chọn \"Tệp âm thanh tiếng Trung\" và nạp file audio.")
+    if with_cookies:
+        kind, error = with_cookies[-1]
+        text = error.lower()
+        if "sign in to confirm" in text:
+            if kind == "profile":
+                from audio_translate.transcription.youtube_session import mark_auth_required
+                mark_auth_required()
+                return RuntimeError("YouTube yêu cầu xác thực lại. Mở Settings → Kết nối YouTube, đăng nhập trong profile riêng rồi Retry DOWNLOAD. Không cần xuất cookie hoặc đóng gói lại app.")
+            return RuntimeError("YouTube vẫn yêu cầu xác thực dù đã dùng cookie. Hãy xuất lại cookie YouTube từ phiên trình duyệt xem được video, cập nhật file rồi bấm Thử lại.")
+        if "needs to be reloaded" in text:
+            return RuntimeError("YouTube từ chối phiên đăng nhập đã lưu (\"The page needs to be reloaded\"). Mở Settings → Kết nối YouTube, đăng nhập lại rồi bấm Thử lại.")
+    return RuntimeError(f"Không tải được audio YouTube: {errors[-1][1]}")
 
 
 def duration_ms(path):
@@ -353,6 +434,10 @@ def clean_text(text):
 
 
 def transcribe(job_dir, source, chunks):
+    # First run: fetch the speech models here (progress shown, resumable, no start-up deadline) so the workers never time out while downloading.
+    if any(not (job_dir / "working" / f"chunk-{index:06d}.json").exists() for index in range(len(chunks))):
+        from audio_translate.transcription.model_prefetch import ensure_models
+        ensure_models(job_dir)
     if os.getenv('FUNASR_DEVICE', 'cpu') == 'cpu':
         from audio_translate.transcription.asr_runtime import run
         return run(job_dir, source, chunks)

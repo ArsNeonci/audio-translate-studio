@@ -38,6 +38,20 @@ class ResultsTests(unittest.TestCase):
         patch.object(results, 'DATA', self.data).start()
         patch.object(results, 'RESULTS', self.root).start()
 
+    def test_the_source_audio_is_published_as_the_download_result_and_backfilled_for_old_jobs(self):
+        (self.job/'source').mkdir()
+        audio = self.job/'source'/'audio.webm'; audio.write_bytes(b'webm-bytes' * 100)
+        results.import_existing(self.job)                       # a job from before: no source_ext recorded yet
+        self.assertEqual(read_json(self.job/'job.json')['source_ext'], '.webm')
+        saved = self.root/self.job_id
+        entry = next(f for f in read_json(saved/'outputs.json')['files'] if f['type'] == 'SOURCE_AUDIO')
+        self.assertEqual((entry['step'], entry['path'], entry['status']), ('DOWNLOAD', 'download/source-audio.webm', 'AVAILABLE'))
+        self.assertEqual((saved/entry['path']).read_bytes(), audio.read_bytes())
+        self.assertEqual(results.output_files({'source_ext': '.m4a', 'workflow_no': 3})['DOWNLOAD'][0][2], 'download/000003-source-audio.m4a')
+        self.assertNotIn('DOWNLOAD', results.output_files({'source_ext': '.webm', 'tool_steps': ['TRANSCRIPTION']}))   # a tool without Download
+        self.assertNotIn('DOWNLOAD', results.output_files({'source_ext': '.exe'}))
+        self.assertNotIn('DOWNLOAD', results.output_files({}))
+
     def test_orchestrator_automatically_publishes_all_steps_and_metadata(self):
         rules = ReplacementRules(self.data/'config')
         def child(command, **kwargs):
