@@ -1,0 +1,24 @@
+{
+  "product_id": "audio-translate-plus",
+  "name": "Audio Translate Plus",
+  "platform": "windows",
+  "version": "2.6.8",
+  "build_adapter": "audio-translate",
+  "license_scheme": "ed25519-v1",
+  "repo_root": "../..",
+  "build_command": [
+    "python",
+    "packaging/build_installer.py",
+    "--product",
+    "audio-translate-plus"
+  ],
+  "artifact_path": "dist/AudioTranslate-Plus-2.6.8.exe",
+  "gateway": {
+    "app_id": "audio-translates",
+    "app_name": "Audio Translate",
+    "services": [
+      "translation",
+      "tts"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audio-translate-core"
+version = "0.1.0"
+description = "Audio Translate processing core (ASR, translation, moderation, TTS, workflow), shared by the desktop worker and the gateway."
+requires-python = ">=3.12"
+# No dependencies are declared: the app ships its own runtime, and the gateway imports only modules whose
+# heavy imports (numpy, soundfile) are made inside functions. Each consumer installs what it uses.
+
+[tool.setuptools.packages.find]
+include = ["audio_translate*"]

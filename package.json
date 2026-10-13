@@ -1,0 +1,31 @@
+{
+  "name": "audio-translates",
+  "version": "1.1.0",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "node scripts/dev.cjs",
+    "build": "next build",
+    "start": "node scripts/start.cjs",
+    "lint": "eslint app components lib packages",
+    "check:i18n": "node scripts/check-i18n.cjs",
+    "check:theme": "node scripts/check-theme.cjs",
+    "package:windows": "python packaging/build_installer.py"
+  },
+  "dependencies": {
+    "@audio/ui": "*",
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "engine": "vieneu-v3turbo",
+  "default_voice_id": "Hải Đăng",
+  "voices": [
+    {
+      "id": "Adam bựa",
+      "label": "Adam bựa",
+      "description": "Nam · Bắc · Phong cách tự nhiên",
+      "aliases": []
+    },
+    {
+      "id": "Trúc Ly",
+      "label": "Trúc Ly",
+      "description": "Nữ · Bắc · Phong cách tự nhiên",
+      "aliases": []
+    },
+    {
+      "id": "Thiện Minh",
+      "label": "Thiện Minh",
+      "description": "Nam · Bắc · Phong cách kể chuyện",
+      "aliases": [
+        "Anh Khôi"
+      ]
+    },
+    {
+      "id": "Mai Anh",
+      "label": "Mai Anh",
+      "description": "Nữ · Bắc · Phong cách tin tức",
+      "aliases": []
+    },
+    {
+      "id": "Hải Đăng",
+      "label": "Hải Đăng",
+      "description": "Nam · Bắc · Phong cách tự nhiên",
+      "aliases": [
+        "Minh Quân Pro",
+        "Minh Quân"
+      ]
+    },
+    {
+      "id": "Thùy Dung",
+      "label": "Thùy Dung",
+      "description": "Nữ · Nam · Phong cách tin tức",
+      "aliases": []
+    },
+    {
+      "id": "Thiền Tâm Đức",
+      "label": "Thiền Tâm Đức",
+      "description": "Nam · Bắc · Phong cách kể chuyện",
+      "aliases": []
+    },
+    {
+      "id": "Ngọc Huyền",
+      "label": "Ngọc Huyền",
+      "description": "Nữ · Bắc · Giọng đọc tự nhiên",
+      "aliases": []
+    },
+    {
+      "id": "Quang Sơn",
+      "label": "Quang Sơn",
+      "description": "Nam · Trung · Phong cách tự nhiên",
+      "aliases": []
+    },
+    {
+      "id": "Ngọc Trân",
+      "label": "Ngọc Trân",
+      "description": "Nữ · Trung · Phong cách tự nhiên",
+      "aliases": []
+    },
+    {
+      "id": "Minh Đức",
+      "label": "Minh Đức",
+      "description": "Nam · Bắc · Phong cách tin tức",
+      "aliases": []
+    },
+    {
+      "id": "Phạm Tuyên",
+      "label": "Phạm Tuyên",
+      "description": "Nam · Bắc · Phong cách tự nhiên",
+      "aliases": []
+    },
+    {
+      "id": "Thái Sơn",
+      "label": "Thái Sơn",
+      "description": "Nam · Nam · Phong cách kể chuyện",
+      "aliases": []
+    },
+    {
+      "id": "Xuân Vĩnh",
+      "label": "Xuân Vĩnh",
+      "description": "Nam · Bắc · Phong cách tự nhiên",
+      "aliases": []
+    },
+    {
+      "id": "Thanh Bình",
+      "label": "Thanh Bình",
+      "description": "Nam · Bắc · Phong cách kể chuyện",
+      "aliases": []
+    },
+    {
+      "id": "Ngọc Linh",
+      "label": "Ngọc Linh",
+      "description": "Nữ · Bắc · Phong cách kể chuyện",
+      "aliases": []
+    },
+    {
+      "id": "Đoan Trang",
+      "label": "Đoan Trang",
+      "description": "Nữ · Bắc · Phong cách tự nhiên",
+      "aliases": []
+    },
+    {
+      "id": "Thục Đoan",
+      "label": "Thục Đoan",
+      "description": "Nữ · Nam · Phong cách kể chuyện",
+      "aliases": []
+    },
+    {
+      "id": "Minh Triết",
+      "label": "Minh Triết",
+      "description": "Nam · Nam · Phong cách tin tức",
+      "aliases": []
+    },
+    {
+      "id": "Mỹ Duyên",
+      "label": "Mỹ Duyên",
+      "description": "Nữ · Nam · Phong cách đọc truyện",
+      "aliases": []
+    },
+    {
+      "id": "Quỳnh Anh",
+      "label": "Quỳnh Anh",
+      "description": "Nữ · Bắc · Phong cách đọc truyện",
+      "aliases": []
+    },
+    {
+      "id": "Đức Trí",
+      "label": "Đức Trí",
+      "description": "Nam · Nam · Phong cách đọc truyện",
+      "aliases": []
+    },
+    {
+      "id": "Kim Thanh",
+      "label": "Kim Thanh",
+      "description": "Nữ · Nam · Phong cách đọc truyện",
+      "aliases": []
+    },
+    {
+      "id": "Adam",
+      "label": "Adam",
+      "description": "Nam · Nam · Giọng đọc tự nhiên",
+      "aliases": []
+    },
+    {
+      "id": "Quốc Tuấn",
+      "label": "Quốc Tuấn",
+      "description": "Nam · Bắc · Phong cách tự nhiên",
+      "aliases": [
+        "Mạnh Dũng"
+      ]
+    }
+  ]
+}

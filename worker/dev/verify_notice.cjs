@@ -1,0 +1,11 @@
+const fs=require('node:fs'),assert=require('node:assert/strict'),ts=require('typescript');
+const code=ts.transpileModule(fs.readFileSync('components/common/use-notice.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+let current='',cleanup,serial=0;const timers=new Map(),react={useState:()=>['',value=>{current=value;}],useRef:()=>({current:null}),useCallback:f=>f,useEffect:f=>{cleanup=f();}};
+const fixture={exports:{}};
+new Function('require','module','exports','setTimeout','clearTimeout',code)(()=>react,fixture,fixture.exports,(callback,delay)=>{assert.equal(delay,3000);timers.set(++serial,callback);return serial;},id=>timers.delete(id));
+const [,notify]=fixture.exports.useNotice();notify('saved');assert.equal(current,'saved');assert.equal(timers.size,1);
+notify('paused');assert.equal(current,'paused');assert.equal(timers.size,1);
+[...timers.values()][0]();assert.equal(current,'');timers.clear();
+notify('again');notify('');assert.equal(current,'');assert.equal(timers.size,0);
+notify('unmount');cleanup();assert.equal(timers.size,0);
+console.log('NOTICE OK: 3 second expiry, replacement, clear, unmount');

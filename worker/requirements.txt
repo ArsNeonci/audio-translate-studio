@@ -1,0 +1,20 @@
+yt-dlp[default]==2026.8.19
+websockets>=15,<18
+numpy>=1.26,<3
+psutil>=5.9,<8
+funasr==1.4.16
+kaldi-native-fbank
+torch>=2.6
+transformers==4.57.3
+sentencepiece>=0.2
+soundfile>=0.13
+onnxruntime>=1.20
+sea-g2p>=0.9.1,<1
+soxr
+# The app's local API (audio_translate/api, re-architecture G4). Same versions as the server fronts.
+fastapi==0.143.0
+uvicorn==0.54.0
+
+# Windows CPU wheel; includes Hy-MT2 support. No source checkout required.
+llama-cpp-python @ https://github.com/abetlen/llama-cpp-python/releases/download/v0.3.19/llama_cpp_python-0.3.19-cp312-cp312-win_amd64.whl ; sys_platform == "win32"
+llama-cpp-python==0.3.19 ; sys_platform != "win32"

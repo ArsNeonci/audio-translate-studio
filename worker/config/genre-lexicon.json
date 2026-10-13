@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "common": [
+    {"source": "心虚", "target": "chột dạ"},
+    {"source": "再睁眼", "target": "mở mắt ra lần nữa"},
+    {"source": "大胆的想法", "target": "ý tưởng táo bạo"},
+    {"source": "大胆的小偷", "target": "kẻ trộm liều lĩnh"},
+    {"source": "嫂子", "target": "chị dâu"},
+    {"source": "植物人", "target": "người thực vật"},
+    {"source": "变成了植物", "target": "trở thành người thực vật"},
+    {"source": "娶媳妇", "target": "cưới vợ"},
+    {"source": "老娘", "target": "bà đây"},
+    {"source": "傻逼", "target": "đồ ngu"},
+    {"source": "尿里", "target": "trong nước tiểu"},
+    {"source": "霉运", "target": "vận xui"}
+  ],
+  "profiles": {
+    "drama": [{"source": "重生", "target": "trọng sinh"}],
+    "survival": [],
+    "rebirth": [
+      {"source": "重生", "target": "trọng sinh"},
+      {"source": "上辈子", "target": "kiếp trước"},
+      {"source": "这辈子", "target": "kiếp này"}
+    ]
+  }
+}

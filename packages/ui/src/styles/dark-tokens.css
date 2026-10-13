@@ -1,0 +1,22 @@
+/* Dark palette and base dark rules shared by the app and the admin; each app adds its own component overrides. */
+:root[data-theme="dark"] {
+  --background: #070e1b;
+  --foreground: #f1f6ff;
+  --dark-surface: #0d1a2d;
+  --dark-raised: #11243b;
+  --dark-border: #294664;
+  --dark-muted: #afc0d6;
+  --dark-accent: #69b9ff;
+  --dark-primary: #1764ad;
+  color-scheme: dark;
+  scrollbar-color: #294664 #070e1b;
+}
+
+:root[data-theme="dark"] ::selection {
+  background: #22558a;
+  color: #fff;
+}
+
+:root[data-theme="dark"] a {
+  color: var(--dark-accent);
+}

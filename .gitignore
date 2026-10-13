@@ -1,0 +1,89 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.next-verification/
+/.next-ui-verify/
+/.next-youtube/
+/.next-progress/
+/.next-voices/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# Private administration source must never enter this public product repository.
+admin-system/
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+/data/private/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+/data/jobs/
+/data/tmp/
+/data/tool-tmp/
+/data/uploads/
+/data/management-locks/
+/data/workflow-registry.sqlite3*
+/data/results/
+/data/benchmarks/
+/.audio-results-staging/
+/data/model-cache/
+/data/model-smoke/
+/data/hf-cache/
+/data/verification/
+/data/config/
+/.python-packages/
+/.pip-tmp/
+/.pip-cache/
+/.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+/.next-installer/
+/.next-security-phase1/
+/dist/
+/data/*.log
+
+# Verified offline translation weights (not source files)
+/models/
+/runtime/llama/
+/data/tts-cache/
+/data/logs/
+/data/settings/
+
+# Phase 2B: generated encrypted asset vault (built by packaging/build_vault.py)
+/worker/vault/
+
+# per-machine DPAPI sealing key (was committed by mistake once)
+/data/keys/

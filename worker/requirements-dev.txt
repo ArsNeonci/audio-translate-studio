@@ -1,0 +1,5 @@
+# Development and test tools only; never shipped. contracts/tests/ui_smoke.py drives the installed Microsoft Edge (no browser download).
+playwright==1.63.0
+psutil>=5.9,<8
+requests>=2.31
+Pillow>=10   # pixel comparison in contracts/tests/ui_shots.py

@@ -1,0 +1,180 @@
+{
+  "version": 1,
+  "voices": [
+    {
+      "id": "Adam bựa",
+      "text": "Tên tôi là Adam bựa.",
+      "key": "ce30e316f687b8e83de030e3b71af2a6516f7969cd75ee64154d9e755e1610fe",
+      "recipe": "75983019bee9e4d72bbc147fc32f49f1ec782d066beb7cd1a815d833ea65222c",
+      "duration_ms": 1840
+    },
+    {
+      "id": "Trúc Ly",
+      "text": "Tên tôi là Trúc Ly.",
+      "key": "ea47faa87e81d9cb3fbda4cfcd0b3210485fb4842ddcabd91c3c69bea4b6d0da",
+      "recipe": "bfa1d09e652bab75de57a90cfbc27be35a8a7340c29625b15ac5fc69db9eb007",
+      "duration_ms": 1200
+    },
+    {
+      "id": "Thiện Minh",
+      "text": "Tên tôi là Thiện Minh.",
+      "key": "2fcb31e43f53c684390d37877131353a8d42f4528ab940da05302581b4201926",
+      "recipe": "2e49d6ac30387d9d9807a0c3ed8743f29f8f7bbb62addc2e94f59e92f0d7c546",
+      "duration_ms": 1280
+    },
+    {
+      "id": "Mai Anh",
+      "text": "Tên tôi là Mai Anh.",
+      "key": "3026b0d786dff57c83488804b33e041e1860dfaab47f29dad7f7ddb95755ebef",
+      "recipe": "285ed7dd97dafbaac893773c4cc70f9866a7d76925a7b4aa393534bfe26e7742",
+      "duration_ms": 1360
+    },
+    {
+      "id": "Hải Đăng",
+      "text": "Tên tôi là Hải Đăng.",
+      "key": "0226553b87fab41da9cc7d80c37a42e0d17162edad200ac5be9708cece139c46",
+      "recipe": "ebdf22d68f5c301c3cd67e5d50d846dba866dbb621c51f786021b120489c57da",
+      "duration_ms": 1200
+    },
+    {
+      "id": "Thùy Dung",
+      "text": "Tên tôi là Thùy Dung.",
+      "key": "5c715c83a1a9fb1d5942a25b2b049a9d28f11aded87eca8c7fb317f78e7d0a6e",
+      "recipe": "5bb47a6602ef925eaf714fe91b8ce713e4a0d44a61d738e08a6a1f202a6210d1",
+      "duration_ms": 1120
+    },
+    {
+      "id": "Thiền Tâm Đức",
+      "text": "Tên tôi là Thiền Tâm Đức.",
+      "key": "dff833eb270caa1db59afbd3e86c8e6b16218b483bf757d9d9d36d866c78b15e",
+      "recipe": "21426e75047751e55bf8d4e10858e4310a7e0f779ad5454084c3e7dbaa63d429",
+      "duration_ms": 2000
+    },
+    {
+      "id": "Ngọc Huyền",
+      "text": "Tên tôi là Ngọc Huyền.",
+      "key": "01761261145b45c6eb2e41a2f99b041a83b3ca9baadde517573fd833dd0c29b6",
+      "recipe": "2f25e4875cb226d03211f7cb6b3b7d87d010a5eff1c4153bb1655b90be101c05",
+      "duration_ms": 1440
+    },
+    {
+      "id": "Quang Sơn",
+      "text": "Tên tôi là Quang Sơn.",
+      "key": "fdd661ad419da204454ac0836d714a15f67d785ee00f5d9d5e8f9dd04cb2a432",
+      "recipe": "f109fde412beb4a927d6fdf65e284c5f0473c5911e264c2755971f56bba14df4",
+      "duration_ms": 1680
+    },
+    {
+      "id": "Ngọc Trân",
+      "text": "Tên tôi là Ngọc Trân.",
+      "key": "0203d8bd301d1285b3640edd3873dfa1cc56a777a2c6fe64ae81ada8b7ba882e",
+      "recipe": "2fba57978c24b2d09b35ec014fa96b1f49059c4048dfdbfd45654f7e711e83ca",
+      "duration_ms": 1680
+    },
+    {
+      "id": "Minh Đức",
+      "text": "Tên tôi là Minh Đức.",
+      "key": "3221ed47f1aa330e871cc8c4acb6637e45e0252029e24a15bb190859794a6bf2",
+      "recipe": "359ad1343526e3858fd91b725bd03fcbd5f2d48224a39f51befe11892ce53070",
+      "duration_ms": 1440
+    },
+    {
+      "id": "Phạm Tuyên",
+      "text": "Tên tôi là Phạm Tuyên.",
+      "key": "ca36915b09167c6603fc2e594eefbc289f375b419c53d2e72d5c9a0dcbbcd9e8",
+      "recipe": "9092ea00e89ccbd855abe5e4b7eca5e331d214753b193c3f460a212188fb9440",
+      "duration_ms": 1440
+    },
+    {
+      "id": "Thái Sơn",
+      "text": "Tên tôi là Thái Sơn.",
+      "key": "1d3aa5ee2ed6ee8e3a38b437b8f5bd626e9c79607a127a008dca336b6a81623f",
+      "recipe": "c39eaa0b358ba5c3f49fdc93d40941db15c27ee1a8d6ec8ef6da461d1b64b77c",
+      "duration_ms": 1360
+    },
+    {
+      "id": "Xuân Vĩnh",
+      "text": "Tên tôi là Xuân Vĩnh.",
+      "key": "4822a5f5e67cb66c8f5da001d4ea386c32afd413a1f84866f21fe5d255f3f496",
+      "recipe": "670b5dda4a9b01a0948f7773cb3a260d621fcf32465b13810d0cd7a483fce03a",
+      "duration_ms": 1280
+    },
+    {
+      "id": "Thanh Bình",
+      "text": "Tên tôi là Thanh Bình.",
+      "key": "b9cfa64336e6d069740843163a088d88458000b13b29b0b1eedb14efec3c40aa",
+      "recipe": "3cbe883423870117fb0bae77320cf99a10db0a5d9155899b9f1025f9cb16f348",
+      "duration_ms": 1200
+    },
+    {
+      "id": "Ngọc Linh",
+      "text": "Tên tôi là Ngọc Linh.",
+      "key": "159961f13d3e25b0898bc9a0ca7cc590c501e6835b60c25557a8ef5c22d0a3a4",
+      "recipe": "2658d3ac8776707c87086967dd3af8271fb823815bf72ea82cef03d606899139",
+      "duration_ms": 1440
+    },
+    {
+      "id": "Đoan Trang",
+      "text": "Tên tôi là Đoan Trang.",
+      "key": "7c7831b14edaacba33d2a8ee3de2b3694a2863d87e3c6c5f2c96654d02518398",
+      "recipe": "47efcbe009ec128394a92a57d1f906b007c69b07ef06ee90c035d47492d41a35",
+      "duration_ms": 1680
+    },
+    {
+      "id": "Thục Đoan",
+      "text": "Tên tôi là Thục Đoan.",
+      "key": "93bbd97ffa673f3619f6565489d213ecd451f7090473374e39c37dd935d58283",
+      "recipe": "da3d5661504053e155fac52abd1f3b037a4da6ebce6a398303f03d0ed9f644b6",
+      "duration_ms": 1360
+    },
+    {
+      "id": "Minh Triết",
+      "text": "Tên tôi là Minh Triết.",
+      "key": "db03e4396cde5dfbe35b07040cf89f1e0ad44b05eb25c7db6771470ec273e7fb",
+      "recipe": "98c28b38bad438d1be27007057d9eaf8f7ad4a5602876a76ff14cb5a8d6c0c2c",
+      "duration_ms": 1200
+    },
+    {
+      "id": "Mỹ Duyên",
+      "text": "Tên tôi là Mỹ Duyên.",
+      "key": "b5871e37eb0d4638a080a6563c23e1d46621acf05f161b4629e87f7acc19e989",
+      "recipe": "e1ce8e0bd4a241aecbe2bc81e96e02d353184efbd79d1caf29a251f53857e6fd",
+      "duration_ms": 1600
+    },
+    {
+      "id": "Quỳnh Anh",
+      "text": "Tên tôi là Quỳnh Anh.",
+      "key": "dd4d438b580d6d681af8c14f807db4755b7738b907b2bf79495bd402ccd4317f",
+      "recipe": "5e580ee647654d9254a77f4af511ab4c70790ce0aea846592f06ad4a41eb531b",
+      "duration_ms": 1440
+    },
+    {
+      "id": "Đức Trí",
+      "text": "Tên tôi là Đức Trí.",
+      "key": "78704ba261d6c11ebf9cef9de774e102db834951565db1529d383e967289a326",
+      "recipe": "2c16258fc2845d39e994801d2b5699a94c9904e59967b206433da6f46701085e",
+      "duration_ms": 1680
+    },
+    {
+      "id": "Kim Thanh",
+      "text": "Tên tôi là Kim Thanh.",
+      "key": "098e87e71d0f3e6cd5b8ab6705f84490a3dcd5e90e1eb7a2e75db2ae7639ffa6",
+      "recipe": "8a824868760d1496b2b1f8987dea4d6c05319a373b47ea83c8dea0447408fafd",
+      "duration_ms": 1840
+    },
+    {
+      "id": "Adam",
+      "text": "Tên tôi là Adam.",
+      "key": "35d2fb247ee5b5cfd6f1b8069356faf7cfd7fb66490d532777d9cf287218ad44",
+      "recipe": "75e9933340f656c3bf022d934a16fe6b070a753a65fbdcab60c730460fcb5af5",
+      "duration_ms": 1600
+    },
+    {
+      "id": "Quốc Tuấn",
+      "text": "Tên tôi là Quốc Tuấn.",
+      "key": "cb326697b0b219a2622024de5057dab9b1349790e20e2c11660d71f8a3b68d75",
+      "recipe": "659f43a3ec9f0d44914a147a9e2d156671a96293e24340d39147fd0a528aadb8",
+      "duration_ms": 1280
+    }
+  ]
+}

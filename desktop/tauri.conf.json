@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Audio Translate",
+  "version": "1.0.0",
+  "identifier": "space.arsneonci.audiotranslate",
+  "build": { "frontendDist": "splash" },
+  "app": { "windows": [], "security": { "csp": null } },
+  "bundle": { "active": false, "icon": ["icons/icon.ico"] }
+}
