@@ -163,16 +163,22 @@
   }
 }
 
-:root[data-theme="dark"] .voice-select .voice-style-option {
+/* Doubled/:not() selectors lift specificity above the generic ".tool-form button" / ".convert-form button" primary-blue rule, so only the chosen chip is blue. */
+:root[data-theme="dark"] .voice-select .voice-style-option:not(.selected) {
   background: var(--dark-raised);
   color: var(--foreground);
   border-color: var(--dark-border);
 }
 
-:root[data-theme="dark"] .voice-select .voice-style-option.selected {
+:root[data-theme="dark"] .voice-select .voice-style-option.selected.selected {
   background: var(--dark-primary);
   color: #fff;
   border-color: #3684c9;
+}
+
+:root[data-theme="dark"] .voice-select .voice-style-option.selected.selected:hover:not(:disabled) {
+  background: #1d78c9 !important;
+  border-color: var(--dark-accent) !important;
 }
 
 :root[data-theme="dark"] .voice-style-description {
