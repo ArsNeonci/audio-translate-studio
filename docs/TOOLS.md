@@ -12,6 +12,7 @@ tool và workflow chạy cùng lúc được chia luồng và tự nhường đ�
 | 2. Chinese Text → Vietnamese Text | TXT/MD/JSONL + **Forms of address (Xưng hô)** | `TRANSLATION` |
 | 3. Vietnamese Text → Moderated | TXT/MD/JSONL | `MODERATION` |
 | 4. Vietnamese Text → Voice | TXT/MD/JSONL + giọng, kiểu giọng | `TTS` |
+| 5. Giọng Việt + Video → Video | Một giọng đọc đã xong của workflow hoặc tool 4, cùng các video chọn bằng hộp chọn file của Windows | `VIDEO` (xem `docs/VIDEO_MERGE.md`) |
 
 ## Tool 1 từ link YouTube
 

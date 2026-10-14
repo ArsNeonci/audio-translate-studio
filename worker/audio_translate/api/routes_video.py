@@ -149,7 +149,9 @@ async def video_open(request: Request):
 
 def auto_open():
     """Videos finished while the app window is open are opened once. The page calls this every few seconds; the marker is
-    removed before opening, so two windows never open the same video twice."""
+    removed before opening, so two windows never open the same video twice. AUDIO_VIDEO_AUTO_OPEN=0 turns it off (automated tests on
+    the owner's PC must not start a player on his screen)."""
+    if os.environ.get('AUDIO_VIDEO_AUTO_OPEN') == '0': return []
     opened = []
     for root, scope in ((DATA / 'tmp', 'workflows'), (DATA / 'tool-tmp', 'tools')):
         if not root.is_dir(): continue
