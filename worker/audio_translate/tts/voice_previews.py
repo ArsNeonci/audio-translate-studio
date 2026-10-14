@@ -6,10 +6,10 @@ import os
 from pathlib import Path
 import time
 import wave
-from audio_translate.core.storage import ROOT, DATA, atomic_json, read_json, file_digest, file_lock
+from audio_translate.core.storage import ROOT, PUBLIC, DATA, atomic_json, read_json, file_digest, file_lock
 from audio_translate.core.providers import vieneu_source
 
-ASSETS = ROOT/'public'/'voice-previews'
+ASSETS = PUBLIC/'voice-previews'
 VERSION = 1
 TERMINAL = {'COMPLETED', 'FAILED', 'CANCELLED', 'PARTIAL', 'DELETING'}
 

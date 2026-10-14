@@ -26,7 +26,7 @@ def main():
         seeded = subprocess.run([sys.executable, str(HERE / 'seed_app_data.py'), str(work / 'data')], cwd=ROOT, capture_output=True, text=True, encoding='utf-8')
         if seeded.returncode: raise SystemExit(seeded.stderr[-1500:])
         ids = json.loads(seeded.stdout.strip().splitlines()[-1])
-        api = harness.start_api(work, ui=ROOT / 'out')
+        api = harness.start_api(work, ui=ROOT / 'web' / 'out')
         base, token = api[1], api[2]
         with sync_playwright() as p:
             browser = p.chromium.launch(channel='msedge', headless=True)

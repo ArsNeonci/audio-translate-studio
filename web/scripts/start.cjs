@@ -5,15 +5,16 @@ const { randomBytes } = require("node:crypto");
 const { existsSync } = require("node:fs");
 const path = require("node:path");
 
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(__dirname, "..");   // web/: the Next.js project
+const repo = path.resolve(root, "..");        // the repository: worker/ (FastAPI) and .venv are beside web/
 const ui = path.join(root, "out");
 if (!existsSync(path.join(ui, "index.html"))) { console.error("No build yet: run `npm run build` first."); process.exit(1); }
 const at = process.argv.indexOf("--port");
 const port = at > 0 ? Number(process.argv[at + 1]) : 3210;
-const venv = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+const venv = path.join(repo, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 const token = randomBytes(32).toString("base64url");
-const api = spawn(process.env.PYTHON_BIN || (existsSync(venv) ? venv : "python"), [path.join(root, "worker", "app_api.py"), "--port", String(port), "--ui", ui], {
-  cwd: root, env: { ...process.env, AUDIO_API_TOKEN: token }, stdio: ["ignore", "pipe", "inherit"],
+const api = spawn(process.env.PYTHON_BIN || (existsSync(venv) ? venv : "python"), [path.join(repo, "worker", "app_api.py"), "--port", String(port), "--ui", ui], {
+  cwd: repo, env: { ...process.env, AUDIO_API_TOKEN: token }, stdio: ["ignore", "pipe", "inherit"],
 });
 api.stdout.on("data", (chunk) => { if (String(chunk).includes("AUDIO_API_READY")) console.log(`\nOpen: http://127.0.0.1:${port}/?launch=${token}\n`); });
 api.on("exit", (code) => process.exit(code ?? 0));

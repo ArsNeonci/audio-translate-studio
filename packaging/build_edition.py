@@ -70,7 +70,7 @@ def preflight(product, manifest, force):
     else:
         results += [check('Admin environment', ADMIN_PYTHON.is_file(), str(ADMIN_PYTHON)), check('Admin database', (ADMIN / 'data' / 'admin.sqlite3').is_file())]
     results += [
-        check('node_modules installed', (ROOT / 'node_modules').is_dir(), 'run npm install'),
+        check('node_modules installed', (ROOT / 'web' / 'node_modules').is_dir(), 'run npm install in web/'),
         check('Rust toolchain', bool(shutil.which('cargo')) or (WORKSPACE / '.tools' / 'rust' / 'cargo' / 'bin' / 'cargo.exe').is_file()),
         check('.NET compiler (installer stub)', (Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Microsoft.NET' / 'Framework64' / 'v4.0.30319' / 'csc.exe').is_file()),
         check('translation model', any((ROOT / 'models' / 'Hy-MT2-7B-Q4_K_M').glob('*.gguf'))),

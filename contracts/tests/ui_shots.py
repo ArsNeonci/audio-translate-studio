@@ -28,7 +28,7 @@ def main():
     work = Path(tempfile.mkdtemp(prefix='ui-shots-')); api = None
     try:
         (work / 'data').mkdir()   # empty on purpose: no row, so no time or id can end up in a picture
-        api = harness.start_api(work, ui=ROOT / 'out')
+        api = harness.start_api(work, ui=ROOT / 'web' / 'out')
         base, token = api[1], api[2]
         with sync_playwright() as p:
             browser = p.chromium.launch(channel='msedge', headless=True)

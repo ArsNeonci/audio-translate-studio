@@ -37,7 +37,7 @@ Script chỉ nối các bước với nhau và dừng ở bước lỗi đầu t
 1. **Kiểm tra máy:** RAM trống ≥ 5 GiB, ổ đĩa trống ≥ 20 GiB (hai ngưỡng này do tôi đặt rộng tay, chưa đo), có Python của repo, môi trường admin, `node_modules`, bộ Rust, trình biên dịch .NET, file model dịch.
 2. **Cấu hình công khai và trust anchor:** admin đọc lại manifest rồi xuất `licensing\<gói>.public-config.json` và `security-core\trust-anchor.<gói>.json`.
 3. **Khóa phiên bản:** xuất khóa của đúng phiên bản này ra file **ngoài mọi repo** (`<thư mục khóa>\<gói>-<version>.key`). Không bao giờ commit hay gửi file này đi.
-4. **Build bộ cài:** biên dịch lõi bảo mật Rust và vỏ Tauri (`desktop/`), build UI Next tĩnh (`out/` → `app/ui`), gom Python, Node (chỉ cho yt-dlp) và model, mã hóa tài sản, quét bí mật, nén và ghép bộ cài.
+4. **Build bộ cài:** biên dịch lõi bảo mật Rust và vỏ Tauri (`desktop/`), build UI Next tĩnh (`web/out/` → `app/ui` trong bộ cài), gom Python, Node (chỉ cho yt-dlp) và model, mã hóa tài sản, quét bí mật, nén và ghép bộ cài.
 5. **Kiểm tra bộ cài:** `audit_package.py` quét xem có khóa riêng, token hay dữ liệu khách lọt vào không.
 
 Cuối cùng, nếu chưa dùng `--push-lease`, vào **admin → Billing → *Đẩy khóa phiên bản (lease)* (Push Lease Keys)** (mục 4).

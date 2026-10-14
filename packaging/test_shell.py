@@ -23,7 +23,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 SHELL = ROOT / 'desktop' / 'bin' / 'AudioTranslate.exe'
 WINDOWS = os.name == 'nt'
-NEEDS = WINDOWS and (ROOT / 'out' / 'index.html').is_file() and (ROOT / 'security-core' / 'bin' / 'audio-security-core.exe').is_file() and SHELL.is_file()
+NEEDS = WINDOWS and (ROOT / 'web' / 'out' / 'index.html').is_file() and (ROOT / 'security-core' / 'bin' / 'audio-security-core.exe').is_file() and SHELL.is_file()
 
 
 def free_port():
@@ -41,8 +41,8 @@ class ShellOnStandIn(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix='shell-test-'); cls.base = Path(cls.temp.name)
         cls.install = cls.base / 'install'; app = cls.install / 'app'
         shutil.copytree(ROOT / 'worker', app / 'worker', ignore=shutil.ignore_patterns('tests', 'dev', 'docs', '__pycache__', '*.pyc', '*.egg-info', 'tmp*'))
-        shutil.copytree(ROOT / 'out', app / 'ui', ignore=shutil.ignore_patterns('voice-previews'))
-        shutil.copytree(ROOT / 'public', app / 'public')
+        shutil.copytree(ROOT / 'web' / 'out', app / 'ui', ignore=shutil.ignore_patterns('voice-previews'))
+        shutil.copytree(ROOT / 'web' / 'public', app / 'public')
         (app / 'licensing').mkdir(); shutil.copy2(ROOT / 'licensing' / 'public-config.json', app / 'licensing' / 'public-config.json')
         (app / 'security-core' / 'bin').mkdir(parents=True); shutil.copy2(ROOT / 'security-core' / 'bin' / 'audio-security-core.exe', app / 'security-core' / 'bin')
         for name in ('app_cleanup.py', 'paths.py'): shutil.copy2(ROOT / 'packaging' / name, cls.install / name)

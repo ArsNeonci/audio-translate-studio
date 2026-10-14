@@ -3,9 +3,9 @@
 # Source and release layout
 
 The application repository and its only Git metadata are in `audio-translates/`.
-The sole Windows release entry point is `npm run package:windows` (activate
+The sole Windows release entry point is `python packaging/build_installer.py` (or `build_edition.py`; activate
 `.venv` first). It builds the native security authority, the Tauri desktop shell,
-the static Next UI (`out/`, shipped as `app/ui`) and portable Python dependencies as one installer.
+the static Next UI (`web/out/`, shipped as `app/ui`) and portable Python dependencies as one installer.
 `npm run build` compiles the web component only; it is not a separate app packaging workflow.
 
 `packaging/build_security_core.py` is an internal sub-step, not another product.
@@ -83,7 +83,7 @@ Both workspace and product ignore rules exclude its entire directory.
 
 ## Source layout (2026-10-04)
 
-Frontend (Next.js). Route URLs under `app/` are unchanged; only shared code moved.
+Frontend (Next.js) lives in `web/` (its own `package.json`; run every `npm` command there). Route URLs under `web/app/` are unchanged; only shared code moved.
 
 ```
 app/                  routes only: pages, layout, api/**/route.ts, css

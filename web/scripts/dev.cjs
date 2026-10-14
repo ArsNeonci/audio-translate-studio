@@ -15,11 +15,12 @@ const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
 
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(__dirname, "..");   // web/: the Next.js project
+const repo = path.resolve(root, "..");        // the repository: worker/ (FastAPI) and .venv are beside web/
 const at = process.argv.indexOf("--port");
 const publicPort = at > 0 ? Number(process.argv[at + 1]) : 3000;
 const nextPort = publicPort + 1;
-const venv = path.join(root, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
+const venv = path.join(repo, ".venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python");
 const python = process.env.PYTHON_BIN || (existsSync(venv) ? venv : "python");
 const token = randomBytes(32).toString("base64url");
 
@@ -60,8 +61,8 @@ function start(apiPort) {
   server.listen(publicPort, "127.0.0.1", () => console.log(`\nUI with hot reload: http://localhost:${publicPort}   (API on 127.0.0.1:${apiPort})`));
 }
 
-const api = spawn(python, [path.join(root, "worker", "app_api.py"), "--port", "0"], {
-  cwd: root, env: { ...process.env, AUDIO_API_TOKEN: token }, stdio: ["ignore", "pipe", "inherit"],
+const api = spawn(python, [path.join(repo, "worker", "app_api.py"), "--port", "0"], {
+  cwd: repo, env: { ...process.env, AUDIO_API_TOKEN: token }, stdio: ["ignore", "pipe", "inherit"],
 });
 children.push(api);
 api.on("exit", (code) => { console.error(`local API exited (${code})`); stop(code ?? 1); });

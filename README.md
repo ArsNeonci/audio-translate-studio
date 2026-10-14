@@ -79,8 +79,8 @@ Moderation acquires the same OS file lock used by all CRUD operations, then take
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s worker/tests -t worker -p "test_*.py" -v
-npm run lint
-npm run build
+npm run lint     # in web/
+npm run build    # in web/
 # Real model smoke test; keeps test rules/jobs isolated from the Studio data:
 .\.venv\Scripts\python.exe worker/dev/smoke_e2e.py
 ```
@@ -89,8 +89,8 @@ For isolated HTTP/UI acceptance testing after the smoke test:
 
 ```powershell
 $env:AUDIO_DATA_DIR = (Resolve-Path data/verification/acceptance).Path
-npm run build        # the UI as static files in ./out
-npm start            # the local API serves ./out (no Node server)
+cd web; npm run build   # the UI as static files in web/out
+npm start                # the local API serves web/out (no Node server)
 # In a second terminal at the project root:
 .\.venv\Scripts\python.exe worker/dev/verify_http.py --data data/verification/acceptance
 ```
@@ -106,9 +106,9 @@ cd <cloned-repo>
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r worker/requirements.txt
-npm install
+cd web; npm install; cd ..
 $env:PYTHON_BIN = (Resolve-Path .\.venv\Scripts\python.exe).Path
-npm run dev
+cd web; npm run dev
 ```
 
 Open <http://localhost:3000>. On Linux/macOS, activate `.venv/bin/activate` and set `PYTHON_BIN` to the virtualenv's `python` path. The first conversion downloads `paraformer-zh`, `fsmn-vad`, and `ct-punc` weights from ModelScope into `data/model-cache/`. Choose CPU/GPU in Settings; CPU is the default. Workflow device selection takes precedence over `FUNASR_DEVICE` and `VIENEU_DEVICE`.
@@ -204,8 +204,8 @@ Tests: `.venv\Scripts\python.exe -m unittest discover -s packaging -p "test_secu
 ## Verify
 
 ```powershell
-npm run lint
-npm run build
+npm run lint     # in web/
+npm run build    # in web/
 python -m unittest discover -s worker/tests -t worker -p "test_*.py" -v
 ```
 

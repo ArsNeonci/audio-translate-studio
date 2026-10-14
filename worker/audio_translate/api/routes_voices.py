@@ -7,10 +7,10 @@ from fastapi.responses import Response
 
 from audio_translate.api.runtime import worker_command
 from audio_translate.api.web import json_response, threaded
-from audio_translate.core.storage import DATA, ROOT
+from audio_translate.core.storage import DATA, PUBLIC
 
 router = APIRouter()
-PREVIEWS = ROOT / 'public' / 'voice-previews'
+PREVIEWS = PUBLIC / 'voice-previews'
 KEY = re.compile(r'^[a-f0-9]{64}$')
 
 

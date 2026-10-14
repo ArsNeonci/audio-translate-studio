@@ -10,7 +10,7 @@
     "lint": "eslint app components lib packages",
     "check:i18n": "node scripts/check-i18n.cjs",
     "check:theme": "node scripts/check-theme.cjs",
-    "package:windows": "python packaging/build_installer.py"
+    "package:windows": "python ../packaging/build_installer.py"
   },
   "dependencies": {
     "@audio/ui": "*",

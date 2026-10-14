@@ -9,6 +9,8 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[3]  # app root: worker/audio_translate/core/storage.py
+# Static files of the UI (the voice preview samples): app/public once installed, web/public in the repository.
+PUBLIC = ROOT / 'public' if (ROOT / 'public').is_dir() else ROOT / 'web' / 'public'
 DATA = Path(os.getenv("AUDIO_DATA_DIR", str(ROOT / "data"))).resolve()
 
 

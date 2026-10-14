@@ -1,5 +1,5 @@
 const fs=require('node:fs'),assert=require('node:assert/strict'),ts=require('typescript');
-const code=ts.transpileModule(fs.readFileSync('lib/shared/format.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
+const code=ts.transpileModule(fs.readFileSync('web/lib/shared/format.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText;
 const moduleFixture={exports:{}};new Function('module','exports',code)(moduleFixture,moduleFixture.exports);
 const {percent,elapsed,runNumber}=moduleFixture.exports;
 assert.equal(percent(7.16),'7.16%');assert.equal(percent(100),'100.00%');assert.equal(percent(0),'0.00%');assert.equal(percent(48.2134),'48.21%');assert.equal(percent(null),'—');assert.equal(percent(101),'100.00%');

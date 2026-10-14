@@ -13,6 +13,7 @@ from packaging.utils import canonicalize_name
 
 ROOT=Path(__file__).resolve().parent.parent
 WORKSPACE=ROOT.parent
+WEB=ROOT/'web'   # the Next.js project (the static UI); the other frameworks sit beside it, not inside it
 SDK=WORKSPACE/'admin-system-server'/'shared-license-sdk'  # private server repository next to this one
 sys.path.insert(0,str(SDK))
 from license_sdk.windows import file_lock
@@ -54,7 +55,7 @@ def product_files(product):
 def source_hash(product='audio-translate'):
     sha=hashlib.sha256()
     files=[]
-    for directory in ['app','components','lib','packages','worker','packaging','public','desktop']:
+    for directory in ['web/app','web/components','web/lib','web/packages','worker','packaging','web/public','desktop']:
         # *.egg-info: metadata of the editable install that lets the gateway import the worker package; not source.
         files.extend(p for p in (ROOT/directory).rglob('*') if p.is_file() and '__pycache__' not in p.parts and 'target' not in p.parts and not p.name.startswith('test_')
                      and not any(part.endswith('.egg-info') for part in p.parts))
@@ -67,7 +68,7 @@ def source_hash(product='audio-translate'):
     files.append(ROOT/'worker'/'config'/'tts-runtime.json')
     files.extend(p for p in (ROOT/'security-core'/'src').glob('*.rs'))
     files.extend(ROOT/'security-core'/name for name in ['Cargo.toml','Cargo.lock','build.rs'])
-    files.extend(ROOT/name for name in ['package.json','package-lock.json','next.config.ts'])
+    files.extend(WEB/name for name in ['package.json','package-lock.json','next.config.ts'])
     files.extend(product_files(product).values())
     for path in sorted(files):sha.update(str(path.relative_to(WORKSPACE)).encode());sha.update(path.read_bytes())
     return sha.hexdigest()
@@ -170,12 +171,12 @@ def build(product='audio-translate', customer=None):
         authenticode_sign(shell_binary)
         # The UI is a static export (re-architecture G5): `npm run build` writes ./out, which the local API serves from app/ui.
         # There is no Node runtime in the product any more.
-        shutil.rmtree(ROOT/'out',ignore_errors=True)
-        subprocess.run(['cmd.exe','/c','npm','run','build'],cwd=ROOT,env=os.environ,check=True)
-        if not (ROOT/'out'/'index.html').is_file():raise RuntimeError('UI_BUILD_MISSING')
+        shutil.rmtree(WEB/'out',ignore_errors=True)
+        subprocess.run(['cmd.exe','/c','npm','run','build'],cwd=WEB,env=os.environ,check=True)
+        if not (WEB/'out'/'index.html').is_file():raise RuntimeError('UI_BUILD_MISSING')
         # voice-previews are served by the API from app/public (one copy), not as UI files.
-        copy_tree(ROOT/'out',payload/'app'/'ui',shutil.ignore_patterns('voice-previews'))
-        if (ROOT/'public').is_dir():copy_tree(ROOT/'public',payload/'app'/'public')
+        copy_tree(WEB/'out',payload/'app'/'ui',shutil.ignore_patterns('voice-previews'))
+        if (WEB/'public').is_dir():copy_tree(WEB/'public',payload/'app'/'public')
         basic=edition=='Basic'
         if basic:
             # Refresh the bundled voice list from the build machine's VieNeu presets.
