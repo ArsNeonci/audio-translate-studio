@@ -18,8 +18,19 @@ async def license_status(request: Request):
     threading.Thread(target=billing.fetch_renewals, daemon=True).start()   # installs a renewal paid for in the Billing portal
     action = 'machine' if request.query_params.get('machine') == '1' else 'status'
     result = await threaded(license_command, {'action': action})
+    if action == 'status': result = await threaded(lease.describe, result)
     tier = await threaded(edition)
     return json_response({**result, 'edition': tier}, result.get('http_status', 503), no_store=True)
+
+
+@router.post('/api/license/lease')
+async def license_lease_check(request: Request):
+    """The "Check again" button: asks the gateway for a new lease now (the person has just gone online) and returns the new status."""
+    if not origin_allowed(request): return json_response(ORIGIN_REJECTED, 403)
+    renewal = await threaded(lease.ensure_lease, True)
+    result = await threaded(lease.describe, await threaded(license_command, {'action': 'status'}))
+    tier = await threaded(edition)
+    return json_response({**result, 'edition': tier, 'renewal': renewal}, result.get('http_status', 503), no_store=True)
 
 
 @router.post('/api/license')

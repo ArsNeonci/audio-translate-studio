@@ -22,6 +22,17 @@ VOICE_STYLES = ('default', 'drama', 'survival', 'rebirth')
 ADDRESS_PROFILES = ('neutral', 'drama', 'survival', 'rebirth')
 TRANSLATION_MODES = ('normal', 'genius')
 TOOLS = ('transcription', 'translation', 'moderation', 'tts')
+VIDEO_LIMIT = 64 * 1024   # the video settings (up to 50 paths) inside a request
+
+
+def video_settings(value):
+    """None (no videos), the settings dict, or False when they are malformed; the worker checks every clip itself."""
+    if value is None: return None
+    if isinstance(value, str):
+        if len(value) > VIDEO_LIMIT: return False
+        try: value = json.loads(value)
+        except ValueError: return False
+    return value if isinstance(value, dict) else False
 GIB = 1024 ** 3
 
 
@@ -60,6 +71,8 @@ async def create(request: Request):
     except ValueError: return json_response({'error': 'JSON không hợp lệ.'}, 400)
     data = data if isinstance(data, dict) else {}
     url, voice, style, address, queue_only, mode, auto = (data.get(k) for k in ('url', 'voice', 'style', 'address', 'queue_only', 'mode', 'auto'))
+    video = video_settings(data.get('video'))
+    if video is False: return json_response({'error': 'Invalid video settings'}, 400)
     if 'auto' in data and not isinstance(auto, bool): return json_response({'error': 'Invalid auto option'}, 400)
     if not isinstance(url, str) or not valid_youtube_url(url): return json_response({'error': 'Hãy nhập URL video YouTube hợp lệ (HTTPS).'}, 400)
     if 'voice' in data and not isinstance(voice, str): return json_response({'error': 'Invalid voice'}, 400)
@@ -70,7 +83,7 @@ async def create(request: Request):
     try:
         await threaded(ensure_history)
         result = await threaded(command, {'action': 'convert', 'url': url, 'voice': voice, 'style': style, 'address': None if mode == 'genius' else address,
-                                          'mode': mode, 'auto': auto is True, 'queue_only': queue_only or False})
+                                          'mode': mode, 'auto': auto is True, 'queue_only': queue_only or False, 'video': video})
     except Exception: return json_response({'error': 'Không kiểm tra được tài nguyên. Chưa tạo workflow; hãy thử lại.'}, 503)
     status = result.pop('status')
     if status == 200: scheduler.soon()
@@ -89,6 +102,8 @@ async def create_from_upload(request: Request):
     address = None if mode == 'genius' else params.get('address') or None
     if address is not None and address not in ADDRESS_PROFILES: return json_response({'error': 'Invalid address profile'}, 400)
     if _length(request) > 2 * GIB: return json_response({'error': 'File quá lớn (tối đa 2 GB).'}, 413)
+    video = video_settings(params.get('video'))
+    if video is False: return json_response({'error': 'Invalid video settings'}, 400)
     upload = None
     try:
         upload, refusal = await receive_upload(request, 2 * GIB)
@@ -96,7 +111,7 @@ async def create_from_upload(request: Request):
         await threaded(ensure_history)
         result = await threaded(command, {'action': 'convert', 'url': '', 'upload': str(upload), 'input_name': name, 'mime': request.headers.get('content-type', ''),
                                           'voice': params.get('voice') or None, 'style': style, 'address': address, 'mode': mode,
-                                          'auto': params.get('auto') == '1', 'queue_only': params.get('queue_only') == '1'})
+                                          'auto': params.get('auto') == '1', 'queue_only': params.get('queue_only') == '1', 'video': video})
         status = result.pop('status')
         if status == 200: scheduler.soon()
         return json_response(result, 201 if status == 200 else status, no_store=True)
@@ -181,6 +196,14 @@ async def create_tool(request: Request):
         try: data = json.loads(await request.body())
         except ValueError: return json_response({'error': 'Invalid JSON'}, 400)
         data = data if isinstance(data, dict) else {}
+        if data.get('tool') == 'video':
+            # Tool 5: a voice made by this app (a workflow or tool 4) laid over the chosen clips. Nothing is uploaded.
+            video = video_settings(data.get('video'))
+            if not video or not isinstance(data.get('voice_job'), str): return json_response({'error': 'Choose a voice and at least one video'}, 400)
+            result = await threaded(command, {'action': 'create', 'tool': 'video', 'voice_job': data['voice_job'], 'video': video})
+            status = result.pop('status')
+            if status == 200: scheduler.soon()
+            return json_response(result, 201 if status == 200 else status)
         if data.get('tool') != 'transcription' or not isinstance(data.get('url'), str) or not valid_youtube_url(data['url']):
             return json_response({'error': 'Enter a valid YouTube link'}, 400)
         result = await threaded(command, {'action': 'create', 'tool': data['tool'], 'url': data['url']})

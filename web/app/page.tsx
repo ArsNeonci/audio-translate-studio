@@ -18,10 +18,11 @@ import SiteHeader from "@/components/layout/site-header";
 import Link from 'next/link';
 import WorkflowActions from '@/components/workflow/workflow-actions';
 import { useLanguage } from "@/lib/i18n/language-context";
+import VideoPicker, { emptyVideo, videoPayload, videoReady, type VideoChoice } from "@/components/video/video-picker";
 
 const duration = audioDuration;
 const AUDIO_TYPES=".wav,.mp3,.m4a,.flac,.ogg,.aac,.webm,.mp4";
-type ConvertInput={url:string;file?:File;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean};
+type ConvertInput={url:string;file?:File;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean;video?:ReturnType<typeof videoPayload>};
 type ResourceWarning={reasons:string[];ram_available_gib:number;required_available_gib:number;cpu_percent:number;existing_workflows:number;estimate_basis:string};
 
 export default function Home() {
@@ -32,6 +33,8 @@ export default function Home() {
   const [source,setSource]=useState<"link"|"file">("link"),[file,setFile]=useState<File|null>(null);
   const [voice,setVoice]=useState(""),[style,setStyle]=useState(""),[address,setAddress]=useState("");
   const [mode,setMode]=useState<TranslationMode>("normal"),[auto,setAuto]=useState(false);
+  const [video,setVideo]=useState<VideoChoice>(emptyVideo);
+  const videoBlocked=video.files.length>0&&!videoReady(video);
   const basic=license.edition==="basic";
   const chooseStyle=useCallback((value:string)=>{setStyle(value);setAddress(addressForStyle(value));},[]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -59,7 +62,7 @@ export default function Home() {
   async function start(event: React.FormEvent) {
     event.preventDefault();
     // Genius handles forms of address itself, so none is sent.
-    const extra={...(basic?{auto}:{}),...(source==="file"&&file?{file}:{})};
+    const extra={...(basic?{auto}:{}),...(source==="file"&&file?{file}:{}),...(video.files.length?{video:videoPayload(video)}:{})};
     if(source==="file"&&!file)return;
     const link=source==="file"?"":url;
     await convert(mode==="genius"?{url:link,voice:voice||undefined,style:style||undefined,mode,...extra}:{url:link,voice:voice||undefined,style:style||undefined,address:address||undefined,...extra});
@@ -69,7 +72,7 @@ export default function Home() {
     const {file:upload,...fields}=input;
     if(!upload)return apiFetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fields,queue_only }) });
     const params=new URLSearchParams({name:upload.name});
-    for(const [key,value] of Object.entries(fields))if(key!=="url"&&value!==undefined&&value!==false)params.set(key,value===true?"1":String(value));
+    for(const [key,value] of Object.entries(fields))if(key!=="url"&&value!==undefined&&value!==false)params.set(key,value===true?"1":typeof value==="object"?JSON.stringify(value):String(value));
     if(queue_only)params.set("queue_only","1");
     return apiFetch(`/api/jobs?${params}`,{method:"POST",headers:{"Content-Type":upload.type||"application/octet-stream"},body:upload});
   }
@@ -84,7 +87,7 @@ export default function Home() {
         setResourceWarning(data.assessment);setPendingConvert(input);return;
       }
       if (!response.ok) throw new Error(data.error || tr("Không tạo được job."));
-      setPendingConvert(null);setUrl("");setFile(null); await refresh();
+      setPendingConvert(null);setUrl("");setFile(null);setVideo(emptyVideo()); await refresh();
       setMessage(t.home.queuedNotice);
     } catch (error) { setMessage(error instanceof Error ? tr(error.message) : tr("Không tạo được job.")); }
     finally { setBusy(false); }
@@ -120,12 +123,13 @@ export default function Home() {
       <h1>{t.home.title1}<br />{t.home.title2}</h1>
       <p>{t.home.description}</p>
       <div className="source-options source-options-studio" role="radiogroup" aria-label={tr("Nguồn âm thanh")}>{(["link","file"] as const).map(value=><button key={value} type="button" role="radio" aria-checked={source===value} className={`source-chip${source===value?" selected":""}`} onClick={()=>{setSource(value);setResourceWarning(null);setPendingConvert(null);}}>{value==="link"?tr("Link YouTube"):tr("Tệp âm thanh tiếng Trung")}</button>)}</div>
-      <form onSubmit={start} className="convert-form">{source==="link"?<><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /></>:<FilePicker accept={AUDIO_TYPES} file={file} onChange={value=>{setFile(value);setResourceWarning(null);setPendingConvert(null);}} chooseLabel={t.tools.chooseFile} emptyLabel={t.tools.noFileChosen} inputLabel={t.tools.inputFile} />}<button type="submit" disabled={busy || !license.allowed || (source==="file"&&!file)}>{busy ? t.home.checking : t.home.convert} ↗</button></form>
+      <form onSubmit={start} className="convert-form">{source==="link"?<><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /></>:<FilePicker accept={AUDIO_TYPES} file={file} onChange={value=>{setFile(value);setResourceWarning(null);setPendingConvert(null);}} chooseLabel={t.tools.chooseFile} emptyLabel={t.tools.noFileChosen} inputLabel={t.tools.inputFile} />}<button type="submit" disabled={busy || !license.allowed || (source==="file"&&!file) || videoBlocked}>{busy ? t.home.checking : t.home.convert} ↗</button></form>
       {source==="file"&&<p className="source-hint">{tr("Dùng khi YouTube chặn tải: tải audio bằng công cụ khác rồi chọn file ở đây (WAV, MP3, M4A, FLAC, OGG, AAC, WEBM, MP4; tối đa 2 GB). Workflow bỏ qua bước tải YouTube.")}</p>}
       <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={chooseStyle} />
       <TranslationModeSelect value={mode} onChange={setMode} />
       {mode==="normal"&&<AddressProfileSelect value={address} onChange={setAddress} />}
       {basic&&<AutoTtsToggle checked={auto} onChange={setAuto} />}
+      <details className="video-optional" open={video.files.length>0||undefined}><summary>{tr("videoOptional")}</summary><VideoPicker value={video} onChange={setVideo} disabled={busy} /></details>
       {message && <p className="alert" role="alert">{message}</p>}
       {resourceWarning&&<section role="alert" className="alert">
         <h3>{t.home.resourceWarningTitle}</h3>

@@ -151,6 +151,10 @@
         "403": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LicenseDenied"}}}},
         "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
+    "/api/license/lease": {
+      "post": {"summary": "Check again: ask the gateway for a new lease now (after going online) and return the licence status", "x-origin": true, "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LicenseStatus"}}}},
+        "403": {"description": "Origin rejected", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
     "/api/license": {
       "get": {"summary": "Licence status (?machine=1: the Machine ID). Also renews the lease in the background when due.", "responses": {
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"anyOf": [{"$ref": "#/components/schemas/LicenseStatus"}, {"$ref": "#/components/schemas/MachineId"}]}}}}}},
@@ -208,6 +212,44 @@
         "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
         "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
         "415": {"description": "Not JSON", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
+    "/api/video/pick": {
+      "post": {"summary": "Video merge: show the Windows Open dialog (several files) and return the chosen clips, checked", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "x-untested": "opens a dialog on the desktop", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VideoFiles"}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "409": {"description": "A dialog is already open", "x-untested": "needs a dialog left open", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "503": {"description": "The dialog failed", "x-untested": "needs a broken shell dialog", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
+    "/api/video/check": {
+      "post": {"summary": "Check chosen clips again (JSON {paths}): moved, deleted or changed since they were chosen", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VideoFiles"}}}},
+        "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "415": {"description": "Not JSON", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
+    "/api/video/estimate": {
+      "post": {"summary": "Size estimate and disk check (JSON {paths, resolution, quality, voice_job?}); without a voice the size is per hour", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VideoEstimate"}}}},
+        "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
+    "/api/video/voices": {
+      "get": {"summary": "Finished voices made by this app (workflows and tool 4) that tool 5 can lay over videos", "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"type": "object", "required": ["voices"], "properties": {"voices": {"type": "array", "items": {
+          "type": "object", "required": ["job_id", "scope", "name"], "properties": {"job_id": {"type": "string"}, "scope": {"enum": ["workflows", "tools"]},
+          "workflow_no": {"type": ["integer", "null"]}, "name": {"type": "string"}, "created_at": {"type": "string"}, "video": {"type": "boolean"}}}}}}}}}}}
+    },
+    "/api/video/open": {
+      "post": {"summary": "Open the finished video in the default player, or its folder (JSON {id, scope, target: video|folder})", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "x-untested": "opens a player on the desktop", "content": {"application/json": {"schema": {"type": "object", "required": ["opened"], "properties": {"opened": {"type": "boolean"}}}}}},
+        "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "404": {"description": "No finished video for this run", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
+    "/api/video/auto-open": {
+      "post": {"summary": "Open, once, the videos that finished while the app window is open (the page calls it every few seconds)", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"type": "object", "required": ["opened"], "properties": {"opened": {"type": "array", "items": {"type": "string"}}}}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
     "/api/settings/youtube": {
       "get": {"summary": "The saved YouTube session (this reads the real per-user profile, not the data folder)", "x-local": true, "responses": {
@@ -302,7 +344,10 @@
       "StepGuide": {"type": "object", "required": ["error", "fix_guide"], "properties": {"error": {"type": ["string", "object", "null"]}, "fix_guide": {"type": ["string", "object", "array", "null"]}}},
       "LicenseStatus": {"type": "object", "required": ["http_status", "product_id", "status", "edition"],
         "properties": {"http_status": {"type": "integer"}, "product_id": {"type": "string"}, "status": {"type": "string", "pattern": "^[A-Z_]+$"}, "edition": {"enum": ["basic", "plus"]},
-          "expires_at": {"type": "string"}, "sequence": {"type": "integer"}, "allowed": {"type": "boolean"}}},
+          "expires_at": {"type": "string"}, "sequence": {"type": "integer"}, "allowed": {"type": "boolean"},
+          "lease": {"type": ["string", "null"], "description": "Lease phase (VALID, GRACE, EXPIRED, NONE, REVOKED), null when the service cannot say; only when status is ACTIVE"},
+          "perpetual": {"type": "boolean", "description": "The licence never ends (expiry year 2100 or later): nothing to renew"},
+          "renewal": {"type": "object", "description": "Only from POST /api/license/lease: the outcome of the lease request"}}},
       "MachineId": {"type": "object", "required": ["http_status", "machine_id", "product_id", "edition"],
         "properties": {"http_status": {"type": "integer"}, "machine_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "product_id": {"type": "string"}, "edition": {"enum": ["basic", "plus"]}}},
       "LicenseCommandResult": {"type": "object", "required": ["http_status", "status"],
@@ -316,6 +361,14 @@
       "Rule": {"type": "object", "required": ["id", "source", "replacement"], "additionalProperties": false,
         "properties": {"id": {"$ref": "#/components/schemas/Uuid"}, "source": {"type": "string", "minLength": 1}, "replacement": {"type": "string"}}},
       "Rules": {"type": "object", "required": ["rules", "locked"], "properties": {"rules": {"type": "array", "items": {"$ref": "#/components/schemas/Rule"}}, "locked": {"type": "boolean"}}},
+      "VideoClip": {"type": "object", "required": ["path", "name"], "properties": {"path": {"type": "string"}, "name": {"type": "string"},
+        "error": {"enum": ["VIDEO_MISSING", "VIDEO_UNREADABLE", "VIDEO_TYPE", "VIDEO_INVALID"]}, "size": {"type": "integer"}, "mtime": {"type": "integer"},
+        "duration_ms": {"type": "integer"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "fps": {"type": "number"}, "codec": {"type": "string"},
+        "pix_fmt": {"type": "string"}, "rotation": {"type": "integer"}, "bitrate": {"type": "integer"}}},
+      "VideoFiles": {"type": "object", "required": ["files"], "properties": {"files": {"type": "array", "items": {"$ref": "#/components/schemas/VideoClip"}}}},
+      "VideoEstimate": {"type": "object", "required": ["files"], "properties": {"files": {"type": "array", "items": {"$ref": "#/components/schemas/VideoClip"}},
+        "error": {"type": "string"}, "resolutions": {"type": "array", "items": {"enum": ["keep", "1080", "720", "480"]}}, "resolution": {"type": "string"}, "quality": {"type": "string"},
+        "plan": {"type": "object"}, "free_bytes": {"type": "integer"}, "needed_bytes": {"type": ["integer", "null"]}, "enough": {"type": ["boolean", "null"]}}},
       "TranslationMemory": {"type": "object", "required": ["start_free_gib", "default_gib", "min_gib", "max_gib", "step_gib", "customised", "available_gib", "total_gib"], "properties": {
         "start_free_gib": {"type": "number"}, "default_gib": {"type": "number"}, "min_gib": {"type": "number"}, "max_gib": {"type": "number"}, "step_gib": {"type": "number"},
         "customised": {"type": "boolean"}, "available_gib": {"type": "number"}, "total_gib": {"type": "number"}}},

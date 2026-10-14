@@ -108,7 +108,7 @@ def get_job(job_id):
         available = lambda kind: any(f.get('type') == kind and f.get('status') == 'AVAILABLE' for f in files)
         for step, state in (job.get('steps') or {}).items(): state['output_manifest'] = [{'status': f.get('status')} for f in files if f.get('step') == step]
         job['artifacts'] = {'source': available('SOURCE_AUDIO'), 'zh': available('ZH_MD'), 'vi': available('VI_MD'),
-                            'moderated': available('MODERATED_MD'), 'voice': available('VOICE_WAV')}
+                            'moderated': available('MODERATED_MD'), 'voice': available('VOICE_WAV'), 'video': available('VIDEO_MP4')}
         working = folder / 'working'
         job['delete_requested'] = (working / 'delete-request.json').exists()
         stop = _read_json(working / 'cancel.signal')

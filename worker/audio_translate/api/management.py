@@ -19,12 +19,14 @@ def management_response(body, job_id, action, scope='workflows'):
         if denied: return denied
     payload = {}
     if action not in NO_BODY:
-        if len(body) > 4096: return json_response({'error': 'Request too large'}, 413)
+        if len(body) > (65536 if action == 'reprocess' else 4096): return json_response({'error': 'Request too large'}, 413)   # reprocess may carry video paths
         try: payload = json.loads(body)
         except ValueError: return json_response({'error': 'Invalid JSON'}, 400)
         if not isinstance(payload, dict): payload = {}
     if action == 'reprocess' and 'mode' in payload and payload['mode'] not in TRANSLATION_MODES:
         return json_response({'error': 'Invalid translation mode'}, 400)
+    if action == 'reprocess' and 'video' in payload and not isinstance(payload['video'], dict):
+        return json_response({'error': 'Invalid video settings'}, 400)
     result = worker_command('manage.py', {**payload, 'action': action, 'id': job_id, 'scope': scope})
     status = result.pop('status')
     if status == 200 and action in STARTS_WORK:

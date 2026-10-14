@@ -93,9 +93,34 @@ def ensure_lease_in_background(force=False):
     threading.Thread(target=ensure_lease, args=(force,), daemon=True).start()
 
 
+PERPETUAL_YEAR = 2100   # the admin's "Perpetual" is 36,500 days; any expiry from this year on is shown as perpetual and has nothing to renew
+
+
+def perpetual(expires_at):
+    try: return int(str(expires_at)[:4]) >= PERPETUAL_YEAR
+    except ValueError: return False
+
+
+def lease_phase():
+    """VALID, GRACE, EXPIRED, NONE, REVOKED, or None when the service cannot say (development without the service)."""
+    value = license_command({'action': 'lease_status'})
+    phase = value.get('lease')
+    return phase if value.get('http_status') == 200 and isinstance(phase, str) else None
+
+
+def describe(result):
+    """The licence status plus what the page needs: the lease phase and whether the licence never ends."""
+    if result.get('status') != 'ACTIVE': return result
+    return {**result, 'lease': lease_phase(), 'perpetual': perpetual(result.get('expires_at'))}
+
+
 def license_denial(internet=True):
     """None when processing is allowed, else the 403 answer. Admission is when the lease matters, so it is refreshed first."""
     if internet: ensure_lease()
     result = license_command({'action': 'check', 'internet': internet})
     if result.get('status') == 'ACTIVE' and result.get('allowed') is True: return None
-    return json_response({'error': result.get('error') or result.get('status'), 'license_status': result.get('status')}, 403, no_store=True)
+    error = result.get('error') or result.get('status')
+    # The core says LICENSE_EXPIRED both for an expired licence and for a lease not renewed for too long (offline). When the licence itself is
+    # still valid it is the lease: the person only has to go online, so they get that message instead of "licence expired".
+    if error in ('LICENSE_EXPIRED', 'LEASE_REQUIRED') and license_command({'action': 'status'}).get('status') == 'ACTIVE': error = 'LEASE_OFFLINE'
+    return json_response({'error': error, 'license_status': result.get('status')}, 403, no_store=True)

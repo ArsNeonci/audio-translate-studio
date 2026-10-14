@@ -14,11 +14,11 @@ from urllib.parse import urlencode
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
-from audio_translate.api import routes_history, routes_jobs, routes_license, routes_rules, routes_settings, routes_voices, static
+from audio_translate.api import routes_history, routes_jobs, routes_license, routes_rules, routes_settings, routes_video, routes_voices, static
 from audio_translate.api.web import SAFE_METHODS, SESSION_COOKIE, authenticated_by, host_allowed, json_response, session_value, write_allowed
 
 # routes_jobs comes first: /api/jobs/preflight must win over /api/jobs/{job_id}.
-ROUTERS = [routes_jobs.router, routes_rules.router, routes_voices.router, routes_settings.router, routes_history.router, routes_license.router]
+ROUTERS = [routes_jobs.router, routes_rules.router, routes_voices.router, routes_settings.router, routes_history.router, routes_license.router, routes_video.router]
 
 
 def create_app(token, ui_dir=None):

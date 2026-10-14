@@ -8,14 +8,14 @@ import json
 import sys
 
 from audio_translate.core import lanes
-from audio_translate.core.errors import STEPS, initial_steps
+from audio_translate.core.errors import effective_steps, initial_steps
 from audio_translate.core.storage import read_json
 from audio_translate.workflow import results
 
 
 def next_stage(job):
     steps = initial_steps(job)
-    step = job.get('retry_step') or next((s for s in job.get('tool_steps', STEPS) if steps[s]['state'] != 'COMPLETED'), 'TTS')
+    step = job.get('retry_step') or next((s for s in effective_steps(job) if steps[s]['state'] != 'COMPLETED'), 'TTS')
     return step.lower()
 
 

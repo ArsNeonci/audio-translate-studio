@@ -25,7 +25,10 @@ FILES = {
                 ('MODERATION_RESULT', 'moderation-result.json', 'moderation/moderation-result.json')],
  'TTS': [('VOICE_WAV', 'voice.vi.wav', 'tts/voice.vi.wav'),
          ('VOICE_MANIFEST', 'voice/voice.manifest.jsonl', 'tts/voice.manifest.jsonl')],
+ 'VIDEO': [('VIDEO_MP4', 'video.vi.mp4', 'video/video.vi.mp4')],
 }
+# Files too large to copy: moved from the workspace into the results instead (the workspace copy is not kept).
+MOVED = {'VIDEO_MP4'}
 
 
 # The Chinese audio the workflow worked from (downloaded from YouTube or uploaded) is published as the Download stage's result,
@@ -114,7 +117,7 @@ def metadata(job_dir):
     job_id = job.get('id', '')
     if not ID.fullmatch(job_id): return  # Unit fixtures are not public jobs.
     directory = destination(job_id)
-    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'tts_auto', 'review_skipped', 'stages', 'tool_steps', 'source_ext']}
+    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'tts_auto', 'review_skipped', 'stages', 'tool_steps', 'source_ext', 'video', 'video_plan', 'video_voice']}
     # No adapter paths, raw errors, credentials or private worker metadata.
     summary['compute_device'] = job.get('compute_device')
     summary['steps'] = {key: {k:value.get(k) for k in ['state','retry_count','attempt','progress','started_at','completed_at','duration_ms','error']}
@@ -147,6 +150,10 @@ def publish_step(job_dir, step):
         try:
             for kind, source_name, relative in output_files(job)[step]:
                 source = job_dir/source_name
+                if kind in MOVED and not source.is_file():
+                    published = entries.get(kind)
+                    if published and published.get('status') == 'AVAILABLE' and (directory/relative).is_file():
+                        prepared.append((None, directory/relative, kind, relative, published['sha256'])); continue   # moved there already
                 if not source.is_file():
                     if kind == 'ZH_JSONL' and (job_dir/'transcript.jsonl').is_file(): source = job_dir/'transcript.jsonl'
                     else: raise FileNotFoundError(f'Final {kind} output is missing')
@@ -160,10 +167,15 @@ def publish_step(job_dir, step):
                     continue
                 temp = staging(job_id, directory)/f'{uuid.uuid4().hex}.tmp'
                 prepared.append((temp, target, kind, relative, sha))
+                if kind in MOVED:
+                    try:
+                        os.replace(source, temp); continue      # same disk: a rename, no copy of a file of several GB
+                    except OSError: pass
                 with source.open('rb') as inp, temp.open('wb') as out:
                     shutil.copyfileobj(inp, out, 1024*1024)
                     out.flush(); os.fsync(out.fileno())
                 if file_digest(temp) != sha: raise ValueError('Result validation failed')
+                if kind in MOVED: source.unlink(missing_ok=True)
             from audio_translate.core.control import check_cancel
             check_cancel(job_dir)
             # Hide the whole stage while swapping its validated files. A crash

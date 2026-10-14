@@ -9,6 +9,15 @@ from pathlib import Path
 from audio_translate.core.storage import atomic_json, read_json, update_job
 
 STEPS = ['DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS']
+# Video merge is a sixth step only for runs that have videos (a workflow with videos chosen, or tool 5); other runs never show it.
+VIDEO = 'VIDEO'
+ALL_STEPS = [*STEPS, VIDEO]
+
+
+def effective_steps(job):
+    """The steps this run goes through, in order."""
+    if job.get('tool_steps'): return list(job['tool_steps'])
+    return [*STEPS, VIDEO] if job.get('video') else list(STEPS)
 GUIDES = {
  'UNACTIVATED': ('Ứng dụng chưa kích hoạt.', 'License / Renewal', ['Mở License, copy Machine ID và gửi Admin.', 'Nhập token kích hoạt Admin cấp cho máy này.'], []),
  'EXPIRED': ('License đã hết hạn.', 'License / Renewal', ['Yêu cầu Admin cấp token gia hạn cho cùng máy.', 'Nhập token gia hạn theo đúng thứ tự. History và Download vẫn dùng được.'], []),
@@ -24,6 +33,9 @@ GUIDES = {
  'CUDA_CONFIG': ('CUDA/PyTorch hoặc backend GPU cấu hình không tương thích.', 'Settings → CPU/GPU; bản PyTorch và llama-cpp-python đã cài', ['Kiểm tra torch.cuda.is_available() và llama_supports_gpu_offload().', 'Cài backend GPU phù hợp rồi Retry; hoặc chọn CPU trong Cài đặt và tạo workflow mới. Workflow đã bắt đầu giữ thiết bị đã chọn.'], [r'.\.venv\Scripts\python.exe -c "import torch; print(torch.cuda.is_available())"']),
  'YOUTUBE_AUTH': ('YouTube yêu cầu xác thực hoặc phiên đăng nhập không hợp lệ.', 'Settings → Kết nối YouTube', ['Bấm Đăng nhập lại / Mở YouTube và đăng nhập trong cửa sổ profile riêng.', 'Bấm Kiểm tra kết nối rồi Retry DOWNLOAD; không cần khởi động lại server.', 'Nếu vẫn dùng file cookie cũ: cập nhật file YTDLP_COOKIES_FILE dạng Netscape.'], []),
  'RATE_LIMIT': ('YouTube giới hạn truy cập.', 'Kết nối mạng/VPN/proxy', ['Chờ trước khi Retry Step.', 'Kiểm tra mạng và xác thực trong trình duyệt nếu YouTube yêu cầu.'], []),
+ 'VIDEO_MISSING': ('Không tìm thấy video đã chọn: file đã bị đổi tên, chuyển chỗ hoặc xóa.', 'Tạo lại → Ghép video', ['Đưa file về đúng chỗ cũ rồi bấm Retry Step.', 'Hoặc vào Tạo lại, chọn bước Ghép video, bấm Chọn lại video rồi chạy lại.'], []),
+ 'VIDEO_UNREADABLE': ('Không đọc được một video đã chọn (file hỏng hoặc không phải video).', 'Tạo lại → Ghép video', ['Mở thử file bằng trình phát video của Windows.', 'Vào Tạo lại, chọn bước Ghép video, bấm Chọn lại video và bỏ file lỗi.'], []),
+ 'VOICE_MISSING': ('Không tìm thấy giọng đọc để ghép (kết quả giọng đọc đã bị xóa hoặc chưa tạo xong).', 'Kết quả bước Tạo giọng', ['Tạo lại giọng đọc của workflow này trước.', 'Với Công cụ 5: chọn một kết quả còn file giọng đọc.'], []),
  'ENV_CONFIG': ('Biến môi trường hoặc giá trị cấu hình không hợp lệ.', '.env.local; .env.example; working/adapters.json; RESULTS_ROOT', ['Đối chiếu .env.example; kiểm tra giá trị batch/device/đường dẫn. RESULTS_ROOT phải tách biệt data/tmp và data/jobs.', 'Sửa .env.local rồi khởi động lại server. Nếu job đã chốt adapters.json, sửa đúng trường cấu hình của job trước retry.'], []),
 }
 
@@ -42,6 +54,8 @@ def redact(message):
 def classify(exc):
     if getattr(exc, 'code', None) in {'UNACTIVATED','EXPIRED','CLOCK_ROLLBACK','TRUSTED_TIME_UNAVAILABLE','WRONG_MACHINE','INVALID','RENEWAL_REQUIRED'}:
         return exc.code
+    if type(exc).__name__ == 'VideoError':
+        return {'VIDEO_TYPE': 'VIDEO_UNREADABLE', 'VIDEO_INVALID': 'VIDEO_UNREADABLE'}.get(exc.code, exc.code)
     message = str(exc).lower()
     number = getattr(exc, 'errno', None)
     if type(exc).__name__ == 'YouTubeSessionError': code = 'YOUTUBE_AUTH'
@@ -68,8 +82,9 @@ def fix_guide(code):
 
 
 def initial_steps(job):
+    names = ALL_STEPS if VIDEO in effective_steps(job) or VIDEO in job.get('steps', {}) else STEPS
     steps = {step: {'state': 'PENDING', 'retry_count': 0, 'attempt': 0, 'progress':0,
-                    'started_at':None,'completed_at':None,'duration_ms':None} for step in STEPS}
+                    'started_at':None,'completed_at':None,'duration_ms':None} for step in names}
     for step, item in job.get('steps', {}).items():
         if step in steps: steps[step].update(item)
     return steps
@@ -95,7 +110,7 @@ def transition(job_dir, step, state):
     stages = job.get('stages',{})
     if state == 'RUNNING': stages[step.lower()] = {'percent':None,'done':0,'total':None}
     elif state == 'COMPLETED': stages[step.lower()] = {**stages.get(step.lower(),{}),'percent':100}
-    effective = job.get('tool_steps',STEPS)
+    effective = effective_steps(job)
     values = [100 if steps[s]['state']=='COMPLETED' else stages.get(s.lower(),{}).get('percent',0) for s in effective]
     overall = None if any(v is None for v in values) else round(sum(values)/len(values),2)
     update_job(job_dir, steps=steps, stages=stages, progress=overall)

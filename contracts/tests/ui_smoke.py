@@ -147,6 +147,48 @@ def main():
             check('the way back restores 5.5 GiB', page.evaluate('fetch("/api/settings/translation-memory").then(r => r.json())')['start_free_gib'] == 5.5)
             problems.clear()
 
+            # Video merge (no real dialog in a test: the dialog and the estimate answers are given by the test)
+            clips = [{'path': 'C:\v\a.mp4', 'name': 'a.mp4', 'duration_ms': 37000, 'width': 1920, 'height': 1080, 'fps': 25, 'codec': 'h264', 'size': 1},
+                     {'path': 'C:\v\b.mov', 'name': 'b.mov', 'duration_ms': 5000, 'width': 1280, 'height': 720, 'fps': 30, 'codec': 'hevc', 'size': 1}]
+            page.route('**/api/video/pick', lambda route, request: route.fulfill(status=200, content_type='application/json', body=json.dumps({'files': clips})))
+            estimate = {'files': clips, 'resolutions': ['keep', '1080', '720', '480'], 'resolution': 'keep', 'quality': 'high', 'free_bytes': 50 * 1024 ** 3, 'needed_bytes': None, 'enough': None,
+                        'plan': {'mode': 'encode', 'repeats': None, 'size_bytes': None, 'bytes_per_hour': 3_700_000_000}}
+            page.route('**/api/video/estimate', lambda route, request: route.fulfill(status=200, content_type='application/json',
+                       body=json.dumps({**estimate, 'files': [clips[i] for i in ([1, 0] if json.loads(request.post_data)['paths'][0].endswith('b.mov') else [0, 1])]})))
+            page.goto(base + '/'); settle()
+            page.get_by_text('Video merge (optional)').click()
+            page.get_by_role('button', name='Choose videos…').click()
+            page.wait_for_selector('.video-list li >> nth=1', timeout=10000)
+            check('Studio: the chosen videos are listed in order', page.locator('.video-name').all_inner_texts() == ['a.mp4', 'b.mov'], str(page.locator('.video-name').all_inner_texts()))
+            page.get_by_role('button', name='Move down').first.click()
+            check('Studio: a video can be moved down', page.locator('.video-name').all_inner_texts() == ['b.mov', 'a.mp4'], str(page.locator('.video-name').all_inner_texts()))
+            page.wait_for_function('document.body.innerText.includes("per hour of voice")', timeout=10000)
+            check('Studio: the size per hour of voice and the free disk are shown', 'free disk space 50.0 GB' in page.inner_text('body'))
+            check('Studio: resolution and quality can be chosen', page.locator('.video-options select').count() == 2)
+            page.evaluate('document.documentElement.dataset.theme = "dark"')
+            check('Studio: the video box follows the dark theme', page.evaluate('getComputedStyle(document.querySelector(".video-picker")).backgroundColor') != 'rgb(255, 255, 255)')
+            page.evaluate('document.documentElement.dataset.theme = "light"')
+            page.goto(base + '/tools'); settle()
+            page.get_by_role('button', name='5. Vietnamese voice + Video → Video').click()
+            check('Tools: tool 5 asks for a voice made by the app', 'Voice (made by this app)' in page.inner_text('body'))
+            page.goto(base + '/reprocess'); settle()
+            check('Reprocess: Video merge is a restart point', 'Video merge' in page.locator('select').nth(1).inner_text())
+            page.unroute('**/api/video/pick'); page.unroute('**/api/video/estimate')
+
+            # A perpetual licence and a lease that lapsed offline (the licence answers are given by the test)
+            def licence(body):
+                page.route('**/api/license', lambda route, request: route.fulfill(status=200, content_type='application/json', body=json.dumps(body)) if request.method == 'GET' else route.continue_())
+            licence({'http_status': 200, 'product_id': 'audio-translate-plus', 'status': 'ACTIVE', 'edition': 'plus', 'expires_at': '2126-10-14T00:00:00+00:00', 'sequence': 1, 'lease': 'VALID', 'perpetual': True})
+            page.goto(base + '/license'); settle()
+            check('Licence page: a perpetual licence reads Vĩnh viễn', 'Expires: Perpetual' in page.inner_text('body'), page.locator('[role=status]').first.inner_text())
+            check('Licence page: no plan to buy for a perpetual licence', page.get_by_role('button', name='Buy / renew a plan').count() == 0)
+            page.unroute('**/api/license')
+            licence({'http_status': 200, 'product_id': 'audio-translate-plus', 'status': 'ACTIVE', 'edition': 'plus', 'expires_at': '2026-12-01T00:00:00+00:00', 'sequence': 1, 'lease': 'EXPIRED', 'perpetual': False})
+            page.goto(base + '/'); settle()
+            check('Studio: a lapsed lease asks to go online, not "licence expired"', 'Connect to the Internet to confirm your access again' in page.inner_text('body') and page.get_by_role('button', name='Check again').count() == 1)
+            page.unroute('**/api/license')
+            problems.clear()
+
             # The page cannot be used from another origin: a state change from a page on another local port is refused
             other = context.new_page()
             other.goto('about:blank')

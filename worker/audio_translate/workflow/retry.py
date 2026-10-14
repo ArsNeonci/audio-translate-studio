@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from audio_translate.core.errors import STEPS, initial_steps, fix_guide, redact
+from audio_translate.core.errors import ALL_STEPS, STEPS, effective_steps, initial_steps, fix_guide, redact
 from audio_translate.core.storage import DATA, LockedError, file_lock, read_json, update_job, file_digest, count_rows
 
 
@@ -95,7 +95,7 @@ def cleanup(job_dir, step):
 def request_retry(job_dir, step, fresh=False):
     from audio_translate.core.license_gate import assert_allowed
     assert_allowed()
-    if step not in STEPS:
+    if step not in ALL_STEPS:
         raise ValueError('Unknown step')
     job_dir = Path(job_dir)
     from audio_translate.core.sealing import opened
@@ -105,7 +105,7 @@ def request_retry(job_dir, step, fresh=False):
         steps = initial_steps(job)
         if job.get('status') != 'FAILED' or steps[step]['state'] != 'FAILED':
             raise ValueError('Step must be FAILED before retry')
-        effective = job.get('tool_steps',STEPS)
+        effective = effective_steps(job)
         if step not in effective: raise ValueError('Step is not part of this tool')
         if any(steps[s]['state'] != 'COMPLETED' for s in effective[:effective.index(step)]):
             raise ValueError('Previous steps must be COMPLETED before retry')
@@ -143,7 +143,7 @@ def main():
             job = read_json(directory/'job.json')
             step = payload.get('step')
             if step:
-                if step not in STEPS: raise ValueError('Unknown step')
+                if step not in ALL_STEPS: raise ValueError('Unknown step')
                 error = initial_steps(job)[step].get('error')
                 response = {'status': 200, 'error': error, 'fix_guide': fix_guide(error['error_code']) if error else None}
             else:

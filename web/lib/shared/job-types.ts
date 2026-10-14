@@ -1,9 +1,13 @@
 // The shapes the local API returns (worker/audio_translate/api); the UI and the API agree on them through contracts/app-api.openapi.json.
 import type { TranscriptionStep } from "@/lib/shared/transcription-progress";
-export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING" | "AWAITING_REVIEW";
-export type Artifact = "source" | "zh" | "vi" | "moderated" | "voice";
-export type Stage = "transcription" | "translation" | "moderation" | "tts";
-export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS";
+export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "VIDEO_MERGING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING" | "AWAITING_REVIEW";
+export type Artifact = "source" | "zh" | "vi" | "moderated" | "voice" | "video";
+export type Stage = "transcription" | "translation" | "moderation" | "tts" | "video";
+export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS" | "VIDEO";
+export const STEPS: Step[] = ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS"];
+/** The steps a run goes through: Video merge only when it has videos (worker core/errors.py effective_steps). */
+export const runSteps = (job: {tool_steps?: Step[]; video?: unknown}): Step[] => job.tool_steps || (job.video ? [...STEPS, "VIDEO"] : STEPS);
+export type VideoSettings = {files: import("@/components/video/video-picker").VideoClip[]; resolution: string; quality: string};
 export type StepError = { step: Step; error_code: string; error_message: string; error_type: string; recoverable_manually: boolean; failed_at: string; retry_count: number };
 export type StepState = { state: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "SKIPPED"; progress?: number | null; started_at?: string | null; completed_at?: string | null; duration_ms?: number | null; retry_count: number; attempt: number; output_manifest?: {status:string}[]; error?: StepError };
 export type Job = {
@@ -41,7 +45,10 @@ export type Job = {
   failed_stage?: Stage | "download" | null;
   stages?: Partial<Record<Stage, { percent: number | null; done?: number; total?: number | null }>>;
   artifacts?: Partial<Record<Artifact, boolean>>;
-  steps?: Record<Step, StepState>;
+  steps?: Partial<Record<Step, StepState>>;
+  video?: VideoSettings | null;
+  video_plan?: {mode: "copy" | "encode"; repeats: number | null; size_bytes: number | null};
+  video_voice?: {job_id: string};
   transcription_steps?: TranscriptionStep[];
   asr_runtime?: {state:string;workers?:number;threads?:number;ram_available_gib?:number;required_available_gib?:number;thermal_available?:boolean;throttled?:boolean;tuning_deferred?:boolean;wait_started_at?:string;wait_timeout_seconds?:number;model_index?:number;model_total?:number;downloaded_gib?:number;total_gib?:number|null;file_index?:number;file_total?:number};
   translation_runtime?: {state:string;mode?:string;device?:string;slots?:number;allocated_slots?:number;threads?:number;n_batch?:number;available_gib?:number;required_available_gib?:number;required_vram_gib?:number;phase?:string;wait_seconds?:number;wait_timeout_seconds?:number;throttled?:boolean;start_free_gib?:number;extra_slot_gib?:number;reserve_gib?:number;cpu_target?:number;gpu_target?:number;temperature_limit?:number};

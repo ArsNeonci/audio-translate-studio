@@ -240,3 +240,7 @@
   border-color: #764250;
   color: #ffaaa5;
 }
+
+:root[data-theme="dark"] .video-picker { background: var(--dark-surface); border-color: var(--dark-border); }
+:root[data-theme="dark"] :is(.video-picker small, .video-estimate) { color: var(--dark-muted); }
+:root[data-theme="dark"] .video-list li.video-bad small { color: #f2b8b5; }

@@ -3,7 +3,7 @@ import { apiFetch, useNotice } from "@audio/ui";
 
 import { useEffect, useRef, useState } from "react";
 import SiteHeader from "@/components/layout/site-header";
-import type { LicenseStatus } from "@/components/license/license-status";
+import { LeaseOfflineNotice, type LicenseStatus } from "@/components/license/license-status";
 import { useLanguage } from "@/lib/i18n/language-context";
 import { openBillingPage } from "@/lib/shared/billing-client";
 
@@ -100,12 +100,15 @@ export default function LicensePage() {
         <p role="status">
           <strong>{tr(status.status)}</strong>
           {status.sequence ? ` · ${tr("Sequence")} ${status.sequence}` : ""}
-          {status.expires_at
+          {status.perpetual
+            ? ` · ${t.license.expires}: ${tr("licensePerpetual")}`
+            : status.expires_at
             ? ` · ${t.license.expires}: ${new Date(status.expires_at).toLocaleString(
                 language === "vi" ? "vi-VN" : "en-US"
               )}`
             : ""}
         </p>
+        <LeaseOfflineNotice license={status} onChange={setStatus} />
 
         {billing?.enabled && (
           <div className="license-box">
@@ -127,8 +130,9 @@ export default function LicensePage() {
                 <p><small>{tr("billingCodeHelp")}</small></p>
               </>
             )}
+            {status.perpetual && <p>{tr("licensePerpetualNote")}</p>}
             <div className="license-actions">
-              <button type="button" className="action-button" onClick={() => void openPortal("license")}>{tr("billingBuy")}</button>{" "}
+              {!status.perpetual && <><button type="button" className="action-button" onClick={() => void openPortal("license")}>{tr("billingBuy")}</button>{" "}</>}
               <button type="button" className="action-button" onClick={() => void openPortal("debt")}>{tr("billingDebt")}</button>
             </div>
           </div>

@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 from audio_translate.core.control import check_cancel, Cancelled, cancel_run, now, end_run
-from audio_translate.core.errors import STEPS, initial_steps, transition, record_failure, redact
+from audio_translate.core.errors import STEPS, effective_steps, initial_steps, transition, record_failure, redact
 from audio_translate.workflow.results import publish_step, metadata, cleanup_temporary
 from audio_translate.core.storage import (DATA, ROOT, LockedError, count_rows, file_lock,
                      progress, read_json, update_job)
@@ -34,7 +34,7 @@ def run_stage(job_dir, stage):
     device = freeze(job_dir)
     validate(device, [stage])
     os.environ.update(stage_environment(device))
-    if stage in ('download', 'transcription'):
+    if stage in ('download', 'transcription', 'video'):
         required = ['ffprobe'] if stage == 'download' else ['ffmpeg', 'ffprobe']
         for binary in required:
             if not shutil.which(binary):
@@ -65,6 +65,9 @@ def run_stage(job_dir, stage):
             merge(job_dir, chunks)
             if not prepare_transcript(job_dir):
                 raise RuntimeError("Transcription did not produce the canonical Chinese files")
+    elif stage == "video":
+        from audio_translate.video.merge import merge
+        merge(job_dir)
     else:
         from audio_translate.workflow.postprocess import translate, moderate, synthesize
         {"translation": translate, "moderation": moderate, "tts": synthesize}[stage](job_dir)
@@ -97,12 +100,12 @@ def run(job_dir):
         update_job(job_dir, auto_paused_for=None, auto_paused_at=None)
         try:
             job = read_json(job_dir / 'job.json')
-            current_step = job.get('retry_step') or next((step for step in job.get('tool_steps', STEPS) if initial_steps(job)[step]['state'] != 'COMPLETED'), 'TTS')
+            current_step = job.get('retry_step') or next((step for step in effective_steps(job) if initial_steps(job)[step]['state'] != 'COMPLETED'), 'TTS')
             check_cancel(job_dir)
             assert_allowed()
             from audio_translate.core.compute_settings import freeze, validate, stage_environment
             device = freeze(job_dir)
-            effective = job.get('tool_steps', STEPS)
+            effective = effective_steps(job)
             pending = [s for s in effective if initial_steps(job)[s]['state'] != 'COMPLETED']
             validate(device, [job['retry_step']] if job.get('retry_step') else pending)
             update_job(job_dir, started_at=job.get('started_at') or now(), run_started_at=now(), completed_at=None)
@@ -113,7 +116,7 @@ def run(job_dir):
                    "HF_HOME": os.getenv("HF_HOME", str(DATA / "hf-cache")), "AUDIO_ACTIVE_JOB":str(job_dir)}
             env.update(stage_environment(device))
             requested = read_json(job_dir / "job.json").get("retry_step")
-            effective = read_json(job_dir / "job.json").get("tool_steps",STEPS)
+            effective = effective_steps(read_json(job_dir / "job.json"))
             steps_to_run = [requested] if requested else effective
             for step in steps_to_run:
                 current_step = step
@@ -140,7 +143,7 @@ def run(job_dir):
                     metadata(job_dir)
                     return 0
                 transition(job_dir, step, 'RUNNING')
-                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING'}
+                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'VIDEO': 'VIDEO_MERGING'}
                 update_job(job_dir, active_stage=step.lower(), status=statuses[step])
                 metadata(job_dir)
                 # Genius translation and Basic voice generation run on the VPS and hold no local model memory.
@@ -158,6 +161,9 @@ def run(job_dir):
                 publish_step(job_dir, step)
                 transition(job_dir, step, 'COMPLETED')
                 metadata(job_dir)
+                if step == 'VIDEO':
+                    # Opened by the app window if it is open (api/routes_video.py auto_open); otherwise the result shows an Open video button.
+                    (job_dir / 'working' / 'video-open.pending').write_text(job['id'], encoding='utf-8')
             job = read_json(job_dir / 'job.json')
             all_done = all(initial_steps(job)[s]['state'] == 'COMPLETED' for s in effective)
             # Retry executes exactly the failed node. Pending successors continue
@@ -185,7 +191,7 @@ def run(job_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("job_dir", type=Path)
-    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts"])
+    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts", "video"])
     args = parser.parse_args()
     try:
         if args.stage:

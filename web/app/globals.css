@@ -1534,3 +1534,27 @@ button:disabled {
 }
 
 .history-list th, .history-list td { padding-left: 11px; padding-right: 11px; }
+
+/* Lease lapsed offline: the message and its Check again button on one line when there is room. */
+.lease-offline { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+
+/* Video merge: the optional clips, their order and options, and the finished video. */
+.video-optional { margin-top: 16px; }
+.video-optional summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.video-picker { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 14px; border: 1px solid #e1e6dc; border-radius: 10px; background: #fff; max-width: 880px; }
+.video-picker-head { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.video-picker-head strong { margin-right: auto; }
+.video-picker small { color: #66736a; font-size: 12px; }
+.video-list { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.video-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 13px; }
+.video-list .video-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.video-list .video-actions { margin-left: auto; display: flex; gap: 4px; }
+.video-list .video-actions button { padding: 2px 8px; }
+.video-list li.video-bad small { color: #b3261e; }
+.video-options { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.video-options label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.video-estimate { font-size: 13px; margin: 0; }
+.video-result { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.video-result video { width: 100%; max-height: 360px; background: #000; border-radius: 8px; }
+.video-result-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.video-open-inline { display: block; margin-top: 4px; padding: 2px 8px; font-size: 12px; }

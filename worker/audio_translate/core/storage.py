@@ -131,7 +131,8 @@ def progress(job_dir, stage, status, done, total):
     stages[stage] = {"done":done,"total":total,"percent":percent}
     steps = job.get('steps',{})
     if stage.upper() in steps: steps[stage.upper()]['progress'] = percent
-    effective = [s.lower() for s in job.get('tool_steps', [s.upper() for s in STAGES])]
+    from audio_translate.core.errors import effective_steps
+    effective = [s.lower() for s in effective_steps(job)]
     # Equal stage weight, explicitly displayed in the UI; unknown active work
     # stays indeterminate. No clock-based or model speed estimates.
     values = [100 if steps.get(s.upper(),{}).get('state') == 'COMPLETED' else stages.get(s,{}).get('percent',0) for s in effective]

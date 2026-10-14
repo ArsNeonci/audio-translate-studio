@@ -288,6 +288,7 @@ export const translations: Record<Language, Translations> = {
       MODERATING: "Đang thay thế từ",
       MODERATION_COMPLETED: "Đã duyệt bản dịch",
       TTS_GENERATING: "Đang tạo giọng Việt",
+      VIDEO_MERGING: "Đang ghép video",
     },
     settings: {
       eyebrow: "CÀI ĐẶT",
@@ -532,6 +533,7 @@ export const translations: Record<Language, Translations> = {
       MODERATING: "Moderating text",
       MODERATION_COMPLETED: "Translation approved",
       TTS_GENERATING: "Generating Vietnamese voice",
+      VIDEO_MERGING: "Merging video",
     },
     settings: {
       eyebrow: "SETTINGS",
