@@ -199,6 +199,16 @@
         "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
         "415": {"description": "Not JSON", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
+    "/api/settings/translation-memory": {
+      "get": {"summary": "The free RAM a translation waits for before it starts, with its limits and the RAM free now", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TranslationMemory"}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}},
+      "post": {"summary": "Set it (JSON {start_free_gib}: 4 to 8 GiB in steps of 0.5). A workflow that is already waiting follows the new value at once.", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/TranslationMemory"}}}},
+        "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "415": {"description": "Not JSON", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
     "/api/settings/youtube": {
       "get": {"summary": "The saved YouTube session (this reads the real per-user profile, not the data folder)", "x-local": true, "responses": {
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/YoutubeStatus"}}}},
@@ -306,6 +316,9 @@
       "Rule": {"type": "object", "required": ["id", "source", "replacement"], "additionalProperties": false,
         "properties": {"id": {"$ref": "#/components/schemas/Uuid"}, "source": {"type": "string", "minLength": 1}, "replacement": {"type": "string"}}},
       "Rules": {"type": "object", "required": ["rules", "locked"], "properties": {"rules": {"type": "array", "items": {"$ref": "#/components/schemas/Rule"}}, "locked": {"type": "boolean"}}},
+      "TranslationMemory": {"type": "object", "required": ["start_free_gib", "default_gib", "min_gib", "max_gib", "step_gib", "customised", "available_gib", "total_gib"], "properties": {
+        "start_free_gib": {"type": "number"}, "default_gib": {"type": "number"}, "min_gib": {"type": "number"}, "max_gib": {"type": "number"}, "step_gib": {"type": "number"},
+        "customised": {"type": "boolean"}, "available_gib": {"type": "number"}, "total_gib": {"type": "number"}}},
       "ComputeSettings": {"type": "object", "required": ["device", "capabilities"],
         "properties": {"device": {"enum": ["cpu", "gpu"]}, "capabilities": {"type": "object", "required": ["transcription", "translation", "tts"],
           "properties": {"transcription": {"type": "boolean"}, "translation": {"type": "boolean"}, "tts": {"type": "boolean"}, "gpu_name": {"type": ["string", "null"]}}}}},

@@ -22,8 +22,8 @@ Backend: `hy-mt2-gguf`. Official model: https://huggingface.co/tencent/Hy-MT2-7B
 | Đường chạy thật, 2–3 slot | +5,28 GiB đỉnh | RAM trống thấp nhất 2,18 GiB |
 
 - KV cache `q8_0`, ngữ cảnh 3072/slot: 0,32 GiB mỗi slot (f16 sẽ là 0,5 GiB).
-- Ngưỡng: khởi động khi trống ≥ 6 GiB (`start_free_gib`), giữ ≥ 1 GiB cho hệ điều hành
-  (`reserve_gib`), mỗi slot thêm 0,35 GiB (`extra_slot_gib`). Nếu chậm bất thường hoặc
+- Ngưỡng: khởi động khi trống ≥ `start_free_gib`, giữ ≥ 1 GiB cho hệ điều hành
+  (`reserve_gib`), mỗi slot thêm 0,35 GiB (`extra_slot_gib`). Mặc định 5,5 GiB = đủ cho **1 slot** (mô hình 4,77 GiB đo thật + 1 slot 0,32 GiB + chút dư); trước 2026-10-14 là 6 GiB (4,77 + dự phòng 1 GiB). Từ đó người dùng chỉnh bằng **thanh trượt 4 đến 8 GiB (bước 0,5) ở Cài đặt → "RAM trống tối thiểu để dịch"** (lưu `data/settings/translation-memory.json`, API `/api/settings/translation-memory`). Giá trị được đọc lại ở mỗi lần kiểm tra, nên workflow đang chờ RAM dùng mức mới trong vài giây, không cần khởi động lại. Chỉ số này không tăng số slot: khi còn dư, app thêm slot theo công thức sẵn (mỗi slot thêm `extra_slot_gib` trên mức dự phòng). Mức dưới 5,5 GiB có thể làm máy chậm hoặc workflow tự tạm dừng khi RAM tụt. Nếu chậm bất thường hoặc
   "In use" chạm trần: `HY_MT_CONTEXT_SIZE=2048`.
 - Tốc độ: sinh ~6,0–6,7 token/s, đọc prompt ~31 token/s trên 8 luồng. Đường chạy thật 3,4 s/dòng
   (40 dòng, slot tự tăng lên 2, slot 3 bị gỡ vì không nhanh hơn).
@@ -54,7 +54,7 @@ Default policy:
 
 | Setting | Value | Meaning |
 | --- | --- | --- |
-| `start_free_gib` | 3.5 | Available RAM/commit required to try loading 1x |
+| `start_free_gib` | 5.5 | Available RAM/commit required to try loading 1x (one slot); the Settings slider (4 to 8 GiB) overrides it and applies to waiting workflows at once |
 | `extra_slot_gib` | 0.4 | Conservative RAM per extra shared-model slot |
 | `reserve_gib` | 2 | RAM/commit reserve after model loading |
 | `safety_gib` | 0.4 | Additional margin before expanding |
@@ -68,7 +68,7 @@ Default policy:
 | `vram_reserve_gib` | 0.5 | GPU memory reserve |
 | `max_slots` | 0 | Automatic physical-core/resource ceiling |
 
-The 3.5 GiB startup threshold permits a 1x attempt; it does not guarantee 2 GiB remains after loading. If even 1x cannot keep the reserve, the model is released and the workflow pauses with checkpoints preserved. Each expansion requires available RAM/commit of at least **2 GiB + additional slot allocations + 0.4 GiB safety**. The per-slot estimate is the larger of the configured 0.4 GiB and KV metadata estimate, so larger contexts cannot underbudget memory. At default context 4096, a new slot requires approximately 2.8 GiB available while the existing model is loaded.
+The startup threshold (5.5 GiB by default, 4 GiB at the lowest slider setting) permits a 1x attempt; it does not guarantee 2 GiB remains after loading. If even 1x cannot keep the reserve, the model is released and the workflow pauses with checkpoints preserved. Each expansion requires available RAM/commit of at least **2 GiB + additional slot allocations + 0.4 GiB safety**. The per-slot estimate is the larger of the configured 0.4 GiB and KV metadata estimate, so larger contexts cannot underbudget memory. At default context 4096, a new slot requires approximately 2.8 GiB available while the existing model is loaded.
 
 The controller follows the resource admission pattern in Transcription 3/4: start real work, observe live resources, scale up after a healthy period, drain and shrink on pressure. It samples actual usage, not synthetic test translations. One llama-server shares model weights among slots. Resizing allocated KV slots restarts the helper only after active requests are saved. CPU/GPU overload reduces slots and CPU threads; thermal pressure stops admission and pauses after drain. Critical RAM/commit below 256 MiB releases the model immediately. Temperature sensors may be unavailable; telemetry reports whether a sensor exists. The reserve is a control target and other applications can briefly reduce it.
 

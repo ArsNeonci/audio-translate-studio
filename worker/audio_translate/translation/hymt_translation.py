@@ -236,9 +236,10 @@ class TranslationAdapter:
             check_cancel(job)
             available = psutil.virtual_memory().available
             commit = commit_available()
-            needed = minimum * GIB
+            minimum_now = minimum() if callable(minimum) else minimum   # a callable is asked again on every round
+            needed = minimum_now * GIB
             from audio_translate.core import lanes
-            if available >= minimum * GIB and (commit is None or commit >= needed):
+            if available >= minimum_now * GIB and (commit is None or commit >= needed):
                 lanes.waiting(job, 0)
                 return
             keep_waiting = lanes.waiting(job, needed)
@@ -246,7 +247,7 @@ class TranslationAdapter:
             if job:
                 atomic_json(Path(job) / 'working' / 'translation-runtime.json', {
                     'state': 'WAITING_MEMORY', 'backend': 'hy-mt2-gguf', 'phase': phase,
-                    'available_gib': round(available / GIB, 2), 'required_available_gib': minimum,
+                    'available_gib': round(available / GIB, 2), 'required_available_gib': minimum_now,
                     'wait_seconds': round(waited, 1),
                     'wait_timeout_seconds': self.settings['memory_wait_seconds'],
                 })
@@ -270,7 +271,7 @@ class TranslationAdapter:
         if not path.is_file():
             raise FileNotFoundError('Hy-MT2 GGUF model not found; run worker/tools/download_translation_model.py')
         from audio_translate.translation.translation_server import policy
-        self.wait_memory(policy()['start_free_gib'], 'MODEL_LOADING')
+        self.wait_memory(lambda: policy()['start_free_gib'], 'MODEL_LOADING')   # re-read while waiting: the Settings slider applies at once
         if self.job_dir:
             atomic_json(Path(self.job_dir)/'working'/'translation-runtime.json', {'state':'MODEL_LOADING','device':self.settings.get('device','cpu')})
         from llama_cpp import Llama

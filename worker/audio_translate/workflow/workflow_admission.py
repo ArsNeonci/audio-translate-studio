@@ -31,8 +31,10 @@ def pending_jobs():
 
 def model_budget(cores):
     # Stages are isolated: reserve for the largest model, including Hy-MT2 GGUF.
-    # Hy-MT2-7B Q4_K_M measured 4.77 GiB (no repack) + 1 GiB kept for the OS.
-    translation_allocation = int(max(6, float(os.getenv('HY_MT_STARTUP_AVAILABLE_GIB', '6')))*GIB)
+    # Hy-MT2-7B Q4_K_M measured 4.77 GiB (no repack); what a translation needs free to start is the person's slider (Settings, 4 to 8 GiB,
+    # default 5.5 = one slot). HY_MT_STARTUP_AVAILABLE_GIB still overrides it for tests and special machines.
+    from audio_translate.core.translation_memory import effective_gib
+    translation_allocation = int(float(os.getenv('HY_MT_STARTUP_AVAILABLE_GIB') or effective_gib())*GIB)
     # A profile is useful only for the same hardware/model versions and <=7 days.
     try:
         profile = read_json(DATA/'config'/'asr-autotune.json')

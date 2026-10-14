@@ -3,6 +3,16 @@ import { translations, type Language } from '@/lib/i18n/i18n';
 // Only authored interface copy belongs here. Never translate user content,
 // filenames, voice names, model names, transcripts, commands or identifiers.
 export const uiText: Record<string, readonly [string, string]> = {
+  'memoryTitle': ['RAM trống tối thiểu để dịch', 'Free RAM needed to translate'],
+  'memoryDescription': ['Workflow chỉ nạp mô hình dịch khi RAM trống đạt mức này. 4 GiB là mức thấp nhất; mức mặc định đủ cho 1 slot. Khi còn dư nhiều hơn, app tự thêm slot theo công thức có sẵn. Thay đổi áp dụng ngay cho workflow đang chờ RAM.', 'A workflow loads the translation model only when this much RAM is free. 4 GiB is the lowest level; the default is enough for 1 slot. When more is free, the app adds slots by its existing formula. A change applies at once to workflows that are waiting for memory.'],
+  'memoryValue': ['{value} GiB', '{value} GiB'],
+  'memoryNow': ['Hiện còn trống {available} GiB trên tổng {total} GiB', 'Free now: {available} GiB of {total} GiB'],
+  'memoryEnough': ['đủ để bắt đầu dịch', 'enough to start translating'],
+  'memoryWaiting': ['chưa đủ, workflow sẽ chờ', 'not enough yet, the workflow will wait'],
+  'memoryLow': ['Dưới mức mặc định ({value} GiB) máy có thể chậm hoặc workflow tự tạm dừng khi RAM tụt thấp.', 'Below the default ({value} GiB) the PC may slow down, or the workflow may pause itself when memory runs low.'],
+  'memoryReset': ['Về mặc định ({value} GiB)', 'Reset to default ({value} GiB)'],
+  'memorySaved': ['Đã lưu. Workflow đang chờ RAM dùng mức mới ngay.', 'Saved. A workflow waiting for memory uses the new level at once.'],
+  'memoryUnavailable': ['Không đọc hoặc lưu được cài đặt RAM.', 'Could not read or save the memory setting.'],
   'computeTitle': ['Thiết bị xử lý workflow', 'Workflow compute device'],
   'computeDescription': ['Chọn CPU hoặc GPU cho TRANSCRIPTION 3/4, TRANSLATION và Voice generation. Lựa chọn được lưu trên máy và chốt khi workflow bắt đầu; tiếp tục hoặc tạo lại sẽ giữ cấu hình của workflow đó.', 'Choose CPU or GPU for TRANSCRIPTION 3/4, TRANSLATION and Voice generation. Saved on this machine and captured when a workflow starts; resume and reprocess retain that workflow’s choice.'],
   'computeCPU': ['Dùng CPU và các giới hạn RAM/CPU tự động hiện tại.', 'Use CPU with existing automatic RAM/CPU limits.'],

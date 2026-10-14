@@ -129,6 +129,24 @@ def main():
             if shots: page.screenshot(path=str(shots / 'settings_dark_en.png'), full_page=True)
             problems.clear()
 
+            # The free RAM a translation waits for: a slider from 4 to 8 GiB that saves by itself
+            slider = page.locator('.memory-slider input[type=range]')
+            slider.wait_for(timeout=15000)
+            check('the memory slider spans 4 to 8 GiB in steps of 0.5 and starts at the one-slot default',
+                  (slider.get_attribute('min'), slider.get_attribute('max'), slider.get_attribute('step'), slider.input_value()) == ('4', '8', '0.5', '5.5'),
+                  (slider.get_attribute('min'), slider.get_attribute('max'), slider.input_value()))
+            slider.focus(); page.keyboard.press('Home')                      # the lowest level
+            page.wait_for_function('document.body.innerText.includes("uses the new level at once")', timeout=15000)
+            kept = page.evaluate('fetch("/api/settings/translation-memory").then(r => r.json())')
+            check('moving the slider saves the level at once', kept['start_free_gib'] == 4.0 and kept['customised'] is True, kept)
+            page.reload(); settle()
+            check('the saved level is shown again after a reload', page.locator('.memory-slider input[type=range]').input_value() == '4', page.locator('.memory-slider input[type=range]').input_value())
+            check('below the default there is a warning and a way back', 'Below the default' in page.inner_text('body') and page.get_by_role('button', name='Reset to default (5.5 GiB)').count() == 1)
+            page.get_by_role('button', name='Reset to default (5.5 GiB)').click()
+            page.wait_for_function('document.body.innerText.includes("uses the new level at once") && !document.body.innerText.includes("Reset to default")', timeout=15000)
+            check('the way back restores 5.5 GiB', page.evaluate('fetch("/api/settings/translation-memory").then(r => r.json())')['start_free_gib'] == 5.5)
+            problems.clear()
+
             # The page cannot be used from another origin: a state change from a page on another local port is refused
             other = context.new_page()
             other.goto('about:blank')

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import SiteHeader from "@/components/layout/site-header";
 import { useLanguage } from "@/lib/i18n/language-context";
 import ComputeSettings from "@/components/settings/compute-settings";
+import TranslationMemorySettings from "@/components/settings/translation-memory-settings";
 
 type Connection = {
   enabled: boolean;
@@ -143,6 +144,8 @@ export default function Settings() {
         </section>
 
         <ComputeSettings />
+
+        <TranslationMemorySettings />
 
         {/* YouTube connection remains independent of appearance preferences. */}
         <section className="youtube-connection" aria-label={tr("YouTube connection")}>

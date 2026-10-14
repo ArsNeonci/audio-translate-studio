@@ -106,7 +106,7 @@ for (const language of ['vi','en']) {
   assert.ok(running.includes('25%'));
   assert.ok(running.includes(language==='vi'?'2 lượt dịch song song':'2 parallel translations'));
   assert.ok(!running.includes('indeterminate'));
-  assert.ok(running.includes('3.5 GiB'));
+  assert.ok(running.includes('5.5 GiB'));   // the start level shown when the telemetry carries none: the one-slot default
   assert.ok(running.includes('85%/85%'));
   const completed=renderToStaticMarkup(React.createElement(Pipeline,{job:{...translationJob,status:'COMPLETED',steps:{TRANSLATION:{state:'COMPLETED',progress:100}},translation_runtime:{state:'CALIBRATING'}}}));
   assert.ok(!completed.includes(language==='vi'?'Đang hiệu chuẩn':'Calibrating'), 'Historical telemetry must not override completed state');

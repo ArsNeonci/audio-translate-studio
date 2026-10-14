@@ -23,7 +23,7 @@ from audio_translate.core.control import Cancelled, check_cancel
 from audio_translate.core.storage import ROOT, DATA, atomic_json
 
 DEFAULTS = dict(engine='auto', enabled=True, threads=4, threads_batch=4,
-                n_batch=128, max_slots=0, start_free_gib=3.5, extra_slot_gib=.4,
+                n_batch=128, max_slots=0, start_free_gib=5.5, extra_slot_gib=.4,
                 cpu_target=85, gpu_target=85, temperature_limit=85, reserve_gib=2,
                 observe_seconds=1, recovery_seconds=30, safety_gib=.4,
                 scale_up_seconds=10, vram_reserve_gib=.5, gain_window_seconds=30, retry_seconds=600)
@@ -33,6 +33,10 @@ GIB = 1024 ** 3
 def policy():
     path = Path(os.getenv('HY_MT_RUNTIME_CONFIG', ROOT / 'worker' / 'config' / 'translation-runtime.json'))
     values = {**DEFAULTS, **(json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else {})}
+    # The person's slider (Settings, 4 to 8 GiB) wins over the shipped value; read on every call, so a waiting workflow follows it at once.
+    from audio_translate.core.translation_memory import saved_gib
+    chosen = saved_gib()
+    if chosen is not None: values['start_free_gib'] = chosen
     if values['engine'] not in ('auto', 'server', 'embedded') or type(values['enabled']) is not bool:
         raise ValueError('Invalid Hy-MT2 engine/enabled policy')
     for key in ('threads', 'threads_batch', 'n_batch', 'max_slots'):

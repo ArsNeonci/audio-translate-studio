@@ -1,9 +1,10 @@
-"""/api/settings/compute and /api/settings/youtube (was app/api/settings/**). Local callers only."""
+"""/api/settings/compute, /api/settings/translation-memory and /api/settings/youtube (was app/api/settings/**). Local callers only."""
 import json
 
 from fastapi import APIRouter, Request
 
 from audio_translate.api.runtime import worker_command
+from audio_translate.core import translation_memory
 from audio_translate.api.web import json_response, local_request, threaded
 
 router = APIRouter()
@@ -44,6 +45,23 @@ async def compute_set(request: Request):
     if refusal: return refusal
     if not isinstance(payload, dict) or payload.get('device') not in ('cpu', 'gpu'): return json_response({'error': 'Invalid compute device'}, 400)
     return await command('compute_settings.py', {'action': 'set', 'device': payload['device']}, COMPUTE_UNAVAILABLE)
+
+
+@router.get('/api/settings/translation-memory')
+async def translation_memory_status(request: Request):
+    if not local_request(request): return json_response({'error': 'Local access required'}, 403)
+    return json_response(await threaded(translation_memory.status), no_store=True)
+
+
+@router.post('/api/settings/translation-memory')
+async def translation_memory_set(request: Request):
+    """The free RAM a translation waits for before it starts (4 to 8 GiB). A workflow that is already waiting follows the new value at once."""
+    if not local_request(request): return json_response({'error': 'Origin rejected'}, 403)
+    payload, refusal = await small_json(request)
+    if refusal: return refusal
+    try: await threaded(translation_memory.save, payload.get('start_free_gib') if isinstance(payload, dict) else None)
+    except ValueError: return json_response({'error': 'Invalid translation memory'}, 400)
+    return json_response(await threaded(translation_memory.status), no_store=True)
 
 
 @router.get('/api/settings/youtube')
