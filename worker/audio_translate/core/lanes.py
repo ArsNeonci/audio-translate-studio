@@ -308,7 +308,15 @@ class Lease:
                 data['leases'].pop(job_id(self.job_dir), None)
         except (LockedError, OSError):
             pass  # A stale lease expires after STALE_SECONDS.
-        (self.job_dir / 'working' / 'lane.json').unlink(missing_ok=True)
+        # Display-only file: the page may be reading it right now, and Windows then refuses to delete it. That must never fail a run that finished.
+        for attempt in range(8):
+            try:
+                (self.job_dir / 'working' / 'lane.json').unlink(missing_ok=True)
+                break
+            except PermissionError:
+                time.sleep(0.05 * (attempt + 1))
+            except OSError:
+                break
 
 
 def admission(candidates):
