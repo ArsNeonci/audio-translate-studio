@@ -74,14 +74,14 @@ def voice_length(voice_job):
     return merge.voice_ms(path) if path else None
 
 
-def estimate(paths, resolution, quality, voice_job):
+def estimate(paths, resolution, quality, voice_job, burn=False):
     clips = check(paths)
     bad = [c for c in clips if c.get('error')]
     if bad: return {'files': clips, 'error': bad[0]['error']}
     allowed = merge.resolutions(clips)
     if resolution not in allowed: resolution = 'keep'
     length = voice_length(voice_job)
-    plan = merge.plan(clips, resolution, quality, length)
+    plan = merge.plan(clips, resolution, quality, length, burn)
     from audio_translate.workflow.results import RESULTS
     free = merge.disk_free(RESULTS)
     needed = merge.needed_bytes(plan) if length else None
@@ -96,10 +96,11 @@ async def video_estimate(request: Request):
     data, refusal = await body_json(request)
     if refusal: return refusal
     paths, resolution, quality, voice_job = data.get('paths'), data.get('resolution', 'keep'), data.get('quality', 'high'), data.get('voice_job')
-    if (not isinstance(paths, list) or not 1 <= len(paths) <= merge.MAX_FILES or any(not isinstance(p, str) or len(p) > 1024 for p in paths)
+    burn = data.get('burn', False)
+    if (not isinstance(paths, list) or not isinstance(burn, bool) or not 1 <= len(paths) <= merge.MAX_FILES or any(not isinstance(p, str) or len(p) > 1024 for p in paths)
             or resolution not in merge.RESOLUTIONS or quality not in merge.QUALITIES or (voice_job is not None and not JOB_ID.match(str(voice_job)))):
         return json_response({'error': 'Invalid request'}, 400)
-    return json_response(await threaded(estimate, paths, resolution, quality, voice_job), no_store=True)
+    return json_response(await threaded(estimate, paths, resolution, quality, voice_job, burn), no_store=True)
 
 
 def voices():

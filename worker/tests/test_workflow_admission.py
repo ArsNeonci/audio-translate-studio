@@ -42,13 +42,13 @@ class AdmissionTests(unittest.TestCase):
     def test_queue_confirmation_still_checks_but_only_creates_once(self):
         with patch.object(admission,'preflight',return_value=self.assess(available=2.9*GIB)) as check,patch('audio_translate.workflow.manage.create',return_value={'id':'new','status':'QUEUED'}) as create,patch('audio_translate.core.license_gate.assert_allowed'):
             response=admission.convert('url','voice',queue_only=True)
-        check.assert_called_once();create.assert_called_once_with('url','voice',style=None,address=None,mode=None,auto=False,video=None)
+        check.assert_called_once();create.assert_called_once_with('url','voice',style=None,address=None,mode=None,auto=False,video=None,subtitle=None)
         self.assertEqual(response['job']['status'],'QUEUED');self.assertFalse(response['assessment']['allowed'])
 
     def test_audio_file_is_passed_to_create(self):
         with patch.object(admission,'preflight',return_value=self.assess(available=8*GIB)),patch('audio_translate.workflow.manage.create',return_value={'id':'new','status':'QUEUED'}) as create,patch('audio_translate.core.license_gate.assert_allowed'):
             admission.convert('','voice',upload='u.upload',input_name='clip.mp3',mime='audio/mpeg')
-        create.assert_called_once_with('','voice',style=None,address=None,mode=None,auto=False,video=None,upload='u.upload',input_name='clip.mp3',mime='audio/mpeg')
+        create.assert_called_once_with('','voice',style=None,address=None,mode=None,auto=False,video=None,subtitle=None,upload='u.upload',input_name='clip.mp3',mime='audio/mpeg')
 
     def test_pending_allocations_reserved_and_loaded_model_not_double_counted(self):
         queued=[{'status':'QUEUED'}]

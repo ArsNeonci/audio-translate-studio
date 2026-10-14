@@ -19,10 +19,11 @@ import Link from 'next/link';
 import WorkflowActions from '@/components/workflow/workflow-actions';
 import { useLanguage } from "@/lib/i18n/language-context";
 import VideoPicker, { emptyVideo, videoPayload, videoReady, type VideoChoice } from "@/components/video/video-picker";
+import SubtitleOptions, { defaultSubtitle, subtitleValid, type SubtitleSettings } from "@/components/video/subtitle-options";
 
 const duration = audioDuration;
 const AUDIO_TYPES=".wav,.mp3,.m4a,.flac,.ogg,.aac,.webm,.mp4";
-type ConvertInput={url:string;file?:File;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean;video?:ReturnType<typeof videoPayload>};
+type ConvertInput={url:string;file?:File;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean;video?:ReturnType<typeof videoPayload>;subtitle?:SubtitleSettings};
 type ResourceWarning={reasons:string[];ram_available_gib:number;required_available_gib:number;cpu_percent:number;existing_workflows:number;estimate_basis:string};
 
 export default function Home() {
@@ -34,7 +35,8 @@ export default function Home() {
   const [voice,setVoice]=useState(""),[style,setStyle]=useState(""),[address,setAddress]=useState("");
   const [mode,setMode]=useState<TranslationMode>("normal"),[auto,setAuto]=useState(false);
   const [video,setVideo]=useState<VideoChoice>(emptyVideo);
-  const videoBlocked=video.files.length>0&&!videoReady(video);
+  const [subtitle,setSubtitle]=useState<SubtitleSettings>(defaultSubtitle);
+  const videoBlocked=(video.files.length>0&&!videoReady(video))||!subtitleValid(subtitle);
   const basic=license.edition==="basic";
   const chooseStyle=useCallback((value:string)=>{setStyle(value);setAddress(addressForStyle(value));},[]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -62,7 +64,7 @@ export default function Home() {
   async function start(event: React.FormEvent) {
     event.preventDefault();
     // Genius handles forms of address itself, so none is sent.
-    const extra={...(basic?{auto}:{}),...(source==="file"&&file?{file}:{}),...(video.files.length?{video:videoPayload(video)}:{})};
+    const extra={...(basic?{auto}:{}),...(source==="file"&&file?{file}:{}),...(video.files.length?{video:videoPayload(video)}:{}),subtitle};
     if(source==="file"&&!file)return;
     const link=source==="file"?"":url;
     await convert(mode==="genius"?{url:link,voice:voice||undefined,style:style||undefined,mode,...extra}:{url:link,voice:voice||undefined,style:style||undefined,address:address||undefined,...extra});
@@ -129,6 +131,7 @@ export default function Home() {
       <TranslationModeSelect value={mode} onChange={setMode} />
       {mode==="normal"&&<AddressProfileSelect value={address} onChange={setAddress} />}
       {basic&&<AutoTtsToggle checked={auto} onChange={setAuto} />}
+      <details className="video-optional"><summary>{tr("subtitleOptional")}</summary><SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} /></details>
       <details className="video-optional" open={video.files.length>0||undefined}><summary>{tr("videoOptional")}</summary><VideoPicker value={video} onChange={setVideo} disabled={busy} /></details>
       {message && <p className="alert" role="alert">{message}</p>}
       {resourceWarning&&<section role="alert" className="alert">

@@ -36,6 +36,9 @@ Giọng Việt do app tạo được ghép vào video của người dùng. Vide
 - Giọng được mã hóa AAC 128 kbit/s.
 - File ra là MP4 có chỉ mục ở đầu file (`+faststart`).
 
+## Phụ đề
+Từ 3.1.0 có thể ghi cứng phụ đề tiếng Việt vào hình (không bắt buộc, cần xác nhận vì phải mã hóa lại toàn bộ video). File `.srt` để tải lên YouTube thì tách riêng, xem `docs/SUBTITLES.md`.
+
 ## Độ phân giải và chất lượng
 
 - **Độ phân giải:** Giữ nguyên gốc, 1080p, 720p, 480p. Không có mức cao hơn video lớn nhất, nên hình không bị phóng to.

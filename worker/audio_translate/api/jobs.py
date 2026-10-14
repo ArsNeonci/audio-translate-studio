@@ -21,7 +21,7 @@ from audio_translate.api.runtime import spawn_security_core, worker_command
 from audio_translate.core.storage import DATA
 from audio_translate.workflow.results import RESULTS
 
-STEPS = ('DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS')
+STEPS = ('DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS', 'SUBTITLE', 'VIDEO')
 TERMINAL = ('COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'DELETING', 'AWAITING_REVIEW')
 # Working-folder files merged into a job when it is read; never written back into job.json.
 TELEMETRY = {'asr-runtime.json': 'asr_runtime', 'lane.json': 'lane', 'translation-runtime.json': 'translation_runtime',
@@ -108,7 +108,7 @@ def get_job(job_id):
         available = lambda kind: any(f.get('type') == kind and f.get('status') == 'AVAILABLE' for f in files)
         for step, state in (job.get('steps') or {}).items(): state['output_manifest'] = [{'status': f.get('status')} for f in files if f.get('step') == step]
         job['artifacts'] = {'source': available('SOURCE_AUDIO'), 'zh': available('ZH_MD'), 'vi': available('VI_MD'),
-                            'moderated': available('MODERATED_MD'), 'voice': available('VOICE_WAV'), 'video': available('VIDEO_MP4')}
+                            'moderated': available('MODERATED_MD'), 'voice': available('VOICE_WAV'), 'subtitle': available('SUBTITLE_SRT'), 'video': available('VIDEO_MP4')}
         working = folder / 'working'
         job['delete_requested'] = (working / 'delete-request.json').exists()
         stop = _read_json(working / 'cancel.signal')

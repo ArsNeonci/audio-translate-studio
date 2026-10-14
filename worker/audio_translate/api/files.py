@@ -10,9 +10,9 @@ from audio_translate.api.license import license_denial
 from audio_translate.api.web import json_response
 
 MIME = {'wav': 'audio/wav', 'm4a': 'audio/mp4', 'mp4': 'audio/mp4', 'mp3': 'audio/mpeg', 'webm': 'audio/webm', 'ogg': 'audio/ogg', 'opus': 'audio/ogg',
-        'flac': 'audio/flac', 'aac': 'audio/aac', 'md': 'text/markdown; charset=utf-8', 'txt': 'text/plain; charset=utf-8',
+        'flac': 'audio/flac', 'aac': 'audio/aac', 'md': 'text/markdown; charset=utf-8', 'srt': 'application/x-subrip; charset=utf-8', 'txt': 'text/plain; charset=utf-8',
         'json': 'application/json; charset=utf-8', 'jsonl': 'application/x-ndjson; charset=utf-8'}
-TEXT = ('md', 'txt', 'json', 'jsonl')
+TEXT = ('md', 'txt', 'json', 'jsonl', 'srt')
 PIECE = 65536
 RANGE = re.compile(r'^bytes=(\d*)-(\d*)$')
 

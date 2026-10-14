@@ -30,6 +30,9 @@ class VideoWorkflowTests(unittest.TestCase):
             if stage == 'translation': translate(d, FakeTranslator())
             elif stage == 'moderation': moderate(d, self.rules)
             elif stage == 'tts': synthesize(d, FakeTTS())
+            elif stage == 'subtitle':
+                from audio_translate.video.subtitles import run as build_subtitles
+                build_subtitles(d)
             elif stage == 'video': merge(d)
             else: raise AssertionError('Unexpected stage ' + stage)
             return Mock(returncode=0)
@@ -46,7 +49,7 @@ class VideoWorkflowTests(unittest.TestCase):
     def test_a_workflow_with_videos_ends_with_the_merged_video(self):
         job = manage.create('https://youtu.be/1JzKgwOESoM', self.voice, video=self.video(1))
         d = results.workspace(job['id']); self.prepare(d)
-        self.assertEqual(self.run_all(d), ['translation', 'moderation', 'tts', 'video'])
+        self.assertEqual(self.run_all(d), ['translation', 'moderation', 'tts', 'subtitle', 'video'])
         saved = read_json(d / 'job.json')
         self.assertEqual((saved['status'], saved['steps']['VIDEO']['state'], saved['progress']), ('COMPLETED', 'COMPLETED', 100))
         out = results.destination(d.name)
@@ -63,7 +66,7 @@ class VideoWorkflowTests(unittest.TestCase):
     def test_a_workflow_without_videos_has_no_video_step(self):
         job = manage.create('https://youtu.be/1JzKgwOESoM', self.voice)
         d = results.workspace(job['id']); self.prepare(d)
-        self.assertEqual(self.run_all(d), ['translation', 'moderation', 'tts'])
+        self.assertEqual(self.run_all(d), ['translation', 'moderation', 'tts', 'subtitle'])
         self.assertNotIn('VIDEO', read_json(d / 'job.json')['steps'])
 
     def test_reprocess_adds_videos_to_a_finished_workflow_and_tool_5_reuses_its_voice(self):

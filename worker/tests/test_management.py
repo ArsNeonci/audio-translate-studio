@@ -43,6 +43,9 @@ class ManagementTests(unittest.TestCase):
             if stage=='translation':translate(d,FakeTranslator())
             elif stage=='moderation':moderate(d,self.rules)
             elif stage=='tts':synthesize(d,FakeTTS())
+            elif stage=='subtitle':
+                from audio_translate.video.subtitles import run as build_subtitles
+                build_subtitles(d)
             else:raise AssertionError('Unexpected predecessor run')
             return Mock(returncode=0)
         return execute
@@ -69,7 +72,7 @@ class ManagementTests(unittest.TestCase):
         manage.reprocess(d.name,'TRANSLATION');seen=[]
         self.assertTrue(all(f['status']=='STALE' for f in read_json(out/'outputs.json')['files'] if f['step'] in STEPS[2:]))
         with patch('audio_translate.workflow.orchestrator.subprocess.run',side_effect=self.child(d,seen)):self.assertEqual(run(d),0)
-        self.assertEqual(seen,['translation','moderation','tts']);self.assertEqual(file_digest(out/'transcription'/'000001-transcript.zh.md'),sha)
+        self.assertEqual(seen,['translation','moderation','tts','subtitle']);self.assertEqual(file_digest(out/'transcription'/'000001-transcript.zh.md'),sha)
         self.assertEqual(read_json(d/'job.json')['workflow_no'],1)
     def test_05_progress_clamped_and_unknown_indeterminate(self):
         d=self.job();progress(d,'download','DOWNLOADING',200,100);self.assertEqual(read_json(d/'job.json')['steps']['DOWNLOAD']['progress'],100)
@@ -111,7 +114,7 @@ class ManagementTests(unittest.TestCase):
     def test_16_reprocess_tts_only(self):
         d=self.job();self.complete(d);manage.reprocess(d.name,'TTS');seen=[]
         with patch('audio_translate.workflow.orchestrator.subprocess.run',side_effect=self.child(d,seen)):self.assertEqual(run(d),0)
-        self.assertEqual(seen,['tts'])
+        self.assertEqual(seen,['tts','subtitle'])
     def test_17_atomic_publish_replaces_old_complete_artifact(self):
         d=self.job();self.prepare(d);results.publish_step(d,'TRANSCRIPTION');out=results.destination(d.name)
         (d/'transcript.zh.md').write_text('new',encoding='utf-8');results.publish_step(d,'TRANSCRIPTION');self.assertEqual((out/'transcription'/'000001-transcript.zh.md').read_text(),'new');self.assertEqual(list(out.rglob('*.tmp')),[])
@@ -136,7 +139,7 @@ class ManagementTests(unittest.TestCase):
         self.assertEqual(read_json(d/'job.json')['status'],'COMPLETED')
     def test_22_restart_retains_number_history_timing(self):
         d=self.job();out=self.complete(d);old=read_json(out/'job.json');manage.migrate();new=manage.history('workflows')[0]
-        self.assertEqual(new['workflow_no'],old['workflow_no']);self.assertEqual(new['total_duration_ms'],old['total_duration_ms']);self.assertEqual(len(new['files']),9)
+        self.assertEqual(new['workflow_no'],old['workflow_no']);self.assertEqual(new['total_duration_ms'],old['total_duration_ms']);self.assertEqual(len(new['files']),10)
     def test_23_expired_license_blocks_tools_and_reprocess(self):
         d=self.job();self.complete(d)
         from audio_translate.core.license_gate import LicenseError

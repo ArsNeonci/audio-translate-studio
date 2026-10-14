@@ -3,14 +3,13 @@ import { apiFetch, useNotice } from "@audio/ui";
 import { useLanguage } from "@/lib/i18n/language-context";
 import {useLicense} from "@/components/license/license-status";
 import { useRef, useState } from "react";
-import type { Job, Step } from "@/lib/shared/job-types";
+import { runSteps, type Job, type Step } from "@/lib/shared/job-types";
 import { localizeGuide } from '@/lib/i18n/localized-guides';
 import {elapsed} from '@/lib/shared/format';
 
-const steps: Step[] = ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS"];
 type Guide = {cause: string; config: string; checks_and_fixes: string[]; commands: string[]};
 
-export default function StepErrors({job}: {job: Pick<Job,"id"|"steps"|"artifacts"|"retry_step"|"tool_steps"|"translation_failures"> & {status:string}}) {
+export default function StepErrors({job}: {job: Pick<Job,"id"|"steps"|"artifacts"|"retry_step"|"tool_steps"|"translation_failures"|"video"|"subtitle"> & {status:string}}) {
   const { tr, language } = useLanguage();
   const license = useLicense();
   const [open, setOpen] = useState<Step | null>(null);
@@ -42,10 +41,10 @@ export default function StepErrors({job}: {job: Pick<Job,"id"|"steps"|"artifacts
     finally {pending.current=false;}
   }
   return <div className="step-errors">
-    {(job.tool_steps||steps).map(step => {
+    {runSteps(job).map(step => {
       const item = job.steps?.[step];
       const localizedGuide = guide && item?.error ? localizeGuide(guide, item.error.error_code, language) : null;
-      const legacyCompleted = step === "DOWNLOAD" || step === "TRANSCRIPTION" ? job.artifacts?.zh : step === "TRANSLATION" ? job.artifacts?.vi : step === "MODERATION" ? job.artifacts?.moderated : job.artifacts?.voice;
+      const legacyCompleted = step === "DOWNLOAD" || step === "TRANSCRIPTION" ? job.artifacts?.zh : step === "TRANSLATION" ? job.artifacts?.vi : step === "MODERATION" ? job.artifacts?.moderated : step === "SUBTITLE" ? job.artifacts?.subtitle : step === "VIDEO" ? job.artifacts?.video : job.artifacts?.voice;
       const state = item?.state || (legacyCompleted ? "COMPLETED" : "PENDING");
       const retrying = job.retry_step === step || (busy?.step === step && busy.failedAt === item?.error?.failed_at && job.status === "FAILED");
       return <div className="step-state" key={step}><strong>{tr(step)}</strong><span>{state === "COMPLETED" ? tr("✅ Completed") : state === "RUNNING" ? (item?.retry_count ? tr("Retrying / Running") : tr("Running")) : retrying ? tr("Retrying / Waiting") : state === "FAILED" ? tr("❌ Failed") : ['CANCELLED','PAUSED'].includes(state) ? tr("⏸ Đã dừng") : tr("○ Waiting")}</span>

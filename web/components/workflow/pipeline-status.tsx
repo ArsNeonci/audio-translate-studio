@@ -5,7 +5,7 @@ import {useEffect,useState} from "react";
 import {runSteps,type Job} from "@/lib/shared/job-types";
 import {elapsed,percent,runNumber} from "@/lib/shared/format";
 import {transcriptionView, type TranscriptionStep} from "@/lib/shared/transcription-progress";
-type Run=Pick<Job,"id"|"workflow_no"|"steps"|"stages"|"progress"|"started_at"|"run_started_at"|"completed_at"|"total_duration_ms"|"tool_steps"|"transcription_steps"|"chunks_done"|"chunks_total"|"duration_ms"|"processed_ms"|"asr_runtime"|"translation_runtime"|"translation_progress"|"pause_requested"|"delete_requested"|"storage_scope"|"memory_pause_reason"|"lane"|"video"> & {status:string;pause_reason?:string|null;genius_progress?:Job["genius_progress"];translation_mode?:Job["translation_mode"];tts_remote_progress?:Job["tts_remote_progress"]};
+type Run=Pick<Job,"id"|"workflow_no"|"steps"|"stages"|"progress"|"started_at"|"run_started_at"|"completed_at"|"total_duration_ms"|"tool_steps"|"transcription_steps"|"chunks_done"|"chunks_total"|"duration_ms"|"processed_ms"|"asr_runtime"|"translation_runtime"|"translation_progress"|"pause_requested"|"delete_requested"|"storage_scope"|"memory_pause_reason"|"lane"|"video"|"subtitle"> & {status:string;pause_reason?:string|null;genius_progress?:Job["genius_progress"];translation_mode?:Job["translation_mode"];tts_remote_progress?:Job["tts_remote_progress"]};
 export default function PipelineStatus({job}:{job:Run;readOnly?:boolean}){
   const { tr } = useLanguage();
   const [clock,setClock]=useState(0);

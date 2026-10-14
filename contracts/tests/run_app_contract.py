@@ -101,7 +101,7 @@ def run_cases(c, ids):
     c.call('history filter and page', 'GET', '/api/history', params={'status': 'COMPLETED', 'limit': '1', 'sort': 'oldest'},
            expect=lambda r: assert_eq((r.json()['total'], len(r.json()['jobs']), r.json()['jobs'][0]['id']), (1, 1, C)))
     c.call('history search miss', 'GET', '/api/history', params={'search': 'no-such-thing'}, expect=lambda r: assert_eq(r.json()['total'], 0))
-    c.call('saved workflow', 'GET', '/api/history/{id}', v, expect=lambda r: assert_eq(len(r.json()['job']['files']), 9))
+    c.call('saved workflow', 'GET', '/api/history/{id}', v, expect=lambda r: assert_eq(len(r.json()['job']['files']), 10))
     c.call('unknown saved workflow', 'GET', '/api/history/{id}', {'id': NOID}, status=404)
     c.call('not a uuid', 'GET', '/api/history/{id}', {'id': 'not-an-id'}, status=404)
     f = {'id': C, 'fileId': 'ZH_MD'}
@@ -181,6 +181,7 @@ def run_cases(c, ids):
     c.call('video check from another site', 'POST', '/api/video/check', json_body={'paths': []}, headers=EVIL, status=403)
     c.call('video estimate: a moved clip', 'POST', '/api/video/estimate', json_body={'paths': [missing], 'resolution': 'keep', 'quality': 'high'},
            expect=lambda r: assert_eq(r.json()['error'], 'VIDEO_MISSING'))
+    c.call('video estimate: burn must be a boolean', 'POST', '/api/video/estimate', json_body={'paths': [missing], 'burn': 'yes'}, status=400)
     c.call('video estimate: unknown resolution', 'POST', '/api/video/estimate', json_body={'paths': [missing], 'resolution': '4k'}, status=400)
     c.call('video estimate from another site', 'POST', '/api/video/estimate', json_body={'paths': [missing]}, headers=EVIL, status=403)
     c.call('voices for tool 5', 'GET', '/api/video/voices', expect=lambda r: assert_eq(isinstance(r.json()['voices'], list), True))

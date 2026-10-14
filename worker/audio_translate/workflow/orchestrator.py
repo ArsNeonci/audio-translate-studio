@@ -65,6 +65,9 @@ def run_stage(job_dir, stage):
             merge(job_dir, chunks)
             if not prepare_transcript(job_dir):
                 raise RuntimeError("Transcription did not produce the canonical Chinese files")
+    elif stage == "subtitle":
+        from audio_translate.video.subtitles import run as build_subtitles
+        build_subtitles(job_dir)
     elif stage == "video":
         from audio_translate.video.merge import merge
         merge(job_dir)
@@ -143,7 +146,7 @@ def run(job_dir):
                     metadata(job_dir)
                     return 0
                 transition(job_dir, step, 'RUNNING')
-                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'VIDEO': 'VIDEO_MERGING'}
+                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'SUBTITLE': 'SUBTITLE_BUILDING', 'VIDEO': 'VIDEO_MERGING'}
                 update_job(job_dir, active_stage=step.lower(), status=statuses[step])
                 metadata(job_dir)
                 # Genius translation and Basic voice generation run on the VPS and hold no local model memory.
@@ -191,7 +194,7 @@ def run(job_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("job_dir", type=Path)
-    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts", "video"])
+    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts", "subtitle", "video"])
     args = parser.parse_args()
     try:
         if args.stage:

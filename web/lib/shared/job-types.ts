@@ -1,13 +1,15 @@
 // The shapes the local API returns (worker/audio_translate/api); the UI and the API agree on them through contracts/app-api.openapi.json.
 import type { TranscriptionStep } from "@/lib/shared/transcription-progress";
-export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "VIDEO_MERGING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING" | "AWAITING_REVIEW";
-export type Artifact = "source" | "zh" | "vi" | "moderated" | "voice" | "video";
-export type Stage = "transcription" | "translation" | "moderation" | "tts" | "video";
-export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS" | "VIDEO";
+export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "SUBTITLE_BUILDING" | "VIDEO_MERGING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING" | "AWAITING_REVIEW";
+export type Artifact = "source" | "zh" | "vi" | "moderated" | "voice" | "subtitle" | "video";
+export type Stage = "transcription" | "translation" | "moderation" | "tts" | "subtitle" | "video";
+export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS" | "SUBTITLE" | "VIDEO";
 export const STEPS: Step[] = ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS"];
-/** The steps a run goes through: Video merge only when it has videos (worker core/errors.py effective_steps). */
-export const runSteps = (job: {tool_steps?: Step[]; video?: unknown}): Step[] => job.tool_steps || (job.video ? [...STEPS, "VIDEO"] : STEPS);
-export type VideoSettings = {files: import("@/components/video/video-picker").VideoClip[]; resolution: string; quality: string};
+/** The steps a run goes through (worker core/errors.py effective_steps): Subtitles for every workflow made since 3.1.0 and for tool 6,
+ *  Video merge only when the run has videos. A run without the key never shows the step. */
+export const runSteps = (job: {tool_steps?: Step[]; video?: unknown; subtitle?: unknown}): Step[] =>
+  job.tool_steps || [...STEPS, ...(job.subtitle ? ["SUBTITLE" as const] : []), ...(job.video ? ["VIDEO" as const] : [])];
+export type VideoSettings = {files: import("@/components/video/video-picker").VideoClip[]; resolution: string; quality: string; burn?: boolean; subtitle?: {max_chars: number; min_seconds: number}};
 export type StepError = { step: Step; error_code: string; error_message: string; error_type: string; recoverable_manually: boolean; failed_at: string; retry_count: number };
 export type StepState = { state: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "SKIPPED"; progress?: number | null; started_at?: string | null; completed_at?: string | null; duration_ms?: number | null; retry_count: number; attempt: number; output_manifest?: {status:string}[]; error?: StepError };
 export type Job = {
@@ -47,6 +49,8 @@ export type Job = {
   artifacts?: Partial<Record<Artifact, boolean>>;
   steps?: Partial<Record<Step, StepState>>;
   video?: VideoSettings | null;
+  subtitle?: {max_chars: number; min_seconds: number} | null;
+  subtitle_voice?: {job_id: string};
   video_plan?: {mode: "copy" | "encode"; repeats: number | null; size_bytes: number | null};
   video_voice?: {job_id: string};
   transcription_steps?: TranscriptionStep[];

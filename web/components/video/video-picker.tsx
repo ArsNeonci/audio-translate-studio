@@ -3,20 +3,26 @@ import { apiFetch } from "@audio/ui";
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n/language-context";
 import { audioDuration } from "@/lib/shared/format";
+import SubtitleOptions, { defaultSubtitle, subtitleValid, type SubtitleSettings } from "@/components/video/subtitle-options";
 
 /** One clip as the local API checked it (worker/audio_translate/video/merge.py probe); `error` when it cannot be used. */
 export type VideoClip = { path: string; name: string; error?: string; duration_ms?: number; width?: number; height?: number; fps?: number; codec?: string; size?: number };
-export type VideoChoice = { files: VideoClip[]; resolution: string; quality: string };
-type Estimate = { files: VideoClip[]; error?: string; resolutions?: string[]; resolution?: string; plan?: { mode: "copy" | "encode"; repeats: number | null; size_bytes: number | null; bytes_per_hour: number };
+/** burn: draw the subtitles into the picture (re-encodes the whole video); it only counts once confirmed. */
+export type VideoChoice = { files: VideoClip[]; resolution: string; quality: string; burn: boolean; burnConfirmed: boolean; subtitle: SubtitleSettings };
+type Estimate = { files: VideoClip[]; error?: string; resolutions?: string[]; resolution?: string; plan?: { mode: "copy" | "encode"; repeats: number | null; size_bytes: number | null; bytes_per_hour: number; voice_ms?: number | null; burn?: boolean; seconds_per_voice_second?: number | null };
   free_bytes?: number; needed_bytes?: number | null; enough?: boolean | null };
 
-export const emptyVideo = (): VideoChoice => ({ files: [], resolution: "keep", quality: "high" });
-/** What the API receives: only the paths and the two choices (the clips are checked again on the server). */
-export const videoPayload = (choice: VideoChoice) => choice.files.length ? { files: choice.files.map(f => ({ path: f.path })), resolution: choice.resolution, quality: choice.quality } : undefined;
-export const videoReady = (choice: VideoChoice) => choice.files.length > 0 && choice.files.every(f => !f.error);
+export const emptyVideo = (): VideoChoice => ({ files: [], resolution: "keep", quality: "high", burn: false, burnConfirmed: false, subtitle: defaultSubtitle() });
+/** What the API receives: only the paths and the choices (the clips are checked again on the server). */
+export const videoPayload = (choice: VideoChoice) => choice.files.length ? { files: choice.files.map(f => ({ path: f.path })), resolution: choice.resolution, quality: choice.quality,
+  ...(choice.burn ? { burn: true, burn_confirmed: choice.burnConfirmed, subtitle: choice.subtitle } : {}) } : undefined;
+export const videoReady = (choice: VideoChoice) => choice.files.length > 0 && choice.files.every(f => !f.error) && (!choice.burn || (choice.burnConfirmed && subtitleValid(choice.subtitle)));
 /** The saved settings of a run, as a choice the picker can show. */
-export const videoFromJob = (video?: { files?: VideoClip[]; resolution?: string; quality?: string } | null): VideoChoice =>
-  video?.files?.length ? { files: video.files, resolution: video.resolution || "keep", quality: video.quality || "high" } : emptyVideo();
+export const videoFromJob = (video?: { files?: VideoClip[]; resolution?: string; quality?: string; burn?: boolean; subtitle?: Partial<SubtitleSettings> } | null): VideoChoice =>
+  video?.files?.length ? { files: video.files, resolution: video.resolution || "keep", quality: video.quality || "high", burn: !!video.burn, burnConfirmed: !!video.burn,
+    subtitle: { ...defaultSubtitle(), ...(video.subtitle || {}) } } : emptyVideo();
+
+const minutes = (seconds: number) => seconds < 90 ? `${Math.max(1, Math.round(seconds))} s` : `${Math.round(seconds / 60)} min`;
 
 export const gigabytes = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
 
@@ -31,13 +37,13 @@ export default function VideoPicker({ value, onChange, voiceJob, disabled }: { v
   useEffect(() => { latest.current = value; }, [value]);
 
   // The estimate follows the clips, the choices and the voice; one request when they rest.
-  const key = JSON.stringify([value.files.map(f => f.path), value.resolution, value.quality, voiceJob || null]);
+  const key = JSON.stringify([value.files.map(f => f.path), value.resolution, value.quality, voiceJob || null, value.burn]);
   useEffect(() => {
     if (!value.files.length) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void apiFetch("/api/video/estimate", { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
-        body: JSON.stringify({ paths: value.files.map(f => f.path), resolution: value.resolution, quality: value.quality, ...(voiceJob ? { voice_job: voiceJob } : {}) }) })
+        body: JSON.stringify({ paths: value.files.map(f => f.path), resolution: value.resolution, quality: value.quality, burn: value.burn, ...(voiceJob ? { voice_job: voiceJob } : {}) }) })
         .then(r => r.json()).then((data: Estimate) => {
           setEstimate(data);
           const current = latest.current;
@@ -99,13 +105,22 @@ export default function VideoPicker({ value, onChange, voiceJob, disabled }: { v
       <label>{tr("videoResolution")}<select value={value.resolution} disabled={disabled} onChange={e => onChange({ ...value, resolution: e.target.value })}>
         {["keep", "1080", "720", "480"].map(r => <option key={r} value={r} disabled={!resolutions.includes(r)}>{tr(`videoResolution.${r}`)}</option>)}
       </select></label>
-      {plan?.mode === "encode" && <label>{tr("videoQuality")}<select value={value.quality} disabled={disabled} onChange={e => onChange({ ...value, quality: e.target.value })}>
+      {(plan?.mode === "encode" || value.burn) && <label>{tr("videoQuality")}<select value={value.quality} disabled={disabled} onChange={e => onChange({ ...value, quality: e.target.value })}>
         {["high", "medium", "light"].map(q => <option key={q} value={q}>{tr(`videoQuality.${q}`)}</option>)}
       </select></label>}
     </div>}
+    {value.files.length > 0 && <div className="video-burn">
+      <label className="auto-tts-toggle"><input type="checkbox" checked={value.burn} disabled={disabled} onChange={e => onChange({ ...value, burn: e.target.checked, burnConfirmed: false })} />
+        <span>{tr("burnLabel")}</span><small>{tr("burnHelp")}</small></label>
+      {value.burn && <>
+        <p className="alert" role="note">{plan?.seconds_per_voice_second && plan.voice_ms ? tr("burnWarnTime", { time: minutes(plan.voice_ms / 1000 * plan.seconds_per_voice_second) }) : tr("burnWarn", { slow: plan?.seconds_per_voice_second ? Math.round(plan.seconds_per_voice_second * 60) : 8 })}</p>
+        <label className="auto-tts-toggle"><input type="checkbox" checked={value.burnConfirmed} disabled={disabled} onChange={e => onChange({ ...value, burnConfirmed: e.target.checked })} /><span>{tr("burnConfirm")}</span></label>
+        <SubtitleOptions value={value.subtitle} onChange={subtitle => onChange({ ...value, subtitle })} disabled={disabled} />
+      </>}
+    </div>}
     {plan && <p className="video-estimate" role="status">
       {plan.size_bytes != null ? tr("videoSize", { size: gigabytes(plan.size_bytes), free: gigabytes(estimate?.free_bytes || 0) }) : tr("videoSizePerHour", { size: gigabytes(plan.bytes_per_hour), free: gigabytes(estimate?.free_bytes || 0) })}
-      {" · "}{tr(plan.mode === "copy" ? "videoCopy" : "videoEncode")}
+      {" · "}{tr(plan.mode === "copy" ? "videoCopy" : value.burn ? "videoBurn" : "videoEncode")}
       {plan.repeats != null && <>{" · "}{plan.repeats > 1 ? tr("videoRepeats", { count: plan.repeats }) : tr("videoCut")}</>}
     </p>}
     {estimate?.enough === false && <p className="alert" role="alert">{tr("videoDiskShort", { size: gigabytes(estimate.needed_bytes || 0) })}</p>}

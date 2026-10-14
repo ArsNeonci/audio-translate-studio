@@ -48,6 +48,9 @@ def completed(voice, rules):
         if stage == 'translation': translate(job_dir, FakeTranslator())
         elif stage == 'moderation': moderate(job_dir, rules)
         elif stage == 'tts': synthesize(job_dir, FakeTTS())
+        elif stage == 'subtitle':
+            from audio_translate.video.subtitles import run as build_subtitles
+            build_subtitles(job_dir)
         else: raise AssertionError(f'unexpected stage {stage}')
         return Mock(returncode=0)
     with patch('audio_translate.workflow.orchestrator.subprocess.run', side_effect=child):

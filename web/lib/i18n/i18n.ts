@@ -288,6 +288,7 @@ export const translations: Record<Language, Translations> = {
       MODERATING: "Đang thay thế từ",
       MODERATION_COMPLETED: "Đã duyệt bản dịch",
       TTS_GENERATING: "Đang tạo giọng Việt",
+      SUBTITLE_BUILDING: "Đang tạo phụ đề",
       VIDEO_MERGING: "Đang ghép video",
     },
     settings: {
@@ -533,6 +534,7 @@ export const translations: Record<Language, Translations> = {
       MODERATING: "Moderating text",
       MODERATION_COMPLETED: "Translation approved",
       TTS_GENERATING: "Generating Vietnamese voice",
+      SUBTITLE_BUILDING: "Building subtitles",
       VIDEO_MERGING: "Merging video",
     },
     settings: {
