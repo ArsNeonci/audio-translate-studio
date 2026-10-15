@@ -127,14 +127,15 @@ def to_srt(cues):
     return ''.join(f'{n}\n{timestamp(a)} --> {timestamp(b)}\n{text}\n\n' for n, (a, b, text) in enumerate(cues, 1))
 
 
-def read_units(manifest, wav_dir=None):
+def read_units(manifest, wav_dir=None, use_frames=True):
     """Units [(text, length_ms, gap_ms)] of a voice manifest. The length is the frames the manifest recorded (3.1.0 on), else the
-    segment WAV itself in `wav_dir`, else None (the caller shares the voice length between such units)."""
+    segment WAV itself in `wav_dir`, else None (the caller shares the voice length between such units). `use_frames=False` reads the
+    WAV files only: the way back when the recorded frames do not add up to the voice."""
     units = []
     for line in Path(manifest).read_text(encoding='utf-8').splitlines():
         if not line.strip(): continue
         row = json.loads(line)
-        frames = row.get('frames')
+        frames = row.get('frames') if use_frames else None
         if not isinstance(frames, int):
             try:
                 import soundfile as sf
@@ -146,11 +147,18 @@ def read_units(manifest, wav_dir=None):
     return units
 
 
+def adds_up(units, total_ms):
+    known = [length for _, length, _ in units]
+    return not (total_ms and None not in known and abs(sum(known) + sum(gap for _, _, gap in units) - total_ms) > TOLERANCE_MS)
+
+
 def make(manifest, wav_dir=None, settings=None, total_ms=None):
     """The .srt text for a voice manifest (and its segment WAVs, when they are still there)."""
     units = read_units(manifest, wav_dir)
-    known = [length for _, length, _ in units]
-    if total_ms and None not in known and abs(sum(known) + sum(gap for _, _, gap in units) - total_ms) > TOLERANCE_MS:
+    if not adds_up(units, total_ms) and wav_dir:
+        # The recorded frames are wrong (voices made by 3.1.0 to 3.2.2 wrote one unit's frames for a whole batch): the files themselves are right.
+        units = read_units(manifest, wav_dir, use_frames=False)
+    if not adds_up(units, total_ms):
         raise AppError('P101', 'the voice manifest does not match the voice file')
     cues = build(units, settings, total_ms)
     if not cues: raise AppError('P101', 'the voice has no text to show')

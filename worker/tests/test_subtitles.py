@@ -72,6 +72,18 @@ class SubtitleTests(unittest.TestCase):
         for bad in ([], {'max_chars': 5}, {'max_chars': 500}, {'min_seconds': 0}, {'min_seconds': 9}, {'max_chars': '84'}, {'max_chars': True}, {'min_seconds': float('nan')}):
             with self.assertRaises(ValueError, msg=repr(bad)): sub.validate(bad)
 
+    def test_frames_that_do_not_add_up_are_replaced_by_the_wav_files_when_they_are_there(self):
+        # Voices made by 3.1.0 to 3.2.2 recorded one unit's frames for every unit of a batch: 241636 for all, whatever the real lengths.
+        with tempfile.TemporaryDirectory() as folder:
+            voice = Path(folder)
+            for name, seconds in (('000001.wav', 2.0), ('000002.wav', 3.0)):
+                sf.write(str(voice / name), np.zeros(int(48000 * seconds), dtype=np.int16), 48000, subtype='PCM_16')
+            rows = [{'index': 1, 'text': 'Câu một.', 'file': '000001.wav', 'gap_after_ms': 500, 'frames': 241636},
+                    {'index': 2, 'text': 'Câu hai.', 'file': '000002.wav', 'gap_after_ms': 0, 'frames': 241636}]
+            (voice / 'm.jsonl').write_text('\n'.join(json.dumps(r) for r in rows), encoding='utf-8')
+            self.assertIn('00:00:02,500 --> 00:00:05,500', sub.make(voice / 'm.jsonl', voice, total_ms=5500))   # the files give the real lengths
+            with self.assertRaises(AppError): sub.make(voice / 'm.jsonl', None, total_ms=5500)               # no files to check against: still refused
+
     def test_it_reads_a_manifest_with_frames_or_falls_back_to_the_wav_files_and_checks_the_voice_length(self):
         with tempfile.TemporaryDirectory() as folder:
             voice = Path(folder)

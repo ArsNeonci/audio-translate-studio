@@ -580,9 +580,9 @@ def synthesize(job_dir, adapter=None):
                     check_cancel(job_dir);adapter.synthesize(item[1],item[2]);commit(item)
         finally:
             for _,_,temp in pending:temp.unlink(missing_ok=True)
-        for index,unit,_,wav,_ in batch:
+        for index,unit,_,wav,unit_meta in batch:
             _,members,text,gap=unit
-            entry={"index":index,"start_ms":members[0]['start_ms'],"end_ms":members[-1]['end_ms'],"text":text,"file":wav.name,"frames":read_json(meta)["frames"]}
+            entry={"index":index,"start_ms":members[0]['start_ms'],"end_ms":members[-1]['end_ms'],"text":text,"file":wav.name,"frames":read_json(unit_meta)["frames"]}
             if gap is not None:entry.update(rows=len(members),gap_after_ms=gap)
             out.write(json.dumps(entry,ensure_ascii=False)+'\n')
         out.flush();progress(job_dir,"tts","TTS_GENERATING",done_count,total);batch.clear()

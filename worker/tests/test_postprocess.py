@@ -128,6 +128,27 @@ class PostprocessTests(unittest.TestCase):
         self.assertFalse(self.rules.list()["locked"])
         self.rules.mutate("delete", {"id": rule["id"]})
 
+    def test_a_batch_records_the_real_frames_of_each_unit_in_the_manifest(self):
+        # Voices are made in batches (the runtime). Every entry of a batch must carry its own unit's frames, not the last unit's.
+        class BatchTTS:
+            def __init__(self): self.lengths = {}
+            def full(self, batch): return len(batch) >= 5
+            def close(self): pass
+            def synthesize_many(self, pending, commit):
+                for number, (index, text, temp) in enumerate(pending):
+                    frames = 4800 * (number + 1)
+                    sf.write(str(temp), np.ones(frames, dtype=np.float32) * .05, 48000, format="WAV", subtype="PCM_16")
+                    self.lengths[index] = frames
+                    commit((index, text, temp))
+        translate(self.job, FakeTranslator())
+        moderate(self.job, self.rules)
+        tts = BatchTTS()
+        synthesize(self.job, tts)
+        rows = [json.loads(line) for line in (self.job / "voice" / "voice.manifest.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertGreater(len(rows), 1)
+        for row in rows: self.assertEqual(row["frames"], sf.info(str(self.job / "voice" / row["file"])).frames, row["index"])
+        self.assertGreater(len({row["frames"] for row in rows}), 1)                  # not one value copied to all
+
     def test_tts_only_moderated_text_resume_order_and_no_upstream_rerun(self):
         translate(self.job, FakeTranslator())
         self.rules.mutate("add", {"source": "thế giới", "replacement": "các bạn"})
