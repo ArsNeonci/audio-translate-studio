@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 /** lease: the short online access token (VALID/GRACE/EXPIRED/NONE/REVOKED); perpetual: the licence never ends (expiry year 2100 or later). */
-export type LicenseStatus = {status: string; expires_at?: string; sequence?: number; edition?: "basic" | "plus"; lease?: string | null; perpetual?: boolean};
+export type LicenseStatus = {status: string; expires_at?: string; sequence?: number; edition?: "basic" | "plus"; lease?: string | null; perpetual?: boolean; update_required?: boolean};
 /** A valid licence whose lease lapsed because the app was offline too long: only going online is needed. */
 export const leaseOffline = (license: LicenseStatus) => license.status === "ACTIVE" && license.lease === "EXPIRED";
 
@@ -40,7 +40,7 @@ export function LeaseOfflineNotice({license, onChange}: {license: LicenseStatus;
     finally { setBusy(false); }
   }
   return <div className={leaseOffline(license) ? "alert lease-offline" : "license-banner"} role="status">
-    {leaseOffline(license) && <span>{tr("LEASE_OFFLINE")} </span>}
+    {leaseOffline(license) && <span>{tr(license.update_required ? "VERSION_RETIRED" : "LEASE_OFFLINE")} </span>}
     {leaseOffline(license) && <button type="button" className="action-button" disabled={busy} onClick={() => void check()}>{tr(busy ? "leaseChecking" : "leaseRecheck")}</button>}
     {note && <span> {tr(note)}</span>}
   </div>;

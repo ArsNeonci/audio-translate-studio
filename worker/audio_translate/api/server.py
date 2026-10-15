@@ -31,6 +31,8 @@ def main():
     async def startup(*a, **k):
         await original(*a, **k)
         print(f'AUDIO_API_READY {port}', flush=True)
+        from audio_translate.api.app_update import write_health
+        write_health()   # tells updater.exe that this version started
     server.startup = startup
     server.run()
 

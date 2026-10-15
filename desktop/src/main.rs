@@ -34,6 +34,18 @@ fn fatal(message: &str) {
     }
 }
 
+/// An update the app asked for (data/updates/apply.json, written once it had verified the package) is applied by updater.exe after this shell is gone:
+/// the files it replaces are the ones the shell and its API run from.
+fn start_updater(root: &Path, data: &Path) {
+    let plan = data.join("updates").join("apply.json");
+    let updater = root.join("updater.exe");
+    if !plan.is_file() || !updater.is_file() { return; }
+    let mut command = Command::new(updater);
+    command.arg("/apply").arg(&plan).current_dir(root).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    platform::detach(&mut command);
+    let _ = command.spawn();
+}
+
 /// Ends whatever an earlier run left under the installation folder (a worker started by the service can outlive the API), except this process.
 fn cleanup(root: &Path) {
     let script = root.join("app_cleanup.py");
@@ -170,6 +182,7 @@ fn main() {
                 *for_exit.quitting.lock().unwrap() = true;
                 if let Some(mut child) = for_exit.child.lock().unwrap().take() { let _ = child.kill(); let _ = child.wait(); }
                 cleanup(&for_exit.root);
+                start_updater(&for_exit.root, &for_exit.data);
             }
         });
 }

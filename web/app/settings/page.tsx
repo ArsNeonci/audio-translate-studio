@@ -6,6 +6,7 @@ import SiteHeader from "@/components/layout/site-header";
 import { useLanguage } from "@/lib/i18n/language-context";
 import ComputeSettings from "@/components/settings/compute-settings";
 import TranslationMemorySettings from "@/components/settings/translation-memory-settings";
+import UpdateSettings from "@/components/settings/update-settings";
 
 type Connection = {
   enabled: boolean;
@@ -146,6 +147,7 @@ export default function Settings() {
         <ComputeSettings />
 
         <TranslationMemorySettings />
+        <UpdateSettings />
 
         {/* YouTube connection remains independent of appearance preferences. */}
         <section className="youtube-connection" aria-label={tr("YouTube connection")}>

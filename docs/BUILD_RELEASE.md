@@ -36,11 +36,13 @@ Script chỉ nối các bước với nhau và dừng ở bước lỗi đầu t
 
 1. **Kiểm tra máy:** RAM trống ≥ 5 GiB, ổ đĩa trống ≥ 20 GiB (hai ngưỡng này do tôi đặt rộng tay, chưa đo), có Python của repo, môi trường admin, `node_modules`, bộ Rust, trình biên dịch .NET, file model dịch.
 2. **Cấu hình công khai và trust anchor:** admin đọc lại manifest rồi xuất `licensing\<gói>.public-config.json` và `security-core\trust-anchor.<gói>.json`.
-3. **Khóa phiên bản:** xuất khóa của đúng phiên bản này ra file **ngoài mọi repo** (`<thư mục khóa>\<gói>-<version>.key`). Không bao giờ commit hay gửi file này đi.
+3. **Khóa tài sản của gói:** từ 3.2.0 mỗi **gói** có một khóa duy nhất, dùng cho mọi phiên bản (lease mang khóa này, `key_scope: "product"`). Bước này xuất khóa ra file **ngoài mọi repo** (`<thư mục khóa>\<gói>.key`). Không bao giờ commit hay gửi file này đi.
 4. **Build bộ cài:** biên dịch lõi bảo mật Rust và vỏ Tauri (`desktop/`), build UI Next tĩnh (`web/out/` → `app/ui` trong bộ cài), gom Python, Node (chỉ cho yt-dlp) và model, mã hóa tài sản, quét bí mật, nén và ghép bộ cài.
 5. **Kiểm tra bộ cài:** `audit_package.py` quét xem có khóa riêng, token hay dữ liệu khách lọt vào không.
 
-Cuối cùng, nếu chưa dùng `--push-lease`, vào **admin → Billing → *Đẩy khóa phiên bản (lease)* (Push Lease Keys)** (mục 4).
+Mỗi lần build tạo hai file cho một phiên bản: **bộ cài đầy đủ** (`dist\AudioTranslate-<Gói>-<ver>.exe`, khoảng 600 MB) và **gói cập nhật app** (`dist\AudioTranslate-<Gói>-<ver>-app.zip`, vài chục MB: mọi thứ trừ `runtime/` và `providers/`). Bản ghi phát hành ghi cả hai cùng `runtime_sha256` (dấu vân tay của phần chạy nền, xem `docs/UPDATES.md`).
+
+Khóa của gói đã có sẵn trên gateway nên **không cần đẩy khóa lease** sau mỗi lần build (chỉ khi đổi vật liệu ký, xem mục 4).
 
 ---
 
@@ -61,10 +63,10 @@ Thay `<gói>` bằng `audio-translate-basic` hoặc `audio-translate-plus`, `<ve
 ```
 cd C:\Workspace\Audio-translate\admin-system
 .venv\Scripts\python.exe release_config.py <gói>
-.venv\Scripts\python.exe export_build_keys.py --product <gói> --version <ver> --out C:\Users\<bạn>\audio-translate-keys\<gói>-<ver>.key
+.venv\Scripts\python.exe export_build_keys.py --product <gói> --out C:\Users\<bạn>\audio-translate-keys\<gói>.key
 
 cd C:\Workspace\Audio-translate\audio-translates
-set AUDIO_CONTENT_KEY_FILE=<thư mục khóa>\<gói>-<ver>.key
+set AUDIO_CONTENT_KEY_FILE=<thư mục khóa>\<gói>.key
 .venv\Scripts\python.exe packaging\build_installer.py --product <gói>
 
 cd C:\Workspace\Audio-translate\admin-system
@@ -75,10 +77,11 @@ cd C:\Workspace\Audio-translate\admin-system
 
 ## 4. Sau khi build xong
 
-1. **Đẩy khóa phiên bản lên gateway** (nếu chưa dùng `--push-lease`): admin → Billing → *Đẩy khóa phiên bản (lease)* (Push Lease Keys). Thiếu bước này thì app của khách không xin được lease cho phiên bản mới.
+1. **Khóa lease:** từ 3.2.0 không cần đẩy lại sau mỗi phiên bản. Chỉ khi đổi khóa ký hoặc khóa của gói, vào admin → Billing → *Đẩy khóa phiên bản (lease)* (hoặc build với `--push-lease`).
 2. **Thử cài** bộ cài trên một máy thử (hoặc thư mục tạm): kích hoạt bằng một token thử và kiểm tra các trang License, nút **Mua / gia hạn gói**.
-3. **Phát cho khách:** gửi file `.exe` trong `dist`. Cùng một bộ cài dùng cho mọi khách của gói đó; mỗi khách chỉ khác nhau ở token license.
-4. **Ngừng hỗ trợ bản cũ** (tùy chọn): admin gọi `retire_version` cho phiên bản cũ để khách phải cập nhật; xem `Doc-Admin.md`.
+3. **Phát hành bằng cập nhật qua VPS:** `python packaging\publish_update.py <gói> --ssh ubuntu@<VPS> --key <khóa ssh> --notes-vi "..." --notes-en "..."`. Lệnh tải hai file lên VPS rồi ký và đăng manifest. App của khách tự phát hiện khi có mạng và hỏi cập nhật. Có thể thử trước bằng `--channel test` trên một máy (đặt `AUDIO_UPDATE_CHANNEL=test`). Chi tiết ở `docs/UPDATES.md`.
+   - Khách mới vẫn có thể nhận file `.exe` trong `dist`. Cùng một bộ cài dùng cho mọi khách của gói đó; mỗi khách chỉ khác nhau ở token license.
+4. **Làm bản cũ phải cập nhật** (tùy chọn): `publish_update.py ... --min-version X.Y.Z` (app cũ hơn X hiện "cần cập nhật"), hoặc admin gọi `retire_version` (gateway từ chối lease cho phiên bản đó, app báo "đã ngừng hỗ trợ, hãy cập nhật"). Cả hai không đụng đến giấy phép.
 
 ---
 
@@ -91,9 +94,9 @@ cd C:\Workspace\Audio-translate\admin-system
 | `billing-gateway` (gateway, cổng thanh toán, webhook) | Không | Triển khai lại lên VM (`README` của billing-gateway) |
 | `admin-system` | Không | Đóng và mở lại admin |
 
-**Tăng phiên bản** (bắt buộc khi đã build một phiên bản rồi mà mã đã đổi, nếu không script dừng với `VERSION_ALREADY_RELEASED`): trong **cả hai** file `products\basic\product.manifest.json` và `products\plus\product.manifest.json`, sửa `version` (ví dụ `1.2.0` thành `1.2.1`) **và** `artifact_path` cho khớp (`dist/AudioTranslate-Basic-1.2.1.exe`). Rồi chạy lại `build_edition.py`; bước 1 tự đăng ký phiên bản mới với admin.
+**Bản nháp và bản đã phát hành.** Một phiên bản mới build là **bản nháp**: sửa mã rồi build lại cùng số phiên bản thì bản dựng được thay thế (không phải xóa gì). Khi chạy `publish_update.py` cho kênh `stable`, bản ghi phát hành được đánh dấu `published: true`; từ đó mã của số phiên bản đó không đổi được nữa (script dừng với `VERSION_ALREADY_RELEASED`) và cần **tăng phiên bản**: trong **cả hai** file `products\basic\product.manifest.json` và `products\plus\product.manifest.json`, sửa `version` (ví dụ `1.2.0` thành `1.2.1`) **và** `artifact_path` cho khớp (`dist/AudioTranslate-Basic-1.2.1.exe`). Rồi chạy lại `build_edition.py`; bước 1 tự đăng ký phiên bản mới với admin.
 
-Mỗi phiên bản có khóa nội dung riêng, nên sau mỗi lần build phiên bản mới nhớ **đẩy khóa phiên bản (lease)**.
+Phiên bản chỉ là thông tin: không quyết định giấy phép, khóa giải mã hay việc app có chạy được. Người dùng cài hay cập nhật lên bản mới đều **thay thế tại chỗ** bản đang có (một thư mục cho mỗi gói), giấy phép và dữ liệu được giữ nguyên.
 
 ---
 

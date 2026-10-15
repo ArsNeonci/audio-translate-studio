@@ -22,15 +22,19 @@ pub const GRACE_SECONDS: i64 = 3 * 24 * 3600;
 /// Upper bound on a server-supplied grace, so a malformed lease cannot grant unlimited time.
 pub const MAX_GRACE_SECONDS: i64 = 30 * 24 * 3600;
 const INFO: &[u8] = b"audio-content-key-v1";
+/// What a lease says about the key it carries. "product" is the one asset key of this product, the same in every release, so installing a
+/// newer release never changes which key opens the vault. A lease without it was made for one app version (older gateway): it still proves
+/// the licence is alive, but gives no key, and a new lease is asked for at once.
+pub const KEY_SCOPE: &str = "product";
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct WrappedKey {
     pub eph: String,
     pub nonce: String,
     pub ct: String,
 }
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct LeasePayload {
     pub license_id: String,
@@ -46,6 +50,9 @@ pub struct LeasePayload {
     /// of the signed bytes), so they verify unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grace_seconds: Option<i64>,
+    /// Which key the lease carries (KEY_SCOPE). Absent in older leases, and then not part of the signed bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_scope: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -121,7 +128,22 @@ pub fn unwrap_content_key(state_dir: &Path, w: &WrappedKey) -> Result<[u8; 32]> 
     plain.try_into().map_err(|_| "SECURE_STATE_INVALID")
 }
 
-fn lease_file(state_dir: &Path) -> PathBuf { state_dir.join("lease.dpapi") }
+/// Each product keeps its own lease (and so its own counter): Basic's lease can never be refused because Plus's counter is higher.
+fn lease_file(state_dir: &Path) -> PathBuf { state_dir.join(format!("lease-{PRODUCT}.dpapi")) }
+/// Before 3.2.0 every edition and release shared this one file.
+fn legacy_lease_file(state_dir: &Path) -> PathBuf { state_dir.join("lease.dpapi") }
+
+/// Adopts the old shared lease once, when it belongs to this product (it verifies against this product's root); another product's lease
+/// is left alone for that product. The old file is not deleted: an older release of the other edition may still read it.
+pub fn migrate_legacy(state_dir: &Path, root: &str, machine: &str) {
+    if lease_file(state_dir).exists() { return; }
+    let Ok(raw) = std::fs::read(legacy_lease_file(state_dir)) else { return; };
+    let Ok(plain) = windows::unseal(&raw) else { return; };
+    let Ok(old) = serde_json::from_slice::<LeaseState>(&plain) else { return; };
+    let Ok(payload) = verify_lease(&old.lease, root, machine) else { return; };
+    // The counter restarts from this lease: the shared file's highest counter may have come from another product's licence.
+    let _ = save_state(state_dir, &LeaseState { lease: old.lease, highest_counter: payload.counter, last_verified_time: old.last_verified_time, revoked: old.revoked });
+}
 
 pub fn load_state(state_dir: &Path) -> Result<Option<LeaseState>> {
     let path = lease_file(state_dir);
@@ -142,6 +164,7 @@ pub fn save_state(state_dir: &Path, state: &LeaseState) -> Result<()> {
 
 /// Install a freshly issued lease: verify, reject counter rollback, persist with the highest counter.
 pub fn install(state_dir: &Path, token: &str, root: &str, machine: &str, now: i64) -> Result<LeasePayload> {
+    migrate_legacy(state_dir, root, machine);
     let payload = verify_lease(token, root, machine)?;
     let old = load_state(state_dir)?;
     let previous = old.as_ref().map(|s| s.highest_counter).unwrap_or(0);
@@ -165,23 +188,27 @@ pub fn grace_of(p: &LeasePayload) -> i64 { p.grace_seconds.unwrap_or(GRACE_SECON
 /// Lease state for the app: whether to renew now and how long is left. `renew` turns true once half
 /// of the lease has passed, so an app that is opened regularly never sees it lapse.
 pub fn status(state_dir: &Path, root: &str, machine: &str, now: i64) -> Result<serde_json::Value> {
+    migrate_legacy(state_dir, root, machine);
     let Some(state) = load_state(state_dir)? else { return Ok(serde_json::json!({"lease":"NONE","renew":true})); };
     if state.revoked { return Ok(serde_json::json!({"lease":"REVOKED","renew":true})); }
     let p = verify_lease(&state.lease, root, machine)?;
     let (issued, expires) = (timestamp(&p.issued_at)?, timestamp(&p.expires_at)?);
     let phase = phase(now, expires, grace_of(&p));
-    Ok(serde_json::json!({"lease":phase, "renew": phase != "VALID" || now >= issued + (expires - issued) / 2,
-        "expires_at":p.expires_at, "grace_seconds":grace_of(&p), "counter":p.counter}))
+    let scope_ok = p.key_scope.as_deref() == Some(KEY_SCOPE);
+    Ok(serde_json::json!({"lease":phase, "renew": phase != "VALID" || !scope_ok || now >= issued + (expires - issued) / 2,
+        "expires_at":p.expires_at, "grace_seconds":grace_of(&p), "counter":p.counter, "scope_ok":scope_ok}))
 }
 
 /// Resolve the current content key from a stored lease, or an error describing why not.
 /// Returns None when no lease is present (the caller may fall back to the embedded key).
 pub fn content_key(state_dir: &Path, root: &str, machine: &str, now: i64) -> Result<Option<[u8; 32]>> {
+    migrate_legacy(state_dir, root, machine);
     let Some(state) = load_state(state_dir)? else { return Ok(None); };
     if state.revoked { return Err("LICENSE_REVOKED"); }
     let payload = verify_lease(&state.lease, root, machine)?;
     if payload.counter < state.highest_counter { return Err("SECURE_STATE_INVALID"); }
     if now + crate::license::CLOCK_SKEW_SECONDS < state.last_verified_time { return Err("CLOCK_ROLLBACK"); }
     if phase(now, timestamp(&payload.expires_at)?, grace_of(&payload)) == "EXPIRED" { return Err("LICENSE_EXPIRED"); }
+    if payload.key_scope.as_deref() != Some(KEY_SCOPE) { return Err("LEASE_REQUIRED"); }   // not this product's key: renew first
     Ok(Some(unwrap_content_key(state_dir, &payload.wrapped_key)?))
 }

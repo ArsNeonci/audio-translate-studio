@@ -9,7 +9,7 @@ docs/BUILD_RELEASE.md, stops at the first failure and never prints a key:
 
   1. check the machine (free RAM and disk, tools, model, Admin environment, no build already running)
   2. admin-system/release_config.py     re-reads the manifest, then writes the edition's public config and trust anchor
-  3. admin-system/export_build_keys.py  writes this version's vault key OUTSIDE every repository
+  3. admin-system/export_build_keys.py  writes the product's vault key (one key per product, the same in every release) OUTSIDE every repository
   4. packaging/build_installer.py       builds the installer (long: 10 to 30 minutes, heavy on RAM and disk)
   5. admin-system/audit_package.py      scans the installer for private keys, tokens and customer data
   6. (--push-lease) Admin pushes lease materials so the gateway can serve the new version
@@ -106,9 +106,10 @@ def main():
         raise SystemExit('Preflight failed. Fix the items marked FAIL, then run again.')
     label = f'{product}-{version}'
     if (ROOT / 'dist' / f'release-{label}.json').exists():
-        print(f'Note: dist/release-{label}.json exists. If the code is unchanged the builder verifies the installer and stops; if the code changed it refuses'
-              ' (VERSION_ALREADY_RELEASED). Raise the version in products/%s/product.manifest.json first (docs/BUILD_RELEASE.md, section 5).' % args.edition)
-    key_file = args.keys_dir / f'{product}-{version}.key'
+        print(f'Note: dist/release-{label}.json exists. If the code is unchanged the builder verifies the installer and stops; if the code changed it rebuilds'
+              ' while the version is still a draft, and refuses (VERSION_ALREADY_RELEASED) once packaging/publish_update.py has published it:'
+              ' then raise the version in products/%s/product.manifest.json (docs/BUILD_RELEASE.md, section 5).' % args.edition)
+    key_file = args.keys_dir / f'{product}.key'
     remote = remote_mode()
     admin_python = sys.executable if remote else ADMIN_PYTHON
     print('\n1/5 Public config and trust anchor (Admin first re-reads the manifest, so a raised version is picked up)')
@@ -118,8 +119,8 @@ def main():
         register = 'import sys; from core import Authority; Authority("data/admin.sqlite3").register_product(sys.argv[1])'
         run([admin_python, '-c', register, ROOT / 'products' / args.edition / 'product.manifest.json'], ADMIN, dry=args.dry_run)
         run([admin_python, 'release_config.py', product], ADMIN, dry=args.dry_run)
-    print('\n2/5 Vault key for this version (written outside every repository, never printed)')
-    run([admin_python, 'export_build_keys.py', *(['--remote'] if remote else []), '--product', product, '--version', version, '--out', key_file], ADMIN, dry=args.dry_run)
+    print('\n2/5 Vault key of the product (one key, the same in every release; written outside every repository, never printed)')
+    run([admin_python, 'export_build_keys.py', *(['--remote'] if remote else []), '--product', product, '--out', key_file], ADMIN, dry=args.dry_run)
     print('\n3/5 Build the installer (10 to 30 minutes)')
     env = {**os.environ, 'AUDIO_CONTENT_KEY_FILE': str(key_file)}
     run([sys.executable, 'packaging/build_installer.py', '--product', product], ROOT, env, args.dry_run)
@@ -134,8 +135,8 @@ def main():
                 else 'from core import Authority; from billing import Billing; print(Billing(Authority("data/admin.sqlite3")).push_lease_materials())')
         run([admin_python, '-c', code], ADMIN, dry=args.dry_run)
     else:
-        print('\n5/5 Not pushing lease materials (no --push-lease). Do it in Admin > Billing > Push Lease Keys (or rerun with --push-lease) before giving the installer to anyone.\n'
-              '     Without it the gateway answers LEASE_VERSION_UNSUPPORTED, the app never gets its usage key and the voice list stays on "loading".')
+        print('\n5/5 Not pushing lease materials (no --push-lease). A release made with the product key needs no new lease key (the gateway already has it);'
+              ' push only after a change of the signing material (Admin > Billing > Push Lease Keys).')
     artifact = ROOT / manifest['artifact_path']
     print(f'\nDone. Installer: {artifact}' if not args.dry_run else '\nDry run finished; nothing was changed.')
 

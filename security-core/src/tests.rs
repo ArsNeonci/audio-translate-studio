@@ -172,3 +172,69 @@ fn file_sha(p: &std::path::Path) -> String { use sha2::{Digest, Sha256}; hex::en
     let wrapped: lease::WrappedKey = serde_json::from_value(k["wrapped"].clone()).unwrap();
     assert_eq!(URL_SAFE_NO_PAD.encode(lease::unwrap_content_key(dir.path(), &wrapped).unwrap()), str_of(k, "key"));
 }
+
+// --- leases: one file per product, and the product-scoped key (3.2.0) ---------------------------------------------------------------
+fn lease_fixture(dir: &std::path::Path, machine: &str, product: &str, counter: u64, scope: Option<&str>, content: [u8; 32]) -> (String, String) {
+    use aes_gcm::aead::{Aead, KeyInit, Payload};
+    use aes_gcm::{Aes256Gcm, Key, Nonce};
+    use x25519_dalek::{PublicKey, StaticSecret};
+    let root = SigningKey::from_bytes(&[17; 32]); let signer = SigningKey::from_bytes(&[1; 32]);
+    let public = URL_SAFE_NO_PAD.encode(root.verifying_key().to_bytes());
+    let cert = json!({"product_id": product, "key_version": 1, "public_key": URL_SAFE_NO_PAD.encode(signer.verifying_key().to_bytes())});
+    // The content key wrapped for this machine exactly as the gateway does it (ECIES: X25519 -> HKDF-SHA256 -> AES-256-GCM).
+    let machine_public = PublicKey::from(&lease::machine_secret(dir).unwrap());
+    let ephemeral = StaticSecret::random_from_rng(aes_gcm::aead::OsRng);
+    let shared = ephemeral.diffie_hellman(&machine_public);
+    let mut okm = [0u8; 32]; hkdf::Hkdf::<sha2::Sha256>::new(None, shared.as_bytes()).expand(b"audio-content-key-v1", &mut okm).unwrap();
+    let nonce = [9u8; 12];
+    let ct = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&okm)).encrypt(Nonce::from_slice(&nonce), Payload { msg: &content, aad: b"audio-content-key-v1" }).unwrap();
+    let mut payload = json!({"license_id": "lic", "machine_id": machine, "product_id": product, "counter": counter, "nonce": "n",
+        "issued_at": "2026-01-01T00:00:00+00:00", "expires_at": "2099-01-01T00:00:00+00:00", "key_version": 1, "grace_seconds": 259200,
+        "wrapped_key": {"eph": URL_SAFE_NO_PAD.encode(PublicKey::from(&ephemeral).to_bytes()), "nonce": URL_SAFE_NO_PAD.encode(nonce), "ct": URL_SAFE_NO_PAD.encode(ct)}});
+    if let Some(scope) = scope { payload["key_scope"] = json!(scope); }
+    let envelope = json!({"scheme": "ed25519-lease-v1", "certificate": {"payload": cert, "signature": signed(&root, "product-lease-key-v1", &cert)},
+        "payload": payload, "signature": signed(&signer, "machine-lease-v1", &payload)});
+    (URL_SAFE_NO_PAD.encode(serde_json::to_vec(&envelope).unwrap()), public)
+}
+const NOW: i64 = 1_800_000_000; // 2027: inside the fixture's lifetime
+
+#[test] fn a_lease_carries_the_key_only_with_the_product_scope() {
+    let machine = "a".repeat(64); let dir = tempfile::tempdir().unwrap(); let key = [7u8; 32];
+    let (old, root) = lease_fixture(dir.path(), &machine, PRODUCT, 1, None, key);
+    lease::install(dir.path(), &old, &root, &machine, NOW).unwrap();
+    assert_eq!(lease::content_key(dir.path(), &root, &machine, NOW).unwrap_err(), "LEASE_REQUIRED");      // a lease for one app version: no key
+    let status = lease::status(dir.path(), &root, &machine, NOW).unwrap();
+    assert_eq!((status["lease"].as_str(), status["renew"].as_bool(), status["scope_ok"].as_bool()), (Some("VALID"), Some(true), Some(false)));   // and it is renewed at once
+    let (scoped, _) = lease_fixture(dir.path(), &machine, PRODUCT, 2, Some("product"), key);
+    lease::install(dir.path(), &scoped, &root, &machine, NOW).unwrap();
+    assert_eq!(lease::content_key(dir.path(), &root, &machine, NOW).unwrap(), Some(key));
+    let status = lease::status(dir.path(), &root, &machine, NOW).unwrap();
+    assert_eq!((status["renew"].as_bool(), status["scope_ok"].as_bool()), (Some(false), Some(true)));
+    let (other, _) = lease_fixture(dir.path(), &machine, PRODUCT, 3, Some("version"), key);
+    lease::install(dir.path(), &other, &root, &machine, NOW).unwrap();
+    assert_eq!(lease::content_key(dir.path(), &root, &machine, NOW).unwrap_err(), "LEASE_REQUIRED");      // any other scope is not accepted
+}
+
+#[test] fn the_counter_is_per_product_and_the_old_shared_lease_is_adopted_once_when_it_is_ours() {
+    let machine = "a".repeat(64); let dir = tempfile::tempdir().unwrap(); let key = [7u8; 32];
+    // Before 3.2.0: one shared lease.dpapi whose highest counter came from another licence (9).
+    let (ours, root) = lease_fixture(dir.path(), &machine, PRODUCT, 2, None, key);
+    let shared = lease::LeaseState { lease: ours.clone(), highest_counter: 9, last_verified_time: NOW, revoked: false };
+    std::fs::write(dir.path().join("lease.dpapi"), windows::seal(&serde_json::to_vec(&shared).unwrap()).unwrap()).unwrap();
+    assert!(lease::status(dir.path(), &root, &machine, NOW).is_ok());
+    let own_file = dir.path().join(format!("lease-{PRODUCT}.dpapi"));
+    assert!(own_file.exists(), "the lease is adopted into this product's own file");
+    assert!(dir.path().join("lease.dpapi").exists(), "the shared file stays for the other product's older releases");
+    // The counter restarted from the adopted lease (2), not from the shared 9: a lease with counter 3 installs.
+    let (next, _) = lease_fixture(dir.path(), &machine, PRODUCT, 3, Some("product"), key);
+    lease::install(dir.path(), &next, &root, &machine, NOW).unwrap();
+    let (rollback, _) = lease_fixture(dir.path(), &machine, PRODUCT, 2, Some("product"), key);
+    assert_eq!(lease::install(dir.path(), &rollback, &root, &machine, NOW).unwrap_err(), "SECURE_STATE_INVALID");   // rollback inside the product is still refused
+    // Another product's old lease is not adopted.
+    let dir2 = tempfile::tempdir().unwrap();
+    let (theirs, root2) = lease_fixture(dir2.path(), &machine, "another-product", 5, None, key);
+    let state = lease::LeaseState { lease: theirs, highest_counter: 5, last_verified_time: NOW, revoked: false };
+    std::fs::write(dir2.path().join("lease.dpapi"), windows::seal(&serde_json::to_vec(&state).unwrap()).unwrap()).unwrap();
+    assert_eq!(lease::status(dir2.path(), &root2, &machine, NOW).unwrap()["lease"], "NONE");
+    assert!(!dir2.path().join(format!("lease-{PRODUCT}.dpapi")).exists());
+}

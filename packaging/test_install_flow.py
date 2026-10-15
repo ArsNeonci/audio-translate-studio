@@ -1,6 +1,8 @@
 """Install, update and uninstall with the real .NET stubs, and the cleanup that stops everything of an installation - on Windows only.
 
-Uses its own edition ("Test", version 9.9.9), so a real Basic/Plus installation, its shortcut and the user's data are never touched.
+Uses its own edition ("Test", version 9.9.9), so a real Basic/Plus installation, its shortcut and the user's data are never touched. The tests of the
+replace-in-place design (one folder per edition, old versioned copies removed, a newer release never replaced, a failed install leaving the old copy) run
+in a private folder and a private registry path (AUDIO_INSTALL_PARENT, AUDIO_UNINSTALL_ROOT).
 Never passes /DATA to the uninstaller. Run: .venv\\Scripts\\python.exe -m unittest packaging.test_install_flow  (from audio-translates)
 """
 import importlib.util
@@ -19,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'packaging'))
 WINDOWS = os.name == 'nt'
 PING = Path(os.environ.get('WINDIR', r'C:\Windows')) / 'System32' / 'PING.EXE'
-KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\AudioTranslate-Test-9.9.9'
+KEY = r'Software\Microsoft\Windows\CurrentVersion\Uninstall\AudioTranslate-Test'
 
 
 def load(name, path):
@@ -57,7 +59,7 @@ class InstallFlow(unittest.TestCase):
         self.winreg = winreg
         self.work = Path(tempfile.mkdtemp())
         self.base = Path(os.environ['LOCALAPPDATA']) / 'Programs' / 'AudioTranslate'
-        self.target = self.base / 'Test-9.9.9'
+        self.target = self.base / 'Test'
         self.link = Path(os.environ['APPDATA']) / 'Microsoft' / 'Windows' / 'Start Menu' / 'Programs' / 'Audio Translate Test.lnk'
         self.assertFalse(self.target.exists(), 'a previous test run left an installation behind')
         self.real = sorted(p.name for p in self.base.iterdir()) if self.base.exists() else []
@@ -100,7 +102,7 @@ class InstallFlow(unittest.TestCase):
         self.assertEqual(json.loads((self.target / 'installation.json').read_text())['version'], '9.9.9')
         self.assertTrue(self.link.exists())
         entry = self.registered()
-        self.assertEqual((entry['DisplayName'], entry['DisplayVersion'], entry['Publisher'], entry['NoModify']), ('Audio Translate Test 9.9.9', '9.9.9', 'Ars Neonci', 1))
+        self.assertEqual((entry['DisplayName'], entry['DisplayVersion'], entry['Publisher'], entry['NoModify']), ('Audio Translate Test', '9.9.9', 'Ars Neonci', 1))
         self.assertEqual(entry['UninstallString'], f'"{self.target / "uninstall.exe"}"')
         self.assertEqual(entry['QuietUninstallString'], f'"{self.target / "uninstall.exe"}" /Q')
 
@@ -139,7 +141,7 @@ class InstallFlow(unittest.TestCase):
         percents = [int(p) for p, _, _ in steps]
         self.assertEqual(percents[-1], 100)
         self.assertEqual(sorted(p for p in percents if p >= 0), [p for p in percents if p >= 0])          # never goes backwards
-        self.assertTrue(any('95' == str(p) for p in percents))                                              # the unpacking reaches 95 %
+        self.assertTrue(any('90' == str(p) for p in percents))                                              # the unpacking reaches 90 %
         self.assertTrue(any('Tệp ' in more or 'File ' in more for _, _, more in steps))                    # a file counter is shown
         # An update shows the "stopping / removing" steps before unpacking, and says it was an update.
         log.unlink()
@@ -152,7 +154,7 @@ class InstallFlow(unittest.TestCase):
             if server.poll() is None: server.kill()
         texts = [text for _, text, _ in (line.split('|', 2) for line in log.read_text(encoding='utf-8').splitlines())]
         self.assertTrue(any('dừng' in t or 'Stopping' in t for t in texts))
-        self.assertTrue(any('gỡ' in t or 'Removing' in t for t in texts))
+        self.assertTrue(any('thay thế' in t or 'Replacing' in t for t in texts))
         shutil.rmtree(target, ignore_errors=True)
 
     def test_a_failed_windowed_install_exits_with_an_error_and_logs_it(self):
@@ -163,6 +165,94 @@ class InstallFlow(unittest.TestCase):
         self.assertEqual(subprocess.run([str(broken)], env=env, timeout=60).returncode, 1)
         self.assertIn('FAILED', log.read_text(encoding='utf-8'))
         self.assertFalse((self.work / 'never' / 'installation.json').exists())
+
+    # --- the replace-in-place design (3.2.0), all in a private folder and a private registry path -----------------------------------------
+    TEST_ROOT = r'Software\AudioTranslateTest\Uninstall'
+
+    def isolated(self):
+        parent = self.work / 'programs'; parent.mkdir(exist_ok=True)
+        return parent, {**os.environ, 'AUDIO_INSTALL_PARENT': str(parent), 'AUDIO_UNINSTALL_ROOT': self.TEST_ROOT}
+
+    def fake_install(self, folder, version, product='audio-translate-test'):
+        folder.mkdir(parents=True); (folder / 'installation.json').write_text(json.dumps({'product_id': product, 'version': version}))
+        (folder / 'app').mkdir(); (folder / 'app' / 'marker.txt').write_text('old ' + version)
+
+    def entry(self, name):
+        try:
+            with self.winreg.OpenKey(self.winreg.HKEY_CURRENT_USER, self.TEST_ROOT + '\\' + name) as key: return self.winreg.QueryValueEx(key, 'DisplayVersion')[0]
+        except OSError: return None
+
+    def forget_test_registry(self):
+        try:
+            for name in ('AudioTranslate-Test', 'AudioTranslate-Test-9.0.0', 'AudioTranslate-Test-8.0.0', 'AudioTranslate-Plus-3.0.0'):
+                try: self.winreg.DeleteKey(self.winreg.HKEY_CURRENT_USER, self.TEST_ROOT + '\\' + name)
+                except OSError: pass
+            self.winreg.DeleteKey(self.winreg.HKEY_CURRENT_USER, self.TEST_ROOT)
+            self.winreg.DeleteKey(self.winreg.HKEY_CURRENT_USER, r'Software\AudioTranslateTest')
+        except OSError: pass
+
+    def test_one_folder_per_edition_the_old_versioned_copies_and_their_entries_are_removed(self):
+        self.addCleanup(self.forget_test_registry)
+        parent, env = self.isolated()
+        for old in ('9.0.0', '8.0.0'):
+            self.fake_install(parent / f'Test-{old}', old)
+            with self.winreg.CreateKey(self.winreg.HKEY_CURRENT_USER, self.TEST_ROOT + f'\\AudioTranslate-Test-{old}') as key: self.winreg.SetValueEx(key, 'DisplayVersion', 0, self.winreg.REG_SZ, old)
+        self.fake_install(parent / 'Plus-3.0.0', '3.0.0', 'audio-translate-plus')           # another edition: not ours to touch
+        with self.winreg.CreateKey(self.winreg.HKEY_CURRENT_USER, self.TEST_ROOT + r'\AudioTranslate-Plus-3.0.0') as key: self.winreg.SetValueEx(key, 'DisplayVersion', 0, self.winreg.REG_SZ, '3.0.0')
+        server = fake_server(parent / 'Test-9.0.0')                                           # the old copy is running
+        time.sleep(0.5)
+        try:
+            self.assertEqual(subprocess.run([str(self.setup), '/Q'], env=env).returncode, 0)
+            self.assertIsNotNone(server.wait(10), 'the old copy was not stopped')
+        finally:
+            if server.poll() is None: server.kill()
+        self.assertEqual(sorted(p.name for p in parent.iterdir()), ['Plus-3.0.0', 'Test'])   # only the edition folder (and the other edition's copy) remain
+        self.assertEqual(json.loads((parent / 'Test' / 'installation.json').read_text())['version'], '9.9.9')
+        self.assertEqual((parent / 'Test' / 'app' / 'marker.txt').read_text(), 'version one')
+        self.assertTrue((parent / 'Plus-3.0.0' / 'app' / 'marker.txt').exists())
+        self.assertEqual([self.entry(n) for n in ('AudioTranslate-Test', 'AudioTranslate-Test-9.0.0', 'AudioTranslate-Test-8.0.0', 'AudioTranslate-Plus-3.0.0')], ['9.9.9', None, None, '3.0.0'])
+        self.assertFalse((parent / 'Test.new').exists() or (parent / 'Test.old').exists())
+        # The same release again replaces it in place; the uninstaller removes the single entry and the folder.
+        self.assertEqual(subprocess.run([str(self.setup), '/Q'], env=env).returncode, 0)
+        self.assertEqual(subprocess.run([str(parent / 'Test' / 'uninstall.exe'), '/Q'], env=env).returncode, 0)
+        for _ in range(40):
+            if not (parent / 'Test').exists(): break
+            time.sleep(0.5)
+        self.assertFalse((parent / 'Test').exists()); self.assertIsNone(self.entry('AudioTranslate-Test'))
+        self.assertTrue((parent / 'Plus-3.0.0').exists())                                      # the other edition survives
+
+    def test_a_newer_release_is_never_replaced_unless_forced(self):
+        self.addCleanup(self.forget_test_registry)
+        parent, env = self.isolated()
+        self.fake_install(parent / 'Test', '9.9.10')                                           # newer than this installer (9.9.9)
+        self.assertEqual(subprocess.run([str(self.setup), '/Q'], env=env).returncode, 3)
+        self.assertEqual((parent / 'Test' / 'app' / 'marker.txt').read_text(), 'old 9.9.10')
+        shutil.rmtree(parent / 'Test'); self.fake_install(parent / 'Test-10.0.0', '10.0.0')    # a newer one in an old-style folder counts too
+        self.assertEqual(subprocess.run([str(self.setup), '/Q'], env=env).returncode, 3)
+        self.assertTrue((parent / 'Test-10.0.0').exists()); self.assertFalse((parent / 'Test').exists())
+        self.assertEqual(subprocess.run([str(self.setup), '/Q', '/FORCE'], env=env).returncode, 0)   # the person asked for it
+        self.assertEqual(json.loads((parent / 'Test' / 'installation.json').read_text())['version'], '9.9.9')
+        self.assertFalse((parent / 'Test-10.0.0').exists())
+
+    def test_a_failed_install_leaves_the_installed_copy_exactly_as_it_was(self):
+        parent, env = self.isolated()
+        self.fake_install(parent / 'Test', '9.0.0')
+        bad = self.work / 'bad.exe'
+        payload = self.work / 'bad.zip'
+        with zipfile.ZipFile(payload, 'w') as archive:
+            archive.writestr('app/marker.txt', 'new'); archive.writestr('../escape.txt', 'unsafe')   # an entry that leaves the folder
+        bad.write_bytes((self.work / 'setup.exe').read_bytes() + payload.read_bytes() + b'ATSETUP1' + payload.stat().st_size.to_bytes(8, 'little'))
+        self.assertEqual(subprocess.run([str(bad), '/Q'], env=env).returncode, 1)
+        self.assertEqual((parent / 'Test' / 'app' / 'marker.txt').read_text(), 'old 9.0.0')
+        self.assertEqual(json.loads((parent / 'Test' / 'installation.json').read_text())['version'], '9.0.0')
+        self.assertEqual(sorted(p.name for p in parent.iterdir()), ['Test'])                  # no .new left behind
+        self.assertFalse((parent.parent / 'escape.txt').exists())
+
+    def test_a_folder_that_is_not_an_installation_is_not_replaced(self):
+        parent, env = self.isolated()
+        (parent / 'Test').mkdir(); (parent / 'Test' / 'precious.txt').write_text('mine')
+        self.assertEqual(subprocess.run([str(self.setup), '/Q'], env=env).returncode, 1)
+        self.assertEqual((parent / 'Test' / 'precious.txt').read_text(), 'mine')
 
     def test_the_uninstaller_refuses_a_folder_that_is_not_an_installation(self):
         stray = self.work / 'not-an-install'; stray.mkdir()

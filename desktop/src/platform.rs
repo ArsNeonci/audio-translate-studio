@@ -14,6 +14,8 @@ use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONERROR, MB_ICONQUESTION, MB_OK, MB_YESNO, SW_SHOWNORMAL};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const DETACHED_PROCESS: u32 = 0x0000_0008;
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 static JOB: OnceLock<usize> = OnceLock::new();
 
 fn wide(text: &str) -> Vec<u16> { text.encode_utf16().chain(std::iter::once(0)).collect() }
@@ -34,6 +36,9 @@ pub fn keep_with_shell(child: &Child) {
 }
 
 pub fn hide_window(command: &mut Command) { command.creation_flags(CREATE_NO_WINDOW); }
+
+/// A program that must outlive the shell (the updater): no window, no console, its own process group.
+pub fn detach(command: &mut Command) { command.creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP); }
 
 pub fn open_in_browser(url: &str) {
     unsafe { ShellExecuteW(std::ptr::null_mut(), wide("open").as_ptr(), wide(url).as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL); }

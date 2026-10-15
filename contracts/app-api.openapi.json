@@ -170,6 +170,32 @@
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelState"}}}},
         "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
+    "/api/update": {
+      "get": {"summary": "App updates: the installed version, the release on offer (if newer), the download, and how the last update ended. Asking also starts a check in the background when one is due.", "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateState"}}}}}}
+    },
+    "/api/update/check": {
+      "post": {"summary": "Ask the gateway for the newest release now (the Settings button); returns the new state", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateState"}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
+    "/api/update/download": {
+      "post": {"summary": "Download and check the package of the release on offer in the background", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"allOf": [{"$ref": "#/components/schemas/UpdateState"}, {"type": "object", "required": ["started"], "properties": {"started": {"type": "boolean"}}}]}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
+    "/api/update/apply": {
+      "post": {"summary": "Install the downloaded release: the app quits and updater.exe applies it (body {force?}); with workflows running it needs force", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "x-untested": "ends the app", "content": {"application/json": {"schema": {"type": "object", "required": ["applying"], "properties": {"applying": {"type": "boolean"}, "version": {"type": "string"}, "kind": {"enum": ["app", "installer"]}}}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "409": {"description": "NOT_INSTALLED (a development checkout), NOT_READY, or JOBS_RUNNING (retry with force)", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+        "500": {"x-untested": "needs an unwritable data folder", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
+    "/api/update/ack": {
+      "post": {"summary": "The person has seen how the last update ended", "x-local": true, "responses": {
+        "200": {"x-no-store": true, "content": {"application/json": {"schema": {"type": "object", "required": ["ok"], "properties": {"ok": {"type": "boolean"}}}}}},
+        "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
+    },
     "/api/quit": {
       "get": {"summary": "Whether Quit is available and how many workflows run", "responses": {
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/QuitInfo"}}}}}},
@@ -356,6 +382,13 @@
         "properties": {"phase": {"type": "string"}, "done": {"type": "integer", "minimum": 0}, "total": {"type": "integer", "minimum": 0}, "license": {"type": "string"}, "error": {"type": "string"}}},
       "BillingInfo": {"type": "object", "required": ["enabled"], "properties": {"enabled": {"type": "boolean"}, "code": {"type": "string"}, "portal_url": {"type": "string"}}},
       "PortalLink": {"type": "object", "required": ["url", "mode"], "properties": {"url": {"type": "string", "pattern": "^https://"}, "mode": {"enum": ["app", "code", "home"]}}},
+      "UpdateState": {"type": "object", "required": ["installed", "channel", "offer", "download", "ready", "checked_at", "error", "last_result"], "properties": {
+        "installed": {"type": "object", "required": ["version", "product", "runtime", "can_update"], "properties": {"version": {"type": ["string", "null"]}, "product": {"type": ["string", "null"]}, "runtime": {"type": ["string", "null"]}, "can_update": {"type": "boolean"}}},
+        "channel": {"type": "string"},
+        "offer": {"type": ["object", "null"], "properties": {"version": {"type": "string"}, "serial": {"type": "integer"}, "notes": {"type": "object"}, "released_at": {"type": "string"}, "kind": {"enum": ["app", "installer"]}, "size": {"type": "integer"}, "required": {"type": "boolean"}, "failed_before": {"type": "boolean"}, "downgrade": {"type": "boolean"}}},
+        "download": {"type": "object", "required": ["state", "done", "total"], "properties": {"state": {"enum": ["idle", "downloading", "ready", "failed"]}, "done": {"type": "integer"}, "total": {"type": "integer"}, "error": {"type": ["string", "null"]}, "version": {"type": ["string", "null"]}}},
+        "ready": {"type": "boolean"}, "checked_at": {"type": ["number", "null"]}, "error": {"type": ["string", "null"]},
+        "last_result": {"type": ["object", "null"], "properties": {"ok": {"type": "boolean"}, "version": {"type": "string"}, "from": {"type": "string"}, "error": {"type": "string"}, "at": {"type": "string"}}}}},
       "QuitInfo": {"type": "object", "required": ["installed", "active_jobs"], "properties": {"installed": {"type": "boolean"}, "active_jobs": {"type": "integer", "minimum": 0}}},
       "QuitResult": {"type": "object", "required": ["installed", "active_jobs", "stopped"], "properties": {"installed": {"type": "boolean"}, "active_jobs": {"type": "integer"}, "stopped": {"type": "boolean"}}},
       "Rule": {"type": "object", "required": ["id", "source", "replacement"], "additionalProperties": false,

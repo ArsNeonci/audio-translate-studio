@@ -5,6 +5,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useLanguage } from "@/lib/i18n/language-context";
 import ModelBanner from "@/components/layout/model-banner";
+import UpdateBanner from "@/components/layout/update-banner";
 import { useVideoAutoOpen } from "@/components/video/video-picker";
 
 export default function SiteHeader() {
@@ -53,6 +54,7 @@ export default function SiteHeader() {
       </nav>
     </header>
     <ModelBanner />
+    <UpdateBanner />
     </>
   );
 }

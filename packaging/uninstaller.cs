@@ -13,7 +13,9 @@ static class Uninstaller {
     const string Version="@@VERSION@@";
     const string Edition="@@EDITION@@";
     static string Title { get { return Edition.Length>0?"Audio Translate "+Edition:"Audio Translate"; } }
-    static string UninstallKey { get { return @"Software\Microsoft\Windows\CurrentVersion\Uninstall\AudioTranslate-"+(Edition.Length>0?Edition+"-":"")+Version; } }
+    // One Installed-apps entry per edition (not per version); AUDIO_UNINSTALL_ROOT lets a test use its own registry path.
+    static string UninstallRoot { get { string custom=Environment.GetEnvironmentVariable("AUDIO_UNINSTALL_ROOT"); return String.IsNullOrEmpty(custom)?@"Software\Microsoft\Windows\CurrentVersion\Uninstall":custom; } }
+    static string UninstallKey { get { return UninstallRoot+@"\AudioTranslate"+(Edition.Length>0?"-"+Edition:""); } }
     static void StopApp(string root) {
         string prefix=root.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
         int self=Process.GetCurrentProcess().Id;
@@ -31,7 +33,8 @@ static class Uninstaller {
         string parent=Path.GetDirectoryName(target.TrimEnd(Path.DirectorySeparatorChar));
         if(parent==null || !Directory.Exists(parent)) return false;
         foreach(string folder in Directory.GetDirectories(parent))
-            if(!String.Equals(Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar),target.TrimEnd(Path.DirectorySeparatorChar),StringComparison.OrdinalIgnoreCase)
+            if(!folder.EndsWith(".new",StringComparison.OrdinalIgnoreCase) && !folder.EndsWith(".old",StringComparison.OrdinalIgnoreCase)
+               && !String.Equals(Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar),target.TrimEnd(Path.DirectorySeparatorChar),StringComparison.OrdinalIgnoreCase)
                && File.Exists(Path.Combine(folder,"installation.json"))) return true;
         return false;
     }
@@ -63,8 +66,11 @@ static class Uninstaller {
                 } catch { }
             }
             try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKey,false); } catch { }
+            // Leftovers of an interrupted update beside this folder go too.
+            string spares="";
+            foreach(string spare in new string[]{target.TrimEnd(Path.DirectorySeparatorChar)+".new",target.TrimEnd(Path.DirectorySeparatorChar)+".old"}) spares+=" & rmdir /s /q \""+spare+"\" 2>nul";
             // This program lives inside the folder it removes, so a hidden command prompt deletes the folder after this process has exited.
-            string command="/c ping -n 3 127.0.0.1 >nul & rmdir /s /q \""+target+"\""+(data?" & rmdir /s /q \""+userData+"\"":"");
+            string command="/c ping -n 3 127.0.0.1 >nul & rmdir /s /q \""+target+"\""+spares+(data?" & rmdir /s /q \""+userData+"\"":"");
             ProcessStartInfo start=new ProcessStartInfo("cmd.exe",command);
             start.WorkingDirectory=Path.GetTempPath(); start.CreateNoWindow=true; start.UseShellExecute=false; start.WindowStyle=ProcessWindowStyle.Hidden;
             Process.Start(start);

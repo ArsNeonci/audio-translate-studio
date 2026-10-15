@@ -38,6 +38,13 @@ class LicenseLeaseTests(unittest.TestCase):
         self.assertEqual(self.denial(refused, {'status': 'ACTIVE'})['error'], 'LEASE_OFFLINE')
         self.assertEqual(self.denial({**refused, 'status': 'LEASE_REQUIRED', 'error': 'LEASE_REQUIRED'}, {'status': 'ACTIVE'})['error'], 'LEASE_OFFLINE')
 
+    def test_a_retired_release_is_told_to_update_instead_of_to_go_online(self):
+        refused = {'http_status': 403, 'status': 'LEASE_REQUIRED', 'error': 'LEASE_REQUIRED'}
+        with patch.dict(lease._state, {'last': {'lease': 'EXPIRED', 'renewed': False, 'error': 'VERSION_RETIRED'}}):
+            self.assertEqual(self.denial(refused, {'status': 'ACTIVE'})['error'], 'VERSION_RETIRED')
+            command, _ = core({'lease_status': {'http_status': 200, 'lease': 'EXPIRED'}})
+            with patch.object(lease, 'license_command', command): self.assertTrue(lease.describe({'status': 'ACTIVE', 'expires_at': '2030-01-01T00:00:00+00:00'})['update_required'])
+
     def test_an_expired_licence_still_says_expired(self):
         refused = {'http_status': 403, 'status': 'LICENSE_EXPIRED', 'error': 'LICENSE_EXPIRED'}
         self.assertEqual(self.denial(refused, {'status': 'EXPIRED'})['error'], 'LICENSE_EXPIRED')

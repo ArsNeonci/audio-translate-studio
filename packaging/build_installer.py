@@ -73,13 +73,33 @@ def source_hash(product='audio-translate'):
     for path in sorted(files):sha.update(str(path.relative_to(WORKSPACE)).encode());sha.update(path.read_bytes())
     return sha.hexdigest()
 
+def runtime_fingerprint(payload):
+    """SHA-256 of everything an app-only update must not change: the Python runtime, ffmpeg, node and the TTS provider (runtime/ and providers/).
+    An app package says which fingerprint it needs; the app takes it only when its own matches, otherwise the full installer."""
+    sha=hashlib.sha256()
+    for folder in ('runtime','providers'):
+        root=payload/folder
+        if not root.is_dir():continue
+        for path in sorted(p for p in root.rglob('*') if p.is_file()):
+            sha.update(path.relative_to(payload).as_posix().encode()+b'\0'+digest(path).encode()+b'\n')
+    return sha.hexdigest()
+
+def write_app_package(payload,target):
+    """The app-only update: the payload without runtime/ and providers/ (the 1.6 GB that rarely changes)."""
+    target.unlink(missing_ok=True)
+    with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
+        for path in sorted(payload.rglob('*')):
+            relative=path.relative_to(payload)
+            if path.is_file() and relative.parts[0] not in ('runtime','providers'):archive.write(path,relative.as_posix())
+    return target
+
 def compile_stub(source_name,output,work,product,version,edition):
-    """Compile one of the .NET stubs (installer.cs, uninstaller.cs) with the version and edition filled in."""
+    """Compile one of the .NET stubs (installer.cs, uninstaller.cs, updater.cs) with the version and edition filled in."""
     compiler=Path(os.environ['WINDIR'])/'Microsoft.NET'/'Framework64'/'v4.0.30319'/'csc.exe'
     if not compiler.is_file():raise RuntimeError('WINDOWS_DOTNET_BUILD_TOOLS_REQUIRED')
     source=(ROOT/'packaging'/source_name).read_text(encoding='utf-8').replace('@@VERSION@@',version).replace('@@PRODUCT@@',product).replace('@@EDITION@@',edition)
     file=Path(work)/(Path(source_name).stem+'-stub.cs');file.write_text(source,encoding='utf-8')
-    subprocess.run([str(compiler),'/nologo','/target:winexe','/optimize+','/win32icon:'+str(ROOT/'packaging'/'app-icon.ico'),'/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll','/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/out:'+str(output),str(file)],check=True,creationflags=subprocess.CREATE_NO_WINDOW)
+    subprocess.run([str(compiler),'/nologo','/target:winexe','/optimize+','/win32icon:'+str(ROOT/'packaging'/'app-icon.ico'),'/r:System.IO.Compression.dll','/r:System.IO.Compression.FileSystem.dll','/r:System.Windows.Forms.dll','/r:System.Drawing.dll','/r:System.Web.Extensions.dll','/out:'+str(output),str(file)],check=True,creationflags=subprocess.CREATE_NO_WINDOW)
 
 def copy_tree(source,target,ignore=None):
     shutil.copytree(source,target,dirs_exist_ok=True,ignore=ignore or shutil.ignore_patterns('__pycache__','*.pyc','.git'))
@@ -150,13 +170,20 @@ def build(product='audio-translate', customer=None):
     if artifact.parent!=dist.resolve():raise RuntimeError('ARTIFACT_PATH_INVALID')
     label=f'{product}-{version}' if edition else version
     release=dist/f'release-{label}.json'
+    app_package=dist/f"AudioTranslate-{edition or 'App'}-{version}-app.zip"
     fingerprint=source_hash(product)
     with file_lock(dist/'build.lock'):
         if release.exists():
             record=json.loads(release.read_text())
-            if record['source_sha256']!=fingerprint:raise RuntimeError('VERSION_ALREADY_RELEASED: bump version before changing code')
-            if not artifact.exists() or digest(artifact)!=record['installer_sha256']:raise RuntimeError('RELEASE_ARTIFACT_MISSING_OR_MODIFIED')
-            print('Existing installer verified; no rebuild.');return
+            if record['source_sha256']!=fingerprint:
+                # A version stays a draft until packaging/publish_update.py publishes it: until then a changed build simply replaces it.
+                # Once published, other people may have it, so the code must not change under the same number.
+                if record.get('published'):raise RuntimeError('VERSION_ALREADY_RELEASED: this version was published; bump the version before changing code')
+                print('This version is a draft (not published): rebuilding it with the changed code.')
+                release.unlink();artifact.unlink(missing_ok=True);app_package.unlink(missing_ok=True)
+            else:
+                if not artifact.exists() or digest(artifact)!=record['installer_sha256']:raise RuntimeError('RELEASE_ARTIFACT_MISSING_OR_MODIFIED')
+                print('Existing installer verified; no rebuild.');return
         # Short on purpose: modelscope ships files whose staged path is ~260 characters, and Windows stops copying at 259 (LongPathsEnabled is off).
         staging=dist/('s'+hashlib.sha1(label.encode()).hexdigest()[:6]);staging.mkdir(exist_ok=True)
         payload=staging/'payload';payload.mkdir(exist_ok=True)
@@ -241,6 +268,8 @@ def build(product='audio-translate', customer=None):
         shutil.copy2(ROOT/'packaging'/'app-icon.ico',payload/'app.ico')  # the Start-menu shortcut's icon (installer.cs)
         # The uninstaller ships inside the installation (Windows "Installed apps" runs it); it is covered by the signed payload manifest below.
         compile_stub('uninstaller.cs',payload/'uninstall.exe',staging,product,version,edition)
+        # The updater applies an app-only package after the app has quit (it cannot replace the files it is running from).
+        compile_stub('updater.cs',payload/'updater.exe',staging,product,version,edition)
         shutil.copy2(ROOT/'packaging'/'paths.py',payload/'paths.py')
         (payload/'runtime-inventory.json').write_text(json.dumps(packages,indent=2),encoding='utf-8')
         # The shipped UI must be self-contained: an index page, the page scripts, and no reference to the development machine.
@@ -271,6 +300,10 @@ def build(product='audio-translate', customer=None):
             raise RuntimeError('AUDIO_CONTENT_KEY_FILE required for a hardened release build')
         else:
             print('WARNING: AUDIO_CONTENT_KEY_FILE not set; assets ship as plaintext (vault unconfigured).')
+        # What an app-only update must leave alone is fingerprinted into the payload itself (the app compares it with a package's); written before
+        # the manifest is signed so that the signed tree lists it.
+        runtime_sha=runtime_fingerprint(payload)
+        (payload/'app'/'runtime-fingerprint.json').write_text(json.dumps({'sha256':runtime_sha}),encoding='utf-8')
         # Sign the payload manifest for install/runtime integrity. Admin supplies the manifest
         # private key out of band (AUDIO_MANIFEST_KEY_FILE, 32-byte hex); its public half must be in
         # the trust anchor (manifest_public_key). Without it the build is unsigned and the shipped
@@ -290,6 +323,8 @@ def build(product='audio-translate', customer=None):
         if leaks:
             raise RuntimeError('SECRET_SCAN_FAILED: ' + '; '.join(f'{reason}:{p.relative_to(payload)}' for p, reason in leaks[:10]))
         print('Secret scan passed.')
+        write_app_package(payload,app_package)
+        print(f'App package: {app_package.name} {app_package.stat().st_size//1048576} MB (runtime {runtime_sha[:12]})')
         with zipfile.ZipFile(staging/'payload.zip','w',zipfile.ZIP_DEFLATED,compresslevel=1) as archive:
             for path in sorted(payload.rglob('*')):
                 if path.is_file():archive.write(path,path.relative_to(payload))
@@ -303,7 +338,8 @@ def build(product='audio-translate', customer=None):
         if not artifact.is_file() or artifact.stat().st_size<1000000:raise RuntimeError('INSTALLER_BUILD_FAILED')
         # Sign the installer before recording its hash, so the recorded hash is the signed file's.
         authenticode_sign(artifact)
-        record={'product_id':config['product_id'],'version':config['version'],'source_sha256':fingerprint,'installer_sha256':digest(artifact),'size':artifact.stat().st_size,'payload_files':sum(p.is_file() for p in payload.rglob('*'))}
+        record={'product_id':config['product_id'],'version':config['version'],'source_sha256':fingerprint,'installer_sha256':digest(artifact),'size':artifact.stat().st_size,'payload_files':sum(p.is_file() for p in payload.rglob('*')),
+                'runtime_sha256':runtime_sha,'app_package':app_package.name,'app_package_sha256':digest(app_package),'app_package_size':app_package.stat().st_size,'published':False}
         if customer:record['customer']=customer
         release.write_text(json.dumps(record,indent=2),encoding='utf-8');print(json.dumps(record))
         # The verified installer is the release; staging is not a second product.

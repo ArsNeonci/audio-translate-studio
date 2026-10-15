@@ -62,12 +62,15 @@ def _renew():
     credential, key = license_command({'action': 'credential'}), license_command({'action': 'machine_pubkey'})
     if credential.get('status') != 'ACTIVE' or not isinstance(credential.get('token'), str) or not isinstance(key.get('machine_pubkey'), str):
         return {'lease': phase, 'renewed': False, 'error': str(credential.get('status') or 'INVALID')}
-    body = {'machine_public': key['machine_pubkey']}
+    # The lease carries the product's one asset key (key_scope), the same in every release; the version is only information for the server.
+    body = {'machine_public': key['machine_pubkey'], 'key_scope': 'product'}
     version = app_version()
-    if version: body['app_version'] = version
+    if version: body['client_version'] = version
     reply = gateway_call('POST', f'{base}/v1/lease', credential['token'], body)
     if reply is None: return {'lease': phase, 'renewed': False, 'error': 'GATEWAY_UNREACHABLE'}   # offline: the grace period covers this
     code, value = reply
+    if code == 403 and value.get('error') == 'LEASE_VERSION_RETIRED':
+        return {'lease': phase, 'renewed': False, 'error': 'VERSION_RETIRED'}   # the owner asked this release to update: shown as "update needed", not as a licence problem
     if code == 403 and value.get('error') == 'LICENSE_REVOKED':
         license_command({'action': 'lease_revoke'})   # stop new processing now, not at expiry
         return {'lease': 'REVOKED', 'renewed': False, 'error': 'LICENSE_REVOKED'}
@@ -108,10 +111,16 @@ def lease_phase():
     return phase if value.get('http_status') == 200 and isinstance(phase, str) else None
 
 
+def update_required():
+    """True when the gateway refused the lease because the owner retired this release (a soft way to make an old release update)."""
+    last = _state['last']
+    return bool(last and last.get('error') == 'VERSION_RETIRED')
+
+
 def describe(result):
-    """The licence status plus what the page needs: the lease phase and whether the licence never ends."""
+    """The licence status plus what the page needs: the lease phase, whether the licence never ends, and whether this release must update."""
     if result.get('status') != 'ACTIVE': return result
-    return {**result, 'lease': lease_phase(), 'perpetual': perpetual(result.get('expires_at'))}
+    return {**result, 'lease': lease_phase(), 'perpetual': perpetual(result.get('expires_at')), 'update_required': update_required()}
 
 
 def license_denial(internet=True):
@@ -122,5 +131,5 @@ def license_denial(internet=True):
     error = result.get('error') or result.get('status')
     # The core says LICENSE_EXPIRED both for an expired licence and for a lease not renewed for too long (offline). When the licence itself is
     # still valid it is the lease: the person only has to go online, so they get that message instead of "licence expired".
-    if error in ('LICENSE_EXPIRED', 'LEASE_REQUIRED') and license_command({'action': 'status'}).get('status') == 'ACTIVE': error = 'LEASE_OFFLINE'
+    if error in ('LICENSE_EXPIRED', 'LEASE_REQUIRED') and license_command({'action': 'status'}).get('status') == 'ACTIVE': error = 'VERSION_RETIRED' if update_required() else 'LEASE_OFFLINE'
     return json_response({'error': error, 'license_status': result.get('status')}, 403, no_store=True)
