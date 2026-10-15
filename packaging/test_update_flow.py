@@ -39,7 +39,7 @@ FAKE_INSTALLER = r'''
 using System; using System.IO; using System.Text.RegularExpressions;
 class P { static int Main(string[] args) {
   string root = Environment.GetEnvironmentVariable("AUDIO_FAKE_INSTALL_ROOT");
-  File.WriteAllText(Path.Combine(root, "installer-ran.txt"), string.Join(" ", args));
+  File.WriteAllText(Path.Combine(root, "installer-ran.txt"), string.Join(" ", args) + "|" + Environment.GetEnvironmentVariable("AUDIO_INSTALL_DIR"));
   int code = int.Parse(Environment.GetEnvironmentVariable("AUDIO_FAKE_INSTALL_CODE"));
   if (code == 0) {
     string marker = Path.Combine(root, "installation.json");
@@ -190,7 +190,7 @@ class UpdaterFlow(unittest.TestCase):
         copy = self.base / 'AudioTranslate-Test-2.0.0.exe'; shutil.copy2(installer, copy)
         self.env['AUDIO_FAKE_INSTALL_CODE'] = '1'
         result = self.apply(copy, kind='installer')
-        self.assertEqual(result['ok'], False); self.assertEqual((self.root / 'installer-ran.txt').read_text().strip(), '/Q')
+        self.assertEqual(result['ok'], False); self.assertEqual((self.root / 'installer-ran.txt').read_text().strip(), '/Q|' + str(self.root))   # told which folder to replace
         self.assertEqual(self.failed(), ['2.0.0']); self.assertEqual(json.loads((self.root / 'installation.json').read_text())['version'], '1.0.0')
         self.assertTrue(self.started('1.0.0'))
         # A good run: the installer changes the version, the app is started and reports ready.
@@ -201,6 +201,7 @@ class UpdaterFlow(unittest.TestCase):
         result = self.apply(copy2, kind='installer')
         self.assertEqual((result['ok'], result['version']), (True, '2.0.0'))
         self.assertTrue(self.started('2.0.0'))
+        self.assertEqual(self.registered(), '2.0.0')                                                            # the Installed-apps version follows the installer's work
         # A refused downgrade is a failure to report, not a silent success.
         self.assertFalse(copy2.exists())                                                                        # the installer file is removed after use
 

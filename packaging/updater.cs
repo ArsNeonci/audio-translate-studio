@@ -130,11 +130,15 @@ static class Updater {
             if(!File.Exists(package) || !String.Equals(Sha256(package),expected,StringComparison.OrdinalIgnoreCase)) throw new IOException("The installer is missing or does not match its SHA-256");
             ProcessStartInfo start=new ProcessStartInfo(package,"/Q"+(Text(plan,"allow_downgrade")=="True"?" /FORCE":""));
             start.WorkingDirectory=Path.GetDirectoryName(package); start.UseShellExecute=false; start.CreateNoWindow=true;
+            // The installer replaces exactly the folder this app runs from, whatever the environment says (the shortcut and the Installed-apps entry
+            // already point there; the entry's version is updated below).
+            start.EnvironmentVariables["AUDIO_INSTALL_DIR"]=root;
             using(Process installer=Process.Start(start)) {
                 if(!installer.WaitForExit(30*60*1000)) { try { installer.Kill(); } catch { } throw new IOException("The installer did not finish"); }
                 Log("the installer exited with code "+installer.ExitCode);
                 if(installer.ExitCode!=0) throw new IOException("The installer failed (exit code "+installer.ExitCode+"); the installed copy was kept");
             }
+            SetRegisteredVersion(version);
             string health=Path.Combine(data,"updates","health.json");
             try { File.Delete(health); } catch { }
             DateTime began=DateTime.UtcNow;
