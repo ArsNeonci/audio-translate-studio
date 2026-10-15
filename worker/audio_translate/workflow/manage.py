@@ -555,7 +555,7 @@ def history(scope):
         try:
             live = read_json(results.workspace(job['id'])/'job.json')
             if live.get('id') == job['id'] and live.get('storage_scope') == scope:
-                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','selected_address_profile','translation_mode','pause_reason','tts_auto','review_skipped','retry_step','source_ext','video','video_plan','video_voice','subtitle','subtitle_voice']:
+                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','selected_address_profile','translation_mode','pause_reason','tts_auto','review_skipped','retry_step','source_ext','video','video_plan', 'burn_plan','video_voice','subtitle','subtitle_voice']:
                     if key in live: job[key] = live[key]
                 job['steps'] = {step:{k:item.get(k) for k in ['state','progress','started_at','completed_at','duration_ms','attempt','retry_count','error']} for step,item in live.get('steps',{}).items()}
                 working=results.workspace(job['id'])/'working'

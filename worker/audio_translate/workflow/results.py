@@ -119,7 +119,7 @@ def metadata(job_dir):
     job_id = job.get('id', '')
     if not ID.fullmatch(job_id): return  # Unit fixtures are not public jobs.
     directory = destination(job_id)
-    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'tts_auto', 'review_skipped', 'stages', 'tool_steps', 'source_ext', 'video', 'video_plan', 'video_voice', 'subtitle', 'subtitle_voice']}
+    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'tts_auto', 'review_skipped', 'stages', 'tool_steps', 'source_ext', 'video', 'video_plan', 'burn_plan', 'video_voice', 'subtitle', 'subtitle_voice']}
     # No adapter paths, raw errors, credentials or private worker metadata.
     summary['compute_device'] = job.get('compute_device')
     summary['steps'] = {key: {k:value.get(k) for k in ['state','retry_count','attempt','progress','started_at','completed_at','duration_ms','error']}
