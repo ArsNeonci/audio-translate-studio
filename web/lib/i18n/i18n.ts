@@ -290,6 +290,7 @@ export const translations: Record<Language, Translations> = {
       TTS_GENERATING: "Đang tạo giọng Việt",
       SUBTITLE_BUILDING: "Đang tạo phụ đề",
       VIDEO_MERGING: "Đang ghép video",
+      VIDEO_BURNING: "Đang gắn phụ đề vào video",
     },
     settings: {
       eyebrow: "CÀI ĐẶT",
@@ -536,6 +537,7 @@ export const translations: Record<Language, Translations> = {
       TTS_GENERATING: "Generating Vietnamese voice",
       SUBTITLE_BUILDING: "Building subtitles",
       VIDEO_MERGING: "Merging video",
+      VIDEO_BURNING: "Putting subtitles into the video",
     },
     settings: {
       eyebrow: "SETTINGS",

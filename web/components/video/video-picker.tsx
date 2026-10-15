@@ -3,24 +3,23 @@ import { apiFetch } from "@audio/ui";
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n/language-context";
 import { audioDuration } from "@/lib/shared/format";
-import SubtitleOptions, { defaultSubtitle, subtitleValid, type SubtitleSettings } from "@/components/video/subtitle-options";
 
 /** One clip as the local API checked it (worker/audio_translate/video/merge.py probe); `error` when it cannot be used. */
 export type VideoClip = { path: string; name: string; error?: string; duration_ms?: number; width?: number; height?: number; fps?: number; codec?: string; size?: number };
-/** burn: draw the subtitles into the picture (re-encodes the whole video); it only counts once confirmed. */
-export type VideoChoice = { files: VideoClip[]; resolution: string; quality: string; burn: boolean; burnConfirmed: boolean; subtitle: SubtitleSettings };
-type Estimate = { files: VideoClip[]; error?: string; resolutions?: string[]; resolution?: string; plan?: { mode: "copy" | "encode"; repeats: number | null; size_bytes: number | null; bytes_per_hour: number; voice_ms?: number | null; burn?: boolean; seconds_per_voice_second?: number | null };
+/** burn: after the plain video, also make a second one with the subtitles drawn into the picture (the BURN step; re-encodes the whole video). The tick is the choice. */
+export type VideoChoice = { files: VideoClip[]; resolution: string; quality: string; burn: boolean };
+type Estimate = { files: VideoClip[]; error?: string; resolutions?: string[]; resolution?: string; plan?: { mode: "copy" | "encode"; repeats: number | null; size_bytes: number | null; bytes_per_hour: number; voice_ms?: number | null };
+  burn_plan?: { size_bytes: number | null; bytes_per_hour: number; voice_ms?: number | null; seconds_per_voice_second?: number | null } | null;
   free_bytes?: number; needed_bytes?: number | null; enough?: boolean | null };
 
-export const emptyVideo = (): VideoChoice => ({ files: [], resolution: "keep", quality: "high", burn: false, burnConfirmed: false, subtitle: defaultSubtitle() });
+export const emptyVideo = (): VideoChoice => ({ files: [], resolution: "keep", quality: "high", burn: false });
 /** What the API receives: only the paths and the choices (the clips are checked again on the server). */
 export const videoPayload = (choice: VideoChoice) => choice.files.length ? { files: choice.files.map(f => ({ path: f.path })), resolution: choice.resolution, quality: choice.quality,
-  ...(choice.burn ? { burn: true, burn_confirmed: choice.burnConfirmed, subtitle: choice.subtitle } : {}) } : undefined;
-export const videoReady = (choice: VideoChoice) => choice.files.length > 0 && choice.files.every(f => !f.error) && (!choice.burn || (choice.burnConfirmed && subtitleValid(choice.subtitle)));
+  ...(choice.burn ? { burn: true } : {}) } : undefined;
+export const videoReady = (choice: VideoChoice) => choice.files.length > 0 && choice.files.every(f => !f.error);
 /** The saved settings of a run, as a choice the picker can show. */
-export const videoFromJob = (video?: { files?: VideoClip[]; resolution?: string; quality?: string; burn?: boolean; subtitle?: Partial<SubtitleSettings> } | null): VideoChoice =>
-  video?.files?.length ? { files: video.files, resolution: video.resolution || "keep", quality: video.quality || "high", burn: !!video.burn, burnConfirmed: !!video.burn,
-    subtitle: { ...defaultSubtitle(), ...(video.subtitle || {}) } } : emptyVideo();
+export const videoFromJob = (video?: { files?: VideoClip[]; resolution?: string; quality?: string; burn?: boolean } | null): VideoChoice =>
+  video?.files?.length ? { files: video.files, resolution: video.resolution || "keep", quality: video.quality || "high", burn: !!video.burn } : emptyVideo();
 
 const minutes = (seconds: number) => seconds < 90 ? `${Math.max(1, Math.round(seconds))} s` : `${Math.round(seconds / 60)} min`;
 
@@ -83,6 +82,7 @@ export default function VideoPicker({ value, onChange, voiceJob, disabled }: { v
   };
   const remove = (index: number) => onChange({ ...value, files: value.files.filter((_, i) => i !== index) });
   const plan = estimate?.plan;
+  const burn = value.burn ? estimate?.burn_plan : null;
   const resolutions = estimate?.resolutions || ["keep"];
   return <section className="video-picker" aria-label={tr("videoTitle")}>
     <div className="video-picker-head">
@@ -110,37 +110,34 @@ export default function VideoPicker({ value, onChange, voiceJob, disabled }: { v
       </select></label>}
     </div>}
     {value.files.length > 0 && <div className="video-burn">
-      <label className="auto-tts-toggle"><input type="checkbox" checked={value.burn} disabled={disabled} onChange={e => onChange({ ...value, burn: e.target.checked, burnConfirmed: false })} />
+      <label className="auto-tts-toggle"><input type="checkbox" checked={value.burn} disabled={disabled} onChange={e => onChange({ ...value, burn: e.target.checked })} />
         <span>{tr("burnLabel")}</span><small>{tr("burnHelp")}</small></label>
-      {value.burn && <>
-        <p className="alert" role="note">{plan?.seconds_per_voice_second && plan.voice_ms ? tr("burnWarnTime", { time: minutes(plan.voice_ms / 1000 * plan.seconds_per_voice_second) }) : tr("burnWarn", { slow: plan?.seconds_per_voice_second ? Math.round(plan.seconds_per_voice_second * 60) : 8 })}</p>
-        <label className="auto-tts-toggle"><input type="checkbox" checked={value.burnConfirmed} disabled={disabled} onChange={e => onChange({ ...value, burnConfirmed: e.target.checked })} /><span>{tr("burnConfirm")}</span></label>
-        <SubtitleOptions value={value.subtitle} onChange={subtitle => onChange({ ...value, subtitle })} disabled={disabled} />
-      </>}
+      {value.burn && <p className="alert" role="note">{burn?.seconds_per_voice_second && burn.voice_ms ? tr("burnWarnTime", { time: minutes(burn.voice_ms / 1000 * burn.seconds_per_voice_second) }) : tr("burnWarn", { slow: burn?.seconds_per_voice_second ? Math.round(burn.seconds_per_voice_second * 60) : 8 })}</p>}
     </div>}
     {plan && <p className="video-estimate" role="status">
       {plan.size_bytes != null ? tr("videoSize", { size: gigabytes(plan.size_bytes), free: gigabytes(estimate?.free_bytes || 0) }) : tr("videoSizePerHour", { size: gigabytes(plan.bytes_per_hour), free: gigabytes(estimate?.free_bytes || 0) })}
-      {" · "}{tr(plan.mode === "copy" ? "videoCopy" : value.burn ? "videoBurn" : "videoEncode")}
+      {" · "}{tr(plan.mode === "copy" ? "videoCopy" : "videoEncode")}
       {plan.repeats != null && <>{" · "}{plan.repeats > 1 ? tr("videoRepeats", { count: plan.repeats }) : tr("videoCut")}</>}
     </p>}
+    {burn && <p className="video-estimate" role="status">{tr("videoBurnPlan")}{burn.size_bytes != null ? ` · ${tr("videoBurnSize", { size: gigabytes(burn.size_bytes) })}` : ""}</p>}
     {estimate?.enough === false && <p className="alert" role="alert">{tr("videoDiskShort", { size: gigabytes(estimate.needed_bytes || 0) })}</p>}
     {note && <p role="status">{tr(note)}</p>}
   </section>;
 }
 
 /** The finished video of a run: a preview and the buttons to open it or its folder. */
-export function VideoResult({ id, scope, url }: { id: string; scope: "workflows" | "tools"; url: string }) {
+export function VideoResult({ id, scope, url, subtitled }: { id: string; scope: "workflows" | "tools"; url: string; subtitled?: boolean }) {
   const { tr } = useLanguage();
   const [note, setNote] = useState("");
   async function open(target: "video" | "folder") {
     setNote("");
     try {
-      const response = await apiFetch("/api/video/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, scope, target }) });
+      const response = await apiFetch("/api/video/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, scope, target: subtitled ? `subtitled${target === "folder" ? "-folder" : ""}` : target }) });
       if (!response.ok) throw new Error((await response.json()).error);
     } catch (error) { setNote(error instanceof Error ? error.message : "VIDEO_NOT_READY"); }
   }
   return <div className="video-result">
-    <video controls preload="metadata" src={url} aria-label={tr("VIDEO_MP4")} />
+    <video controls preload="metadata" src={url} aria-label={tr(subtitled ? "VIDEO_SUB_MP4" : "VIDEO_MP4")} />
     <div className="video-result-actions">
       <button type="button" className="action-button" onClick={() => void open("video")}>{tr("videoOpen")}</button>
       <button type="button" className="text-button" onClick={() => void open("folder")}>{tr("videoOpenFolder")}</button>

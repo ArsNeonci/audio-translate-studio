@@ -11,8 +11,9 @@ The cost is kept to the length of the clips, not of the voice:
     quality), and that base is then looped with `-c:v copy` the same way.
 The voice is encoded to AAC 128 kbit/s. The result is an MP4 with the index at the front, so it plays while it is still loading.
 
-Burning the Vietnamese subtitles into the picture (`burn`, chosen with a confirmation) cannot copy the picture: the final pass encodes the
-whole length of the voice (measured 16 to 36 times slower than the copy), with the .srt of video/subtitles.py drawn by libass.
+Burning the Vietnamese subtitles into the picture is a separate step (BURN, `burn()` below, chosen by a tick) that runs after this merge, on
+the finished video: it cannot copy the picture, so it encodes the whole length of the voice (measured 16 to 36 times slower than the copy), with
+the .srt of video/subtitles.py drawn by libass. The plain video is always made first and kept; the subtitled one is a second file.
 """
 import json
 import math
@@ -39,9 +40,10 @@ def subtitle_style(width, height):
     on a portrait one the same text size is taken from the short side, a little smaller, so a line does not fill the narrow width."""
     size = 14 * min(width, height) / height * (0.75 if height > width else 1)
     return f'FontName=Arial,FontSize={size:.1f},Outline=1.5,Shadow=0,MarginV=12,Alignment=2'
-SUBTITLE_FILE = 'working/video-sub.srt'
+SUBTITLE_FILE = 'working/burn-sub.srt'
 COPYABLE_CODECS = {'h264', 'hevc', 'av1', 'vp9', 'mpeg4'}
 OUTPUT = 'video.vi.mp4'
+BURN_OUTPUT = 'video.vi.sub.mp4'
 BASE = 'working/video-base.mp4.tmp'
 NO_WINDOW = 0x08000000 if os.name == 'nt' else 0
 
@@ -112,14 +114,12 @@ def validate(config):
     if resolution not in RESOLUTIONS: raise ValueError('Invalid video resolution')
     if quality not in QUALITIES: raise ValueError('Invalid video quality')
     burn = config.get('burn', False)
-    if not isinstance(burn, bool) or not isinstance(config.get('burn_confirmed', False), bool): raise ValueError('Invalid video settings')
-    if burn and config.get('burn_confirmed') is not True: raise ValueError('Burning subtitles into the picture needs the confirmation')
+    if not isinstance(burn, bool): raise ValueError('Invalid video settings')
     clips = [probe(p) for p in paths]
     allowed = resolutions(clips)
     if resolution not in allowed: raise ValueError('That resolution is higher than the videos')
-    from audio_translate.video.subtitles import validate as validate_subtitle
     result = {'files': clips, 'resolution': resolution, 'quality': quality}
-    if burn: result.update(burn=True, burn_confirmed=True, subtitle=validate_subtitle(config.get('subtitle')))
+    if burn: result['burn'] = True   # the BURN step (subtitles drawn into a second video) follows this merge
     return result
 
 
@@ -191,11 +191,16 @@ def voice_path(job_dir, job):
 
 def published_voice(job_id):
     """The AVAILABLE published voice of a run (workflow or tool 4), or None."""
+    return published_file(job_id, 'VOICE_WAV')
+
+
+def published_file(job_id, kind):
+    """The AVAILABLE published file of that type (VOICE_WAV, VIDEO_MP4, ...) of a run, or None."""
     from audio_translate.core.storage import read_json
     from audio_translate.workflow import results
     try:
         directory = results.destination(job_id)
-        item = next((f for f in read_json(directory / 'outputs.json')['files'] if f.get('type') == 'VOICE_WAV' and f.get('status') == 'AVAILABLE'), None)
+        item = next((f for f in read_json(directory / 'outputs.json')['files'] if f.get('type') == kind and f.get('status') == 'AVAILABLE'), None)
     except (OSError, ValueError, KeyError):
         return None
     if not item: return None
@@ -244,7 +249,7 @@ def _ffmpeg(args, job_dir, total_ms, report, cwd=None):
 
 
 def merge(job_dir):
-    """The VIDEO stage of a run."""
+    """The VIDEO stage of a run: the voice over the clips, picture copied whenever it can be (the BURN stage, if chosen, comes after)."""
     from audio_translate.core.storage import progress, read_json, update_job
     job_dir = Path(job_dir)
     job = read_json(job_dir / 'job.json')
@@ -257,19 +262,12 @@ def merge(job_dir):
     for item in config.get('files') or []:
         clips.append(probe(item['path']))
     if not clips: raise VideoError('VIDEO_MISSING')
-    burn = config.get('burn') is True
-    estimate = plan(clips, config.get('resolution', 'keep'), config.get('quality', 'high'), length, burn)
+    estimate = plan(clips, config.get('resolution', 'keep'), config.get('quality', 'high'), length)
     from audio_translate.workflow import results
     target_dir = results.destination(job['id'])
     if disk_free(target_dir) < needed_bytes(estimate) or disk_free(job_dir) < needed_bytes(estimate):
         raise OSError(28, f'No space left on device: the video needs about {needed_bytes(estimate) // 1024 ** 2} MB')
     update_job(job_dir, video={**config, 'files': clips}, video_plan=estimate)
-    subtitle_file = job_dir / SUBTITLE_FILE
-    if burn:
-        # The .srt of this voice (its own run, or the run tool 5 points at), with the settings chosen for the video.
-        from audio_translate.video import subtitles
-        manifest, wav_dir, total = subtitles.voice_inputs(job_dir, job)
-        subtitles.write(subtitle_file, manifest, wav_dir, subtitles.validate(config.get('subtitle')), total)
     share = 0.0
     def report(phase_from, phase_to):
         return lambda fraction: progress(job_dir, 'video', 'VIDEO_MERGING', round((phase_from + (phase_to - phase_from) * fraction) * 1000), 1000)
@@ -278,7 +276,7 @@ def merge(job_dir):
     base = job_dir / BASE
     temp = job_dir / (OUTPUT + '.tmp')
     try:
-        if (estimate['mode'] == 'copy' or (burn and config.get('resolution', 'keep') == 'keep')) and len(clips) == 1:
+        if estimate['mode'] == 'copy' and len(clips) == 1:
             source = clips[0]['path']
         elif estimate['mode'] == 'copy':
             # Identical clips: joined without re-encoding.
@@ -290,7 +288,7 @@ def merge(job_dir):
             source = str(base)
         else:
             # Different clips, or another resolution or quality: encode them once, only as much as the voice needs.
-            share = min(0.8, max(0.3, estimate['clips_ms'] / (estimate['clips_ms'] + length / 8))) if not burn else 0.1
+            share = min(0.8, max(0.3, estimate['clips_ms'] / (estimate['clips_ms'] + length / 8)))
             kbps = estimate['video_kbps']
             inputs = [arg for c in clips for arg in ('-i', c['path'])]
             _ffmpeg([*inputs, '-filter_complex', _filters(clips, estimate['width'], estimate['height'], estimate['fps']), '-map', '[out]', '-an',
@@ -298,22 +296,51 @@ def merge(job_dir):
                      '-bufsize', f'{kbps * 2}k', '-g', str(int(round(estimate['fps'] * 2))), '-pix_fmt', 'yuv420p', '-threads', threads, '-f', 'mp4', str(base)],
                     job_dir, min(estimate['clips_ms'], length), report(0, share))
             source = str(base)
-        if burn:
-            kbps = estimate['video_kbps']
-            # ffmpeg runs in the working folder, so the filter names the .srt without a drive letter (a colon would end the filter's argument).
-            picture = ['-vf', f"subtitles={subtitle_file.name}:force_style='{subtitle_style(estimate['width'], estimate['height'])}'", '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', f'{kbps}k',
-                       '-maxrate', f'{int(kbps * 1.5)}k', '-bufsize', f'{kbps * 2}k', '-g', str(int(round(estimate['fps'] * 2))), '-pix_fmt', 'yuv420p', '-threads', threads]
-        else:
-            picture = ['-c:v', 'copy']
-        _ffmpeg(['-stream_loop', '-1', '-i', source, '-i', str(voice), '-map', '0:v:0', '-map', '1:a:0', *picture, '-c:a', 'aac', '-b:a', f'{AUDIO_KBPS}k',
-                 '-t', f'{length / 1000:.3f}', '-movflags', '+faststart', '-f', 'mp4', str(temp)], job_dir, length, report(share, 1.0),
-                cwd=str(subtitle_file.parent) if burn else None)
+        _ffmpeg(['-stream_loop', '-1', '-i', source, '-i', str(voice), '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', f'{AUDIO_KBPS}k',
+                 '-t', f'{length / 1000:.3f}', '-movflags', '+faststart', '-f', 'mp4', str(temp)], job_dir, length, report(share, 1.0))
         os.replace(temp, job_dir / OUTPUT)
     finally:
         temp.unlink(missing_ok=True); base.unlink(missing_ok=True)
         (job_dir / 'working' / 'video-list.txt.tmp').unlink(missing_ok=True)
-        subtitle_file.unlink(missing_ok=True)
     progress(job_dir, 'video', 'VIDEO_MERGING', 1000, 1000)
+
+
+def burn(job_dir):
+    """The BURN stage: the subtitles drawn into a second copy of the finished video (video.vi.sub.mp4). The plain video is read where it was
+    published and is not touched; the sound is copied, only the picture is encoded (libx264), the whole length of the voice."""
+    from audio_translate.core.storage import progress, read_json, update_job
+    job_dir = Path(job_dir)
+    job = read_json(job_dir / 'job.json')
+    source = published_file(job['id'], 'VIDEO_MP4')
+    if not source: raise VideoError('VIDEO_RESULT_MISSING')
+    clip = probe(source)
+    length = clip['duration_ms']
+    estimate = plan([clip], 'keep', (job.get('video') or {}).get('quality', 'high'), length, True)
+    from audio_translate.workflow import results
+    target_dir = results.destination(job['id'])
+    if disk_free(target_dir) < needed_bytes(estimate) or disk_free(job_dir) < needed_bytes(estimate):
+        raise OSError(28, f'No space left on device: the subtitled video needs about {needed_bytes(estimate) // 1024 ** 2} MB')
+    update_job(job_dir, burn_plan=estimate)
+    # The .srt of this voice (its own run, or the run the tool points at), with the subtitle settings of this run.
+    from audio_translate.video import subtitles
+    subtitle_file = job_dir / SUBTITLE_FILE
+    manifest, wav_dir, total = subtitles.voice_inputs(job_dir, job)
+    subtitles.write(subtitle_file, manifest, wav_dir, subtitles.validate(job.get('subtitle')), total)
+    progress(job_dir, 'burn', 'VIDEO_BURNING', 0, 1000)
+    threads = str(max(1, (os.cpu_count() or 2) // 2))
+    kbps = estimate['video_kbps']
+    temp = job_dir / (BURN_OUTPUT + '.tmp')
+    try:
+        # ffmpeg runs in the working folder, so the filter names the .srt without a drive letter (a colon would end the filter's argument).
+        _ffmpeg(['-i', str(source), '-map', '0:v:0', '-map', '0:a:0', '-vf', f"subtitles={subtitle_file.name}:force_style='{subtitle_style(estimate['width'], estimate['height'])}'",
+                 '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', f'{kbps}k', '-maxrate', f'{int(kbps * 1.5)}k', '-bufsize', f'{kbps * 2}k',
+                 '-g', str(int(round(estimate['fps'] * 2))), '-pix_fmt', 'yuv420p', '-threads', threads, '-c:a', 'copy', '-movflags', '+faststart', '-f', 'mp4', str(temp)],
+                job_dir, length, lambda fraction: progress(job_dir, 'burn', 'VIDEO_BURNING', round(fraction * 1000), 1000), cwd=str(subtitle_file.parent))
+        os.replace(temp, job_dir / BURN_OUTPUT)
+    finally:
+        temp.unlink(missing_ok=True)
+        subtitle_file.unlink(missing_ok=True)
+    progress(job_dir, 'burn', 'VIDEO_BURNING', 1000, 1000)
 
 
 def main():

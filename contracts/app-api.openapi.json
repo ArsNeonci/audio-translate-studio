@@ -254,13 +254,13 @@
         "415": {"description": "Not JSON", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
     "/api/video/estimate": {
-      "post": {"summary": "Size estimate and disk check (JSON {paths, resolution, quality, voice_job?, burn?}); without a voice the size is per hour; burn (subtitles drawn into the picture) forces the re-encode and adds seconds_per_voice_second to the plan", "x-local": true, "responses": {
+      "post": {"summary": "Size estimate and disk check (JSON {paths, resolution, quality, voice_job?, burn?}); without a voice the size is per hour; burn (the second video with the subtitles drawn into the picture, made by the BURN step after the plain merge) adds burn_plan with seconds_per_voice_second and its size, and counts both files in needed_bytes", "x-local": true, "responses": {
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VideoEstimate"}}}},
         "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
         "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
     "/api/video/voices": {
-      "get": {"summary": "Finished voices made by this app (workflows and tool 4) that tool 5 can lay over videos", "responses": {
+      "get": {"summary": "Finished voices made by this app (workflows and tool 4) that tool 6 can lay over videos", "responses": {
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"type": "object", "required": ["voices"], "properties": {"voices": {"type": "array", "items": {
           "type": "object", "required": ["job_id", "scope", "name"], "properties": {"job_id": {"type": "string"}, "scope": {"enum": ["workflows", "tools"]},
           "workflow_no": {"type": ["integer", "null"]}, "name": {"type": "string"}, "created_at": {"type": "string"}, "video": {"type": "boolean"}}}}}}}}}}}
@@ -332,7 +332,7 @@
       "Uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
       "Timestamp": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T"},
       "JobStatus": {"type": "string", "pattern": "^[A-Z_]+$"},
-      "StepName": {"enum": ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS", "SUBTITLE", "VIDEO"]},
+      "StepName": {"enum": ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS", "SUBTITLE", "VIDEO", "BURN"]},
       "StepState": {"type": "object", "required": ["state"], "properties": {"state": {"type": "string", "pattern": "^[A-Z_]+$"}, "progress": {"type": ["integer", "number"]}, "retry_count": {"type": "integer"}, "attempt": {"type": "integer"}}},
       "Steps": {"type": "object", "required": ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS"], "additionalProperties": {"$ref": "#/components/schemas/StepState"}},
       "Artifacts": {"type": "object", "required": ["source", "zh", "vi", "moderated", "voice"], "additionalProperties": {"type": "boolean"}},

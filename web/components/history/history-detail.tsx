@@ -62,14 +62,14 @@ export default function HistoryDetail({id,scope="history"}: {id:string;scope?:"h
     {job && <><div className="history-heading"><span className="eyebrow">{tr("SAVED JOB ·")} {tr(job.status)}</span><h1>#{runNumber(job.workflow_no)} · {job.name}</h1><small>{id}</small><p>{job.url}</p></div>
       <PipelineStatus job={job} />
       <StepErrors job={job} />
-      {["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS", "SUBTITLE", "VIDEO"].map(step => {
+      {["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS", "SUBTITLE", "VIDEO", "BURN"].map(step => {
         const files = job.files.filter(file => file.step === step);
         if (!files.length) return null;
         return <section className="history-stage" key={step}><h2>{tr(step)}</h2><div className="artifact-grid">{files.map(file => {
           const url = apiUrl(`/api/${scope}/${id}/files/${file.id}`);
           const audio = /\.(wav|m4a|mp4|mp3|webm|ogg|opus|flac|aac)$/.test(file.path);
           return <article className="artifact-card ready" key={file.id}><span className="artifact-state">{tr(file.status)} · {size(file.size)}</span><div className="artifact-file-heading"><h4>{tr(labels[file.type] || file.type)}</h4>{file.status==='AVAILABLE'&&<a className="rule-icon file-download" href={scope==='tools'?`${url}?download=1`:`${url}/download`} title={tr('Download ↓')} aria-label={`${tr('Download ↓')} ${file.path}`}><DownloadIcon/></a>}</div>
-            {file.status!=="AVAILABLE"?<p>{tr(file.status)} · {tr("Kết quả cần được tạo lại.")}</p>:file.type==="VIDEO_MP4"?<VideoResult id={id} scope={scope==="tools"?"tools":"workflows"} url={url} />:audio ? (license.allowed ? <AudioPlayer src={url} label={tr(labels[file.type] || file.type)} /> : <p>{tr("License cần ACTIVE để phát audio.")}</p>) : <button className="text-button" disabled={!license.allowed} onClick={() => setSelected(selected?.id === file.id ? null : file)}>{selected?.id === file.id ? tr("Close view") : tr("View")}</button>}
+            {file.status!=="AVAILABLE"?<p>{tr(file.status)} · {tr("Kết quả cần được tạo lại.")}</p>:file.type==="VIDEO_MP4"||file.type==="VIDEO_SUB_MP4"?<VideoResult id={id} scope={scope==="tools"?"tools":"workflows"} url={url} subtitled={file.type==="VIDEO_SUB_MP4"} />:audio ? (license.allowed ? <AudioPlayer src={url} label={tr(labels[file.type] || file.type)} /> : <p>{tr("License cần ACTIVE để phát audio.")}</p>) : <button className="text-button" disabled={!license.allowed} onClick={() => setSelected(selected?.id === file.id ? null : file)}>{selected?.id === file.id ? tr("Close view") : tr("View")}</button>}
             {file.type==="SUBTITLE_SRT"&&file.status==="AVAILABLE"&&<small>{tr("subtitleYoutube")}</small>}
             <small>{file.path}</small></article>;
         })}</div></section>;

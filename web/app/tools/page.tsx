@@ -14,17 +14,17 @@ import VideoPicker, { emptyVideo, videoPayload, videoReady, type VideoChoice } f
 import SubtitleOptions, { defaultSubtitle, subtitleValid, type SubtitleSettings } from "@/components/video/subtitle-options";
 import { useEffect } from "react";
 import { runNumber } from "@/lib/shared/format";
-const tools = [{ id: "transcription", label: "Chinese Audio → Chinese Text" }, { id: "translation", label: "Chinese Text → Vietnamese Text" }, { id: "moderation", label: "Vietnamese Text → Moderated Vietnamese" }, { id: "tts", label: "Vietnamese Text → Vietnamese Voice" }, { id: "video", label: "Vietnamese Voice + Video → Video" }, { id: "subtitle", label: "Vietnamese Voice → Subtitles (.srt)" }];
+const tools = [{ id: "transcription", label: "Chinese Audio → Chinese Text" }, { id: "translation", label: "Chinese Text → Vietnamese Text" }, { id: "moderation", label: "Vietnamese Text → Moderated Vietnamese" }, { id: "tts", label: "Vietnamese Text → Vietnamese Voice" }, { id: "subtitle", label: "Vietnamese Voice → Subtitles (.srt)" }, { id: "video", label: "Vietnamese Voice + Video → Video" }];
 type Voice = { job_id: string; scope: "workflows" | "tools"; workflow_no: number | null; name: string };
 
-/** The finished voices made by this app that tools 5 and 6 can use (workflows and tool 4). */
+/** The finished voices made by this app that tools 5 (subtitles) and 6 (video) can use (workflows and tool 4). */
 function useVoices() {
   const [voices, setVoices] = useState<Voice[]>([]);
   useEffect(() => { void apiFetch("/api/video/voices", { cache: "no-store" }).then(r => r.json()).then(d => setVoices(d.voices || [])).catch(() => undefined); }, []);
   return voices;
 }
 
-/** Tool 6: the subtitles (.srt) of a voice made by this app, with the cue settings. */
+/** Tool 5: the subtitles (.srt) of a voice made by this app, with the cue settings. */
 function SubtitleTool({ allowed, onQueued, onMessage }: { allowed: boolean; onQueued: () => void; onMessage: (text: string) => void }) {
   const { tr } = useLanguage();
   const voices = useVoices();
@@ -48,15 +48,15 @@ function SubtitleTool({ allowed, onQueued, onMessage }: { allowed: boolean; onQu
   </form>;
 }
 
-/** Tool 5: a voice made by this app (a workflow or tool 4) and the person's clips. */
+/** Tool 6: a voice made by this app (a workflow or tool 4) and the person's clips; the tick adds the subtitled video as a second step. */
 function VideoTool({ allowed, onQueued, onMessage }: { allowed: boolean; onQueued: () => void; onMessage: (text: string) => void }) {
   const { tr } = useLanguage();
   const voices = useVoices();
-  const [voiceJob, setVoiceJob] = useState(""), [video, setVideo] = useState<VideoChoice>(emptyVideo), [busy, setBusy] = useState(false);
+  const [voiceJob, setVoiceJob] = useState(""), [video, setVideo] = useState<VideoChoice>(emptyVideo), [subtitle, setSubtitle] = useState<SubtitleSettings>(defaultSubtitle), [busy, setBusy] = useState(false);
   async function run(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); onMessage("");
     try {
-      const r = await apiFetch("/api/tools", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tool: "video", voice_job: voiceJob, video: videoPayload(video) }) });
+      const r = await apiFetch("/api/tools", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tool: "video", voice_job: voiceJob, video: videoPayload(video), ...(video.burn ? { subtitle } : {}) }) });
       const d = await r.json(); if (!r.ok) throw new Error(d.error);
       onMessage(tr("Tool run đã được thêm vào hàng đợi.")); setVideo(emptyVideo()); onQueued();
     } catch (error) { onMessage(error instanceof Error ? tr(error.message) : tr("Upload thất bại.")); } finally { setBusy(false); }
@@ -67,7 +67,8 @@ function VideoTool({ allowed, onQueued, onMessage }: { allowed: boolean; onQueue
       {voices.map(v => <option key={v.job_id} value={v.job_id}>{tr(v.scope === "tools" ? "Tool #" : "Workflow #")}{runNumber(v.workflow_no ?? undefined)} · {v.name}</option>)}
     </select></label>
     <VideoPicker value={video} onChange={setVideo} voiceJob={voiceJob || null} disabled={busy} />
-    <button disabled={busy || !allowed || !voiceJob || !videoReady(video)}>{tr("videoRun")}</button>
+    {video.burn && <SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} />}
+    <button disabled={busy || !allowed || !voiceJob || !videoReady(video) || (video.burn && !subtitleValid(subtitle))}>{tr("videoRun")}</button>
   </form>;
 }
 export default function Tools() {

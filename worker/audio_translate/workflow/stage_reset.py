@@ -16,6 +16,7 @@ def reset(job_dir, step):
         'MODERATION':['transcript.vi.moderated.*','moderation-result*','working/moderation.done.json','working/replacement-rules.snapshot.json'],
         'SUBTITLE':['voice.vi.srt*'],
         'VIDEO':['video.vi.mp4*','working/video-*','working/video-open.pending'],
+        'BURN':['video.vi.sub.mp4*','working/burn-*'],
         'TTS':['voice/*','voice.vi.wav*','working/voice-checkpoints/*','working/tts.done.json','working/tts-runtime.json','working/tts-worker-*.log','working/tts-calibration/*','working/tts-remote-state.json','working/tts-remote-progress.json'],
     }
     job_file=job_dir/'job.json'

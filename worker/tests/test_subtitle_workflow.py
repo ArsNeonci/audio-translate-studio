@@ -1,5 +1,5 @@
-"""Subtitles inside runs: every new workflow ends with the .srt of its voice, tool 6 makes one from a finished voice, Reprocess adds or redoes it
-(an older workflow gains the step), and burning the subtitles into the picture needs the confirmation and really draws them."""
+"""Subtitles inside runs: every new workflow ends with the .srt of its voice, tool 5 makes one from a finished voice, Reprocess adds or redoes it
+(an older workflow gains the step), and the subtitled video is a separate step (BURN) that only runs when it was ticked and really draws them."""
 import hashlib
 import json
 from pathlib import Path
@@ -62,7 +62,7 @@ class SubtitleWorkflowTests(unittest.TestCase):
         self.assertEqual(read_json(od / 'job.json')['status'], 'COMPLETED')
         self.assertIn('SUBTITLE_SRT', [f['type'] for f in read_json(results.destination(od.name) / 'outputs.json')['files'] if f['status'] == 'AVAILABLE'])
 
-    def test_tool_6_makes_the_srt_of_a_finished_voice_and_refuses_anything_else(self):
+    def test_tool_5_makes_the_srt_of_a_finished_voice_and_refuses_anything_else(self):
         job, d = self.finished()
         tool = manage.create(tool='subtitle', voice_job=job['id'], subtitle={'max_chars': 50})
         t = results.workspace(tool['id'])
@@ -88,26 +88,60 @@ class SubtitleWorkflowTests(unittest.TestCase):
         done = manage.review(job['id'], 'finish')
         self.assertEqual((done['status'], done['steps']['SUBTITLE']['state']), ('COMPLETED', 'SKIPPED'))
 
+    def frame(self, out, item, name):
+        target = Path(self.temp.name) / f'{name}.png'
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(out / item['path']), '-frames:v', '1', str(target)], check=True)
+        return hashlib.sha256(target.read_bytes()).hexdigest()
+
+    def files_of(self, run):
+        return {f['type']: f for f in read_json(results.destination(run['id']) / 'outputs.json')['files']}
+
     @unittest.skipUnless(FFMPEG, 'ffmpeg is not on PATH')
-    def test_burning_needs_the_confirmation_and_really_draws_the_text(self):
+    def test_the_subtitled_video_is_its_own_step_after_the_plain_video(self):
         job, d = self.finished()
         settings = self.video(1)
-        with self.assertRaises(ValueError): merge.validate({**settings, 'burn': True})                        # not confirmed
-        with self.assertRaises(ValueError): manage.create(tool='video', voice_job=job['id'], video={**settings, 'burn': True})
+        with self.assertRaises(ValueError): merge.validate({**settings, 'burn': 'yes'})                       # the tick is a plain true/false
         plain = manage.create(tool='video', voice_job=job['id'], video=settings)
-        burned = manage.create(tool='video', voice_job=job['id'], video={**settings, 'burn': True, 'burn_confirmed': True, 'subtitle': {'max_chars': 40}})
-        frames = {}
-        for name, run in (('plain', plain), ('burned', burned)):
-            w = results.workspace(run['id']); self.run_all(w)
-            out = results.destination(w.name)
-            item = next(f for f in read_json(out / 'outputs.json')['files'] if f['type'] == 'VIDEO_MP4')
-            target = Path(self.temp.name) / f'{name}.png'
-            subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(out / item['path']), '-frames:v', '1', str(target)], check=True)
-            frames[name] = hashlib.sha256(target.read_bytes()).hexdigest()
-        self.assertEqual(read_json(results.workspace(burned['id']) / 'job.json')['video_plan']['mode'], 'encode')   # the picture was re-encoded
-        self.assertEqual(read_json(results.workspace(plain['id']) / 'job.json')['video_plan']['mode'], 'copy')
-        self.assertNotEqual(frames['plain'], frames['burned'])
-        self.assertFalse((results.workspace(burned['id']) / 'working' / 'video-sub.srt').exists())                  # the helper file is removed
+        burned = manage.create(tool='video', voice_job=job['id'], video={**settings, 'burn': True}, subtitle={'max_chars': 40})
+        self.assertEqual((plain['tool_steps'], burned['tool_steps']), (['VIDEO'], ['VIDEO', 'BURN']))
+        self.assertNotIn('subtitle', plain)
+        self.assertEqual(burned['subtitle']['max_chars'], 40)
+        self.assertEqual(self.run_all(results.workspace(plain['id'])), ['video'])
+        self.assertEqual(self.run_all(results.workspace(burned['id'])), ['video', 'burn'])
+        w = results.workspace(burned['id'])
+        saved = read_json(w / 'job.json')
+        self.assertEqual((saved['status'], saved['steps']['BURN']['state'], saved['progress']), ('COMPLETED', 'COMPLETED', 100))
+        self.assertEqual(saved['video_plan']['mode'], 'copy')                      # the plain video is still the fast copy
+        self.assertEqual(saved['burn_plan']['mode'], 'encode')                     # only the second one re-encodes the picture
+        files = self.files_of(burned)
+        self.assertEqual((files['VIDEO_MP4']['status'], files['VIDEO_SUB_MP4']['status'], files['VIDEO_SUB_MP4']['step']), ('AVAILABLE', 'AVAILABLE', 'BURN'))
+        out = results.destination(burned['id'])
+        self.assertNotEqual(self.frame(out, files['VIDEO_MP4'], 'plain'), self.frame(out, files['VIDEO_SUB_MP4'], 'burned'))
+        self.assertFalse((w / 'working' / 'burn-sub.srt').exists())                # the helper file is removed
+        self.assertFalse((w / 'video.vi.sub.mp4').exists())                        # moved into the results
+        self.assertNotIn('VIDEO_SUB_MP4', self.files_of(plain))
+
+    @unittest.skipUnless(FFMPEG, 'ffmpeg is not on PATH')
+    def test_reprocess_makes_the_subtitled_video_only_when_ticked(self):
+        job, d = self.finished(video=self.video(1))
+        self.assertNotIn('BURN', read_json(d / 'job.json')['steps'])
+        merged = self.files_of(job)['VIDEO_MP4']['sha256']
+        manage.reprocess(job['id'], 'SUBTITLE', subtitle={'max_chars': 40})                  # not ticked: the .srt only
+        self.assertEqual(self.run_all(d), ['subtitle'])
+        self.assertNotIn('VIDEO_SUB_MP4', self.files_of(job))
+        manage.reprocess(job['id'], 'SUBTITLE', subtitle={'max_chars': 40}, burn=True)       # ticked: the .srt, then the subtitled video (no new merge)
+        self.assertEqual(self.run_all(d), ['subtitle', 'burn'])
+        files = self.files_of(job)
+        self.assertEqual((files['VIDEO_MP4']['sha256'], files['VIDEO_SUB_MP4']['status']), (merged, 'AVAILABLE'))
+        manage.reprocess(job['id'], 'BURN', subtitle={'max_chars': 25})                      # the stage on its own
+        self.assertEqual(self.run_all(d), ['burn'])
+        self.assertEqual(read_json(d / 'job.json')['subtitle']['max_chars'], 25)
+        self.assertEqual(self.files_of(job)['VIDEO_SUB_MP4']['status'], 'AVAILABLE')
+        manage.reprocess(job['id'], 'VIDEO', video=self.video(1))                            # a new merge without the tick drops the second step
+        self.assertEqual(self.run_all(d), ['video'])
+        self.assertEqual(self.files_of(job)['VIDEO_SUB_MP4']['status'], 'STALE')
+        with self.assertRaises(ValueError): manage.reprocess(self.finished()[0]['id'], 'SUBTITLE', burn=True)     # no video chosen: nothing to burn into
+        with self.assertRaises(ValueError): manage.reprocess(self.finished()[0]['id'], 'BURN')
 
 
 if __name__ == '__main__':

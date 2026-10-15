@@ -9,19 +9,22 @@ from pathlib import Path
 from audio_translate.core.storage import atomic_json, read_json, update_job
 
 STEPS = ['DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS']
-# Two optional steps follow Voice generation. SUBTITLE (the .srt of the voice) is part of every workflow created from 3.1.0 on (its settings are
-# stored in job['subtitle']), of tool 6, and of an older workflow once Reprocess asks for it. VIDEO (video merge) only exists for runs that have
-# videos (a workflow with videos chosen, or tool 5). A run without the key never shows the step.
+# Three optional steps follow Voice generation. SUBTITLE (the .srt of the voice) is part of every workflow created from 3.1.0 on (its settings are
+# stored in job['subtitle']), of tool 5, and of an older workflow once Reprocess asks for it. VIDEO (video merge) only exists for runs that have
+# videos (a workflow with videos chosen, or tool 6). BURN (the subtitles drawn into a second video) exists only when it was ticked
+# (job['video']['burn']) and always follows VIDEO. A run without the key never shows the step.
 SUBTITLE = 'SUBTITLE'
 VIDEO = 'VIDEO'
-OPTIONAL = (SUBTITLE, VIDEO)
+BURN = 'BURN'
+OPTIONAL = (SUBTITLE, VIDEO, BURN)
 ALL_STEPS = [*STEPS, *OPTIONAL]
 
 
 def effective_steps(job):
     """The steps this run goes through, in order."""
     if job.get('tool_steps'): return list(job['tool_steps'])
-    return [*STEPS, *(SUBTITLE,) * (job.get('subtitle') is not None), *(VIDEO,) * bool(job.get('video'))]
+    video = job.get('video')
+    return [*STEPS, *(SUBTITLE,) * (job.get('subtitle') is not None), *(VIDEO,) * bool(video), *(BURN,) * bool(video and video.get('burn'))]
 GUIDES = {
  'UNACTIVATED': ('Ứng dụng chưa kích hoạt.', 'License / Renewal', ['Mở License, copy Machine ID và gửi Admin.', 'Nhập token kích hoạt Admin cấp cho máy này.'], []),
  'EXPIRED': ('License đã hết hạn.', 'License / Renewal', ['Yêu cầu Admin cấp token gia hạn cho cùng máy.', 'Nhập token gia hạn theo đúng thứ tự. History và Download vẫn dùng được.'], []),
@@ -39,8 +42,9 @@ GUIDES = {
  'RATE_LIMIT': ('YouTube giới hạn truy cập.', 'Kết nối mạng/VPN/proxy', ['Chờ trước khi Retry Step.', 'Kiểm tra mạng và xác thực trong trình duyệt nếu YouTube yêu cầu.'], []),
  'VIDEO_MISSING': ('Không tìm thấy video đã chọn: file đã bị đổi tên, chuyển chỗ hoặc xóa.', 'Tạo lại → Ghép video', ['Đưa file về đúng chỗ cũ rồi bấm Retry Step.', 'Hoặc vào Tạo lại, chọn bước Ghép video, bấm Chọn lại video rồi chạy lại.'], []),
  'VIDEO_UNREADABLE': ('Không đọc được một video đã chọn (file hỏng hoặc không phải video).', 'Tạo lại → Ghép video', ['Mở thử file bằng trình phát video của Windows.', 'Vào Tạo lại, chọn bước Ghép video, bấm Chọn lại video và bỏ file lỗi.'], []),
+ 'VIDEO_RESULT_MISSING': ('Không còn video đã ghép để gắn phụ đề (kết quả Ghép video đã bị xóa hoặc chưa tạo xong).', 'Tạo lại → Ghép video', ['Tạo lại bước Ghép video của workflow này, rồi chạy lại Gắn phụ đề.'], []),
  'SUBTITLE_FAILED': ('Không tạo được phụ đề từ giọng đọc (danh sách câu và file giọng không khớp).', 'Tạo lại → Phụ đề', ['Tạo lại bước Tạo giọng của workflow này, rồi chạy lại Phụ đề.'], []),
- 'VOICE_MISSING': ('Không tìm thấy giọng đọc để ghép (kết quả giọng đọc đã bị xóa hoặc chưa tạo xong).', 'Kết quả bước Tạo giọng', ['Tạo lại giọng đọc của workflow này trước.', 'Với Công cụ 5: chọn một kết quả còn file giọng đọc.'], []),
+ 'VOICE_MISSING': ('Không tìm thấy giọng đọc để ghép (kết quả giọng đọc đã bị xóa hoặc chưa tạo xong).', 'Kết quả bước Tạo giọng', ['Tạo lại giọng đọc của workflow này trước.', 'Với Công cụ 5 và 6: chọn một kết quả còn file giọng đọc.'], []),
  'ENV_CONFIG': ('Biến môi trường hoặc giá trị cấu hình không hợp lệ.', '.env.local; .env.example; working/adapters.json; RESULTS_ROOT', ['Đối chiếu .env.example; kiểm tra giá trị batch/device/đường dẫn. RESULTS_ROOT phải tách biệt data/tmp và data/jobs.', 'Sửa .env.local rồi khởi động lại server. Nếu job đã chốt adapters.json, sửa đúng trường cấu hình của job trước retry.'], []),
 }
 

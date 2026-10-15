@@ -12,7 +12,7 @@ from audio_translate.core.errors import STEPS, effective_steps, initial_steps, r
 from audio_translate.core.control import now, cancel_run
 from audio_translate.workflow import results
 
-TOOLS = {'transcription': ['TRANSCRIPTION'], 'translation': ['TRANSLATION'], 'moderation': ['MODERATION'], 'tts': ['TTS'], 'video': ['VIDEO'], 'subtitle': ['SUBTITLE']}
+TOOLS = {'transcription': ['TRANSCRIPTION'], 'translation': ['TRANSLATION'], 'moderation': ['MODERATION'], 'tts': ['TTS'], 'video': ['VIDEO'], 'subtitle': ['SUBTITLE']}   # tool 5 = subtitle (.srt), tool 6 = video merge (+ BURN when ticked)
 
 def filename(number, original):
     if type(number) is not int or number < 1 or Path(original).name != original: raise ValueError('Invalid artifact name')
@@ -172,7 +172,7 @@ def review(job_id, decision, scope='workflows'):
             update_job(directory, status='QUEUED', review_approved=True, error=None)
         else:
             steps['TTS'].update(state='SKIPPED', progress=None)
-            for later in ('SUBTITLE', 'VIDEO'):
+            for later in ('SUBTITLE', 'VIDEO', 'BURN'):
                 if later in steps: steps[later].update(state='SKIPPED', progress=None)
             update_job(directory, status='COMPLETED', steps=steps, progress=100, review_skipped=True, completed_at=now())
         results.metadata(directory)
@@ -185,7 +185,7 @@ def subtitles_defaults():
 
 
 def voice_source(voice_job):
-    """Tools 5 and 6 take the voice of a finished run made by this app (a workflow, or tool 4), never an outside file."""
+    """Tools 5 (subtitles) and 6 (video) take the voice of a finished run made by this app (a workflow, or tool 4), never an outside file."""
     if not isinstance(voice_job, str) or not results.ID.fullmatch(voice_job): raise ValueError('Choose a voice made by this app')
     from audio_translate.video.merge import published_voice
     source = read_json(results.workspace(voice_job)/'job.json')
@@ -201,13 +201,13 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
     from audio_translate.video.merge import validate as validate_video
     # Videos are optional for a workflow and required for tool 5; every clip is checked now and again when the merge starts.
     video = validate_video(video) if video or tool == 'video' else None
-    if video and tool not in (None, 'video'): raise ValueError('Videos are merged by a workflow or tool 5 only')
+    if video and tool not in (None, 'video'): raise ValueError('Videos are merged by a workflow or tool 6 only')
     source = voice_source(voice_job) if tool in ('video', 'subtitle') else None
     from audio_translate.video.subtitles import validate as validate_subtitle
-    # Subtitles (.srt) are part of every workflow and of tool 6; the two numbers can be set when it is created.
-    subtitle = validate_subtitle(subtitle) if tool in (None, 'subtitle') else None
-    if video and video.get('burn'):
-        if video.get('burn') is not True or video.get('burn_confirmed') is not True: raise ValueError('Burning subtitles into the picture needs the confirmation')
+    # Subtitles (.srt) are part of every workflow and of tool 5; the two numbers can be set when it is created. Tool 6 keeps them only for the
+    # BURN step (the subtitles drawn into a second video), which is the person's tick.
+    burning = bool(video and video.get('burn'))
+    subtitle = validate_subtitle(subtitle) if tool in (None, 'subtitle') or (tool == 'video' and burning) else None
     from audio_translate.tts.voices import select
     from audio_translate.tts.voice_styles import validate
     from audio_translate.moderation.address import validate_profile
@@ -233,10 +233,10 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
             # Basic pays for Voice generation: ask before it unless Auto was ticked.
             job['tts_auto'] = auto is True
         if tool in ('video', 'subtitle'):
-            # Tools 5 and 6: no upload, the voice stays where tool 4 or the workflow published it.
-            job.update(tool_type=tool, input_file=None, tool_steps=TOOLS[tool], **{('video_voice' if tool == 'video' else 'subtitle_voice'): {'job_id': voice_job}},
+            # Tools 5 and 6 (subtitles, video): no upload, the voice stays where tool 4 or the workflow published it.
+            job.update(tool_type=tool, input_file=None, tool_steps=[*TOOLS[tool], *(['BURN'] if burning else [])], **{('video_voice' if tool == 'video' else 'subtitle_voice'): {'job_id': voice_job}},
                        name=f"#{source.get('workflow_no', 0):06d} · {source.get('name') or source.get('input_file') or ''}".strip(' ·'))
-            if tool == 'subtitle': job['subtitle'] = subtitle
+            if tool == 'subtitle' or burning: job['subtitle'] = subtitle
         elif tool and url and not upload:
             # Tool 1 from a YouTube link: the same download step as a workflow, then stop after Transcription.
             if tool != 'transcription': raise ValueError('Only Chinese audio transcription accepts a link')
@@ -301,7 +301,7 @@ def normalize_input(directory,job,upload,name,mime):
     from audio_translate.core.storage import count_rows
     if not count or count_rows(directory/target,key) != count: raise ValueError('Input contains no valid text')
 
-def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=None,subtitle=None):
+def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=None,subtitle=None,burn=None):
     from audio_translate.core.license_gate import assert_allowed
     assert_allowed()
     if video is not None:
@@ -318,11 +318,22 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
             # New or changed videos: a workflow without them gains the Video merge step; the earlier steps are kept.
             if step not in ('VIDEO', *effective_steps(job)) or (step != 'VIDEO' and job.get('tool_type')): raise ValueError('Unknown restart stage')
             job['video'] = video
+            if video.get('burn') and job.get('subtitle') is None: job['subtitle'] = subtitle if subtitle is not None else subtitles_defaults()
+            if job.get('tool_type') == 'video': job['tool_steps'] = [*TOOLS['video'], *(['BURN'] if video.get('burn') else [])]
         elif step == 'VIDEO' and not job.get('video'): raise ValueError('Choose the videos to merge')
+        elif step == 'BURN' and not job.get('tool_type') and job.get('video') and not job['video'].get('burn'):
+            # A run that has videos but no subtitled video gains the BURN step the first time it is asked for.
+            job['video'] = {**job['video'], 'burn': True}
+            if job.get('subtitle') is None: job['subtitle'] = subtitle if subtitle is not None else subtitles_defaults()
         if step == 'SUBTITLE' and not job.get('tool_type'):
             # An older workflow gains the Subtitle step the first time it is asked for.
             job['subtitle'] = subtitle if subtitle is not None else (job.get('subtitle') or subtitles_defaults())
         elif subtitle is not None and job.get('subtitle') is not None: job['subtitle'] = subtitle
+        if step == 'SUBTITLE' and burn is True:
+            # The tick on the Subtitle stage: also draw the new subtitles into a second video (needs the merged video).
+            if not job.get('video'): raise ValueError('Choose the videos to merge first')
+            if initial_steps(job).get('VIDEO', {}).get('state') != 'COMPLETED': raise ValueError('Complete predecessor stages first')
+            job['video'] = {**job['video'], 'burn': True}
         effective = effective_steps(job)
         if step not in effective: raise ValueError('Unknown restart stage')
         if (directory/'working'/'delete-request.json').exists(): raise ValueError('Workflow deletion is pending')
@@ -335,6 +346,8 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
             if not source_file(directory): raise ValueError('Source audio is missing; restart from Download')
         elif inputs.get(step) and not (directory/inputs[step]).is_file(): raise ValueError('Predecessor output is missing; restart from an earlier stage')
         affected = effective[effective.index(step):]
+        # The video merge does not depend on the .srt: a new .srt restarts only itself and, when ticked, the subtitled video.
+        if step == 'SUBTITLE': affected = [s for s in affected if s == 'SUBTITLE' or (s == 'BURN' and burn is True)]
         if mode is not None:
             chosen_mode = translation_mode(mode, job.get('tool_type'))
             if chosen_mode != job.get('translation_mode') and 'TRANSLATION' not in affected:
@@ -372,7 +385,7 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
         output = results.destination(job_id)
         manifest = read_json(output/'outputs.json')
         for item in manifest['files']:
-            if item['step'] in affected: item['status'] = 'STALE'
+            if item['step'] in affected or (item['step'] == 'BURN' and 'VIDEO' in affected): item['status'] = 'STALE'
         results.write_metadata(output,'outputs.json',manifest)
         for s in affected:
             steps[s].update(state='PENDING',progress=0,started_at=None,completed_at=None,duration_ms=0,resume_duration_ms=0)
@@ -583,7 +596,7 @@ def main():
             if type(p.get('queue_only',False)) is not bool: raise ValueError('Invalid queue option')
             response=convert(p.get('url',''),p.get('voice'),p.get('queue_only',False),p.get('style'),p.get('address'),p.get('mode'),p.get('auto') is True,p.get('upload'),p.get('input_name'),p.get('mime',''),p.get('video'),p.get('subtitle'))
             print(json.dumps(response,ensure_ascii=False)); return
-        elif action=='reprocess': value={'job':reprocess(p['id'],p['step'],p.get('voice'),p.get('style'),p.get('address'),p.get('mode'),p.get('video'),p.get('subtitle'))}
+        elif action=='reprocess': value={'job':reprocess(p['id'],p['step'],p.get('voice'),p.get('style'),p.get('address'),p.get('mode'),p.get('video'),p.get('subtitle'),p.get('burn'))}
         elif action=='cancel': cancel(p['id']); value={}
         elif action=='pause': cancel(p['id'],mode='pause'); value={}
         elif action=='abort': value=abort(p['id'],p.get('confirm'),scope)

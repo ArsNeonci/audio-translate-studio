@@ -27,9 +27,10 @@ FILES = {
          ('VOICE_MANIFEST', 'voice/voice.manifest.jsonl', 'tts/voice.manifest.jsonl')],
  'SUBTITLE': [('SUBTITLE_SRT', 'voice.vi.srt', 'subtitle/voice.vi.srt')],
  'VIDEO': [('VIDEO_MP4', 'video.vi.mp4', 'video/video.vi.mp4')],
+ 'BURN': [('VIDEO_SUB_MP4', 'video.vi.sub.mp4', 'video/video.vi.sub.mp4')],
 }
 # Files too large to copy: moved from the workspace into the results instead (the workspace copy is not kept).
-MOVED = {'VIDEO_MP4'}
+MOVED = {'VIDEO_MP4', 'VIDEO_SUB_MP4'}
 
 
 # The Chinese audio the workflow worked from (downloaded from YouTube or uploaded) is published as the Download stage's result,

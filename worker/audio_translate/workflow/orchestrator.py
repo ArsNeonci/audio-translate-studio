@@ -34,7 +34,7 @@ def run_stage(job_dir, stage):
     device = freeze(job_dir)
     validate(device, [stage])
     os.environ.update(stage_environment(device))
-    if stage in ('download', 'transcription', 'video'):
+    if stage in ('download', 'transcription', 'video', 'burn'):
         required = ['ffprobe'] if stage == 'download' else ['ffmpeg', 'ffprobe']
         for binary in required:
             if not shutil.which(binary):
@@ -71,6 +71,9 @@ def run_stage(job_dir, stage):
     elif stage == "video":
         from audio_translate.video.merge import merge
         merge(job_dir)
+    elif stage == "burn":
+        from audio_translate.video.merge import burn
+        burn(job_dir)
     else:
         from audio_translate.workflow.postprocess import translate, moderate, synthesize
         {"translation": translate, "moderation": moderate, "tts": synthesize}[stage](job_dir)
@@ -146,7 +149,7 @@ def run(job_dir):
                     metadata(job_dir)
                     return 0
                 transition(job_dir, step, 'RUNNING')
-                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'SUBTITLE': 'SUBTITLE_BUILDING', 'VIDEO': 'VIDEO_MERGING'}
+                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'SUBTITLE': 'SUBTITLE_BUILDING', 'VIDEO': 'VIDEO_MERGING', 'BURN': 'VIDEO_BURNING'}
                 update_job(job_dir, active_stage=step.lower(), status=statuses[step])
                 metadata(job_dir)
                 # Genius translation and Basic voice generation run on the VPS and hold no local model memory.
@@ -194,7 +197,7 @@ def run(job_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("job_dir", type=Path)
-    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts", "subtitle", "video"])
+    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts", "subtitle", "video", "burn"])
     args = parser.parse_args()
     try:
         if args.stage:

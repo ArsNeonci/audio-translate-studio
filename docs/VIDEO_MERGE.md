@@ -6,8 +6,8 @@ Giọng Việt do app tạo được ghép vào video của người dùng. Vide
 
 | Nơi | Cách dùng |
 |---|---|
-| Studio | Mục **Ghép video (không bắt buộc)** khi tạo workflow. Workflow có thêm bước thứ sáu `VIDEO` sau Tạo giọng. |
-| Công cụ 5 | **Giọng Việt + Video → Video**: chọn một giọng đọc đã xong (của workflow hoặc công cụ 4) rồi chọn video. Không nhận file giọng từ ngoài app. |
+| Studio | Mục **Ghép video (không bắt buộc)** khi tạo workflow. Workflow có thêm bước `VIDEO` sau Tạo giọng (và sau `SUBTITLE`). Thêm file nghĩa là ghép video chắc chắn chạy. |
+| Công cụ 6 | **Giọng Việt + Video → Video**: chọn một giọng đọc đã xong (của workflow hoặc công cụ 4) rồi chọn video. Không nhận file giọng từ ngoài app. |
 | Tạo lại | Bước **Ghép video**: thêm video cho workflow đã xong, hoặc đổi video, độ phân giải, chất lượng rồi chạy lại. Các bước trước giữ nguyên. |
 
 ## Cách chọn file
@@ -36,8 +36,15 @@ Giọng Việt do app tạo được ghép vào video của người dùng. Vide
 - Giọng được mã hóa AAC 128 kbit/s.
 - File ra là MP4 có chỉ mục ở đầu file (`+faststart`).
 
-## Phụ đề
-Từ 3.1.0 có thể ghi cứng phụ đề tiếng Việt vào hình (không bắt buộc, cần xác nhận vì phải mã hóa lại toàn bộ video). File `.srt` để tải lên YouTube thì tách riêng, xem `docs/SUBTITLES.md`.
+## Phụ đề trong video (bước `BURN`, từ 3.2.1)
+- Ghép video luôn là bước nhanh như bản cũ (copy hình khi có thể), ra video **không phụ đề**. File `.srt` luôn có sau Tạo giọng, không điều kiện.
+- Ô tick **Gắn phụ đề vào video** (Studio, Công cụ 6, Tạo lại; mặc định tắt, chỉ hiện khi đã thêm video) thêm **một bước riêng `BURN`** sau `VIDEO`. Tick là lựa chọn duy nhất, không còn ô xác nhận thứ hai; app hiện thời gian dự kiến và dung lượng thêm ngay bên cạnh.
+- `BURN` lấy video đã ghép (đọc từ kết quả đã lưu), giữ nguyên tiếng, mã hóa lại **toàn bộ hình** để vẽ phụ đề (chậm hơn ghép copy 16–36 lần) và ra **file thứ hai** `video/<số>-video.vi.sub.mp4`. Video không phụ đề vẫn được giữ.
+- Phụ đề lấy từ cùng giọng và dùng hai thông số phụ đề của chính lần chạy đó (84 ký tự, 1 giây mặc định).
+- Tách riêng nên: video không phụ đề xong ngay, lỗi hay hủy của `BURN` không ảnh hưởng nó, và Tạo lại chạy lại riêng được `BURN`. Nếu đổi độ phân giải thì ghép video đã mã hóa một lần; `BURN` mã hóa thêm một lần nữa.
+- Ổ đĩa cần chỗ cho cả hai file; ước tính hiện sẵn bên ô tick.
+- Tạo lại: **Phụ đề** (tick = tạo `.srt` rồi `BURN`, không ghép lại; không tick = chỉ `.srt`), **Ghép video** (có thể tick; ghép lại làm video phụ đề cũ thành `STALE`), **Gắn phụ đề vào video** (chạy lại riêng `BURN`).
+- Lỗi: `VIDEO_RESULT_MISSING` (không còn video đã ghép), cách xử lý: Tạo lại → Ghép video.
 
 ## Độ phân giải và chất lượng
 
@@ -56,7 +63,7 @@ Từ 3.1.0 có thể ghi cứng phụ đề tiếng Việt vào hình (không b�
 | Nơi | App hiện |
 |---|---|
 | Studio (chưa có giọng) | Dung lượng cho **mỗi giờ giọng đọc** và dung lượng ổ còn trống |
-| Công cụ 5 và Tạo lại (đã có giọng) | Dung lượng dự kiến và cảnh báo nếu ổ không đủ chỗ |
+| Công cụ 6 và Tạo lại (đã có giọng) | Dung lượng dự kiến và cảnh báo nếu ổ không đủ chỗ |
 
 Khi bắt đầu ghép, app đòi khoảng 2,1 lần dung lượng dự kiến cộng 512 MB trống. Phần dư dùng cho bản tạm khi đưa chỉ mục lên đầu file. Nếu không đủ, bước báo lỗi `DISK_FULL`.
 

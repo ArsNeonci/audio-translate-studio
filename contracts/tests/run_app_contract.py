@@ -193,7 +193,7 @@ def run_cases(c, ids):
     c.call('video estimate: burn must be a boolean', 'POST', '/api/video/estimate', json_body={'paths': [missing], 'burn': 'yes'}, status=400)
     c.call('video estimate: unknown resolution', 'POST', '/api/video/estimate', json_body={'paths': [missing], 'resolution': '4k'}, status=400)
     c.call('video estimate from another site', 'POST', '/api/video/estimate', json_body={'paths': [missing]}, headers=EVIL, status=403)
-    c.call('voices for tool 5', 'GET', '/api/video/voices', expect=lambda r: assert_eq(isinstance(r.json()['voices'], list), True))
+    c.call('voices for tool 6', 'GET', '/api/video/voices', expect=lambda r: assert_eq(isinstance(r.json()['voices'], list), True))
     c.call('open a video that does not exist', 'POST', '/api/video/open', json_body={'id': C, 'scope': 'workflows', 'target': 'video'}, status=404)
     c.call('open: bad target', 'POST', '/api/video/open', json_body={'id': C, 'target': 'shell'}, status=400)
     c.call('open from another site', 'POST', '/api/video/open', json_body={'id': C}, headers=EVIL, status=403)

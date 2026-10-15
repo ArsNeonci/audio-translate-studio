@@ -75,7 +75,7 @@ def saved_file_response(request, file, download=False):
         if denied: return denied
     size = os.stat(file).st_size
     extension = os.path.splitext(file)[1][1:]
-    kind = 'video/mp4' if os.path.basename(file).endswith('video.vi.mp4') else MIME.get(extension, 'application/octet-stream')   # the merged video, not a source audio .mp4
+    kind = 'video/mp4' if os.path.basename(file).endswith(('video.vi.mp4', 'video.vi.sub.mp4')) else MIME.get(extension, 'application/octet-stream')   # the merged video, not a source audio .mp4
     headers = {'Content-Type': kind,
                'Content-Disposition': f'{"attachment" if download else "inline"}; filename="{os.path.basename(file)}"',
                'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'}

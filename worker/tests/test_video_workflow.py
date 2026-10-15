@@ -34,6 +34,9 @@ class VideoWorkflowTests(unittest.TestCase):
                 from audio_translate.video.subtitles import run as build_subtitles
                 build_subtitles(d)
             elif stage == 'video': merge(d)
+            elif stage == 'burn':
+                from audio_translate.video.merge import burn
+                burn(d)
             else: raise AssertionError('Unexpected stage ' + stage)
             return Mock(returncode=0)
         return execute
@@ -76,7 +79,7 @@ class VideoWorkflowTests(unittest.TestCase):
         manage.reprocess(job['id'], 'VIDEO', video=self.video(1, 1))
         self.assertEqual(self.run_all(d), ['video'])                                             # only the new step runs
         self.assertEqual(read_json(d / 'job.json')['steps']['TTS']['state'], 'COMPLETED')
-        # Tool 5 lays the same voice over other clips; the workflow's own files are untouched.
+        # Tool 6 lays the same voice over other clips; the workflow's own files are untouched.
         tool = manage.create(tool='video', voice_job=job['id'], video=self.video(2))
         t = results.workspace(tool['id'])
         self.assertEqual((tool['tool_steps'], tool['video_voice']['job_id']), (['VIDEO'], job['id']))

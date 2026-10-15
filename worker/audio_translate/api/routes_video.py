@@ -81,11 +81,13 @@ def estimate(paths, resolution, quality, voice_job, burn=False):
     allowed = merge.resolutions(clips)
     if resolution not in allowed: resolution = 'keep'
     length = voice_length(voice_job)
-    plan = merge.plan(clips, resolution, quality, length, burn)
+    plan = merge.plan(clips, resolution, quality, length)
+    # The subtitled video is a second file made after the plain one (the BURN step): its own time and size.
+    burn_plan = merge.plan(clips, resolution, quality, length, True) if burn else None
     from audio_translate.workflow.results import RESULTS
     free = merge.disk_free(RESULTS)
-    needed = merge.needed_bytes(plan) if length else None
-    return {'files': clips, 'resolutions': allowed, 'resolution': resolution, 'quality': quality, 'plan': plan,
+    needed = (merge.needed_bytes(plan) + (merge.needed_bytes(burn_plan) if burn_plan else 0)) if length else None
+    return {'files': clips, 'resolutions': allowed, 'resolution': resolution, 'quality': quality, 'plan': plan, 'burn_plan': burn_plan,
             'free_bytes': free, 'needed_bytes': needed, 'enough': None if needed is None else free >= needed}
 
 
@@ -123,8 +125,8 @@ async def video_voices():
     return json_response({'voices': await threaded(voices)}, no_store=True)
 
 
-def video_file(job_id, scope):
-    found = resolve_file(job_id, 'VIDEO_MP4', scope)
+def video_file(job_id, scope, kind='VIDEO_MP4'):
+    found = resolve_file(job_id, kind, scope)
     return Path(found['file']) if found else None
 
 
@@ -135,16 +137,16 @@ def open_path(path, folder=False):
 
 @router.post('/api/video/open')
 async def video_open(request: Request):
-    """Opens the finished video, or its folder with the file selected."""
+    """Opens the finished video (target video) or the subtitled one (subtitled), or their folder with the file selected (folder, subtitled-folder)."""
     if not local_request(request): return json_response({'error': 'Origin rejected'}, 403)
     data, refusal = await body_json(request, 1024)
     if refusal: return refusal
     job_id, scope, target = data.get('id'), data.get('scope', 'workflows'), data.get('target', 'video')
-    if not JOB_ID.match(str(job_id or '')) or scope not in ('workflows', 'tools') or target not in ('video', 'folder'):
+    if not JOB_ID.match(str(job_id or '')) or scope not in ('workflows', 'tools') or target not in ('video', 'folder', 'subtitled', 'subtitled-folder'):
         return json_response({'error': 'Invalid request'}, 400)
-    path = await threaded(video_file, job_id, scope)
+    path = await threaded(video_file, job_id, scope, 'VIDEO_SUB_MP4' if target.startswith('subtitled') else 'VIDEO_MP4')
     if not path or not path.is_file(): return json_response({'error': 'VIDEO_NOT_READY'}, 404)
-    await threaded(open_path, path, target == 'folder')
+    await threaded(open_path, path, target.endswith('folder'))
     return json_response({'opened': True}, no_store=True)
 
 

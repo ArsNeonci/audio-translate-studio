@@ -12,8 +12,10 @@ tool và workflow chạy cùng lúc được chia luồng và tự nhường đ�
 | 2. Chinese Text → Vietnamese Text | TXT/MD/JSONL + **Forms of address (Xưng hô)** | `TRANSLATION` |
 | 3. Vietnamese Text → Moderated | TXT/MD/JSONL | `MODERATION` |
 | 4. Vietnamese Text → Voice | TXT/MD/JSONL + giọng, kiểu giọng | `TTS` |
-| 6. Giọng Việt → Phụ đề (.srt) | Một giọng đọc đã xong của workflow hoặc tool 4, cùng hai thông số phụ đề | `SUBTITLE` (xem `docs/SUBTITLES.md`) |
-| 5. Giọng Việt + Video → Video | Một giọng đọc đã xong của workflow hoặc tool 4, cùng các video chọn bằng hộp chọn file của Windows | `VIDEO` (xem `docs/VIDEO_MERGE.md`) |
+| 5. Giọng Việt → Phụ đề (.srt) | Một giọng đọc đã xong của workflow hoặc tool 4, cùng hai thông số phụ đề | `SUBTITLE` (xem `docs/SUBTITLES.md`) |
+| 6. Giọng Việt + Video → Video | Một giọng đọc đã xong của workflow hoặc tool 4, cùng các video chọn bằng hộp chọn file của Windows; ô tick **Gắn phụ đề vào video** (kèm hai thông số phụ đề) | `VIDEO`; có tick: `VIDEO`, `BURN` (xem `docs/VIDEO_MERGE.md`) |
+
+Thứ tự công cụ theo đúng luồng: giọng (4) → phụ đề (5) → video (6). Từ 3.2.1 công cụ phụ đề là số 5 và công cụ video là số 6 (ở 3.1.x và 3.2.0 là ngược lại).
 
 ## Tool 1 từ link YouTube
 

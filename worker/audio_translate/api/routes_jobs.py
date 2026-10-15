@@ -201,7 +201,7 @@ async def create_tool(request: Request):
         except ValueError: return json_response({'error': 'Invalid JSON'}, 400)
         data = data if isinstance(data, dict) else {}
         if data.get('tool') == 'subtitle':
-            # Tool 6: the subtitles (.srt) of a voice made by this app. Nothing is uploaded.
+            # Tool 5: the subtitles (.srt) of a voice made by this app. Nothing is uploaded.
             subtitle = video_settings(data.get('subtitle'))
             if subtitle is False or not isinstance(data.get('voice_job'), str): return json_response({'error': 'Choose a voice'}, 400)
             result = await threaded(command, {'action': 'create', 'tool': 'subtitle', 'voice_job': data['voice_job'], 'subtitle': subtitle})
@@ -209,10 +209,11 @@ async def create_tool(request: Request):
             if status == 200: scheduler.soon()
             return json_response(result, 201 if status == 200 else status)
         if data.get('tool') == 'video':
-            # Tool 5: a voice made by this app (a workflow or tool 4) laid over the chosen clips. Nothing is uploaded.
-            video = video_settings(data.get('video'))
-            if not video or not isinstance(data.get('voice_job'), str): return json_response({'error': 'Choose a voice and at least one video'}, 400)
-            result = await threaded(command, {'action': 'create', 'tool': 'video', 'voice_job': data['voice_job'], 'video': video})
+            # Tool 6: a voice made by this app (a workflow or tool 4) laid over the chosen clips; with video.burn the subtitles are then drawn into a
+            # second video (its `subtitle` settings apply). Nothing is uploaded.
+            video, subtitle = video_settings(data.get('video')), video_settings(data.get('subtitle'))
+            if not video or subtitle is False or not isinstance(data.get('voice_job'), str): return json_response({'error': 'Choose a voice and at least one video'}, 400)
+            result = await threaded(command, {'action': 'create', 'tool': 'video', 'voice_job': data['voice_job'], 'video': video, 'subtitle': subtitle})
             status = result.pop('status')
             if status == 200: scheduler.soon()
             return json_response(result, 201 if status == 200 else status)

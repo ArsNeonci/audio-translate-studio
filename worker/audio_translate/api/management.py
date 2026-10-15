@@ -29,6 +29,8 @@ def management_response(body, job_id, action, scope='workflows'):
         return json_response({'error': 'Invalid video settings'}, 400)
     if action == 'reprocess' and 'subtitle' in payload and not isinstance(payload['subtitle'], dict):
         return json_response({'error': 'Invalid subtitle settings'}, 400)
+    if action == 'reprocess' and 'burn' in payload and not isinstance(payload['burn'], bool):
+        return json_response({'error': 'Invalid subtitle settings'}, 400)
     result = worker_command('manage.py', {**payload, 'action': action, 'id': job_id, 'scope': scope})
     status = result.pop('status')
     if status == 200 and action in STARTS_WORK:

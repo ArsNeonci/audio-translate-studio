@@ -44,7 +44,7 @@ export default function StepErrors({job}: {job: Pick<Job,"id"|"steps"|"artifacts
     {runSteps(job).map(step => {
       const item = job.steps?.[step];
       const localizedGuide = guide && item?.error ? localizeGuide(guide, item.error.error_code, language) : null;
-      const legacyCompleted = step === "DOWNLOAD" || step === "TRANSCRIPTION" ? job.artifacts?.zh : step === "TRANSLATION" ? job.artifacts?.vi : step === "MODERATION" ? job.artifacts?.moderated : step === "SUBTITLE" ? job.artifacts?.subtitle : step === "VIDEO" ? job.artifacts?.video : job.artifacts?.voice;
+      const legacyCompleted = step === "DOWNLOAD" || step === "TRANSCRIPTION" ? job.artifacts?.zh : step === "TRANSLATION" ? job.artifacts?.vi : step === "MODERATION" ? job.artifacts?.moderated : step === "SUBTITLE" ? job.artifacts?.subtitle : step === "VIDEO" ? job.artifacts?.video : step === "BURN" ? job.artifacts?.video_subtitled : job.artifacts?.voice;
       const state = item?.state || (legacyCompleted ? "COMPLETED" : "PENDING");
       const retrying = job.retry_step === step || (busy?.step === step && busy.failedAt === item?.error?.failed_at && job.status === "FAILED");
       return <div className="step-state" key={step}><strong>{tr(step)}</strong><span>{state === "COMPLETED" ? tr("✅ Completed") : state === "RUNNING" ? (item?.retry_count ? tr("Retrying / Running") : tr("Running")) : retrying ? tr("Retrying / Waiting") : state === "FAILED" ? tr("❌ Failed") : ['CANCELLED','PAUSED'].includes(state) ? tr("⏸ Đã dừng") : tr("○ Waiting")}</span>
