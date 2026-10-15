@@ -2,7 +2,6 @@
 import { apiFetch } from "@audio/ui";
 import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/lib/i18n/language-context";
-import { audioDuration } from "@/lib/shared/format";
 
 /** One clip as the local API checked it (worker/audio_translate/video/merge.py probe); `error` when it cannot be used. */
 export type VideoClip = { path: string; name: string; error?: string; duration_ms?: number; width?: number; height?: number; fps?: number; codec?: string; size?: number };
@@ -20,6 +19,13 @@ export const videoReady = (choice: VideoChoice) => choice.files.length > 0 && ch
 /** The saved settings of a run, as a choice the picker can show. */
 export const videoFromJob = (video?: { files?: VideoClip[]; resolution?: string; quality?: string; burn?: boolean } | null): VideoChoice =>
   video?.files?.length ? { files: video.files, resolution: video.resolution || "keep", quality: video.quality || "high", burn: !!video.burn } : emptyVideo();
+
+/** A clip's length with seconds (audioDuration shows hours and minutes only, which reads 0h 00m for every clip under a minute). */
+const clipLength = (ms: number) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+};
 
 const minutes = (seconds: number) => seconds < 90 ? `${Math.max(1, Math.round(seconds))} s` : `${Math.round(seconds / 60)} min`;
 
@@ -94,7 +100,7 @@ export default function VideoPicker({ value, onChange, voiceJob, disabled }: { v
     <small>{tr("videoHelp")}</small>
     {value.files.length > 0 && <ol className="video-list">{value.files.map((clip, index) => <li key={`${clip.path}-${index}`} className={clip.error ? "video-bad" : undefined}>
       <span className="video-name" title={clip.path}>{clip.name}</span>
-      <small>{clip.error ? tr(clip.error) : `${audioDuration(clip.duration_ms || 0)} · ${clip.width}×${clip.height} · ${clip.codec}`}</small>
+      <small>{clip.error ? tr(clip.error) : `${clip.duration_ms ? clipLength(clip.duration_ms) : "—"} · ${clip.width}×${clip.height} · ${clip.codec}`}</small>
       <span className="video-actions">
         <button type="button" className="text-button" aria-label={tr("videoUp")} title={tr("videoUp")} disabled={disabled || index === 0} onClick={() => move(index, -1)}>↑</button>
         <button type="button" className="text-button" aria-label={tr("videoDown")} title={tr("videoDown")} disabled={disabled || index === value.files.length - 1} onClick={() => move(index, 1)}>↓</button>
