@@ -75,12 +75,13 @@ def source_hash(product='audio-translate'):
 
 def runtime_fingerprint(payload):
     """SHA-256 of everything an app-only update must not change: the Python runtime, ffmpeg, node and the TTS provider (runtime/ and providers/).
+    Bytecode caches (__pycache__) are left out: the build's own import smoke test writes them, and they differ between builds of the same runtime.
     An app package says which fingerprint it needs; the app takes it only when its own matches, otherwise the full installer."""
     sha=hashlib.sha256()
     for folder in ('runtime','providers'):
         root=payload/folder
         if not root.is_dir():continue
-        for path in sorted(p for p in root.rglob('*') if p.is_file()):
+        for path in sorted(p for p in root.rglob('*') if p.is_file() and '__pycache__' not in p.parts):
             sha.update(path.relative_to(payload).as_posix().encode()+b'\0'+digest(path).encode()+b'\n')
     return sha.hexdigest()
 

@@ -171,6 +171,8 @@ static class Updater {
     static int Main(string[] args) {
         if(args.Length<2 || !args[0].Equals("/apply",StringComparison.OrdinalIgnoreCase)) return 2;
         string self=Assembly.GetExecutingAssembly().Location;
+        // The shell starts this with the installation as its working directory; a folder that is somebody's working directory cannot be renamed.
+        try { Directory.SetCurrentDirectory(Path.GetTempPath()); } catch { }
         // 1. Run from a temp copy of itself, so that this file in the installation can be replaced like any other.
         if(!Path.GetFileName(self).StartsWith("audio-translate-updater-",StringComparison.OrdinalIgnoreCase)) {
             try {
