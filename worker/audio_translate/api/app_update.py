@@ -218,14 +218,18 @@ def pending_dir():
     return root() / 'pending'
 
 
-def ready():
-    """The downloaded and verified package of the release on offer, or None."""
+def ready(full=False):
+    """The downloaded and verified package of the release on offer, or None. The status is asked every few seconds, so by default the file is only checked for
+    size and time against what the download recorded (it was hashed then); `full` hashes it again, which is done once, right before it is applied."""
     try: marker = read_json(pending_dir() / 'ready.json')
     except (OSError, ValueError): return None
     current, on_offer = installed_version(), offer()
     package = Path(marker.get('package', ''))
     if not on_offer or marker.get('version') != on_offer['version'] or marker.get('kind') != on_offer['kind'] or marker.get('serial') != on_offer['serial']: return None
-    if not package.is_file() or package.parent != pending_dir() or file_digest(package) != marker.get('sha256') or marker.get('from_version') != current: return None
+    if not package.is_file() or package.parent != pending_dir() or marker.get('from_version') != current: return None
+    info = package.stat()
+    if info.st_size != marker.get('size') or info.st_mtime_ns != marker.get('mtime_ns'): return None
+    if full and file_digest(package) != marker.get('sha256'): return None
     return marker
 
 
@@ -266,9 +270,14 @@ def _download_worker(manifest, wanted, post, opener):
     import urllib.request
     try:
         package, kind = choose(manifest)
-        # Links last an hour; ask again so that a download started long after the last check still has a fresh one.
-        check(True, post)
-        url = _urls['urls'].get(package['path'])
+        # Links last an hour; ask again so that a download started long after the last check still has a fresh one. (A check forced a moment ago
+        # is not repeated, and after a restart its links are gone: wait out that short gap once.)
+        url = None
+        for attempt in range(2):
+            check(True, post)
+            url = _urls['urls'].get(package['path'])
+            if url: break
+            time.sleep(FORCED_GAP + 1)
         if not url: raise ManifestError('no link for the package')
         target = pending_dir() / Path(package['path']).name
         pending_dir().mkdir(parents=True, exist_ok=True)
@@ -280,8 +289,9 @@ def _download_worker(manifest, wanted, post, opener):
             with _lock: _download['done'] = count if replace else _download['done'] + count
         download_one(url, target, package['size'], package['sha256'], progress, opener or urllib.request.urlopen)
         if kind == 'app': check_app_package(target, manifest)
+        info = target.stat()
         atomic_json(pending_dir() / 'ready.json', {'version': manifest['version'], 'serial': manifest['serial'], 'kind': kind, 'package': str(target),
-                                                    'sha256': package['sha256'], 'from_version': installed_version()})
+                                                    'sha256': package['sha256'], 'from_version': installed_version(), 'size': info.st_size, 'mtime_ns': info.st_mtime_ns})
         with _lock: _download.update(state='ready', done=package['size'], error=None)
     except Exception as exc:
         code = getattr(exc, 'code', None)

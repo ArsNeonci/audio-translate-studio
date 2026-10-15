@@ -43,7 +43,7 @@ async def update_apply(request: Request):
     force = isinstance(body, dict) and body.get('force') is True
     info = quit_info()
     if not info['installed'] or not app_update.install_root(): return json_response({'error': 'NOT_INSTALLED', **info}, 409, no_store=True)
-    marker = await threaded(app_update.ready)
+    marker = await threaded(app_update.ready, True)
     if not marker: return json_response({'error': 'NOT_READY'}, 409, no_store=True)
     if info['active_jobs'] > 0 and not force: return json_response({'error': 'JOBS_RUNNING', **info}, 409, no_store=True)
     try: await threaded(app_update.write_plan, marker)

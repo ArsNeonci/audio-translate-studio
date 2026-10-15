@@ -110,6 +110,7 @@ def main():
     parser.add_argument('--allow-downgrade', action='store_true', help='offer this version even though it is older than an installed one (roll back)')
     parser.add_argument('--app-only', action='store_true', help='publish only the app package; allowed only when the runtime equals the one already published')
     parser.add_argument('--dry-run', action='store_true', help='check, build and sign locally; upload nothing')
+    parser.add_argument('--runtime-override', metavar='SHA256', help='for tests only: write this runtime fingerprint into the manifest, so apps with the real one take the full installer')
     args = parser.parse_args()
     if args.init_key: return init_key()
     if not args.edition or not args.ssh: parser.error('give the edition and --ssh (or --init-key)')
@@ -125,6 +126,7 @@ def main():
     raw_previous = store.cat(current)
     try: previous = json.loads(raw_previous) if raw_previous else None
     except ValueError: previous = None
+    if args.runtime_override and args.channel == 'stable': raise SystemExit('--runtime-override is for the test channel only.')
     if args.app_only and not (previous and previous.get('runtime_sha256') == record['runtime_sha256']):
         raise SystemExit('--app-only needs the runtime to be the one already published (the apps that have the old runtime could not take this release).')
     folder = f'updates/{product}/{version}'
@@ -136,7 +138,7 @@ def main():
     serial = max(int(time.time()), ((previous or {}).get('serial') or 0) + 1)
     notes = {k: v for k, v in (('vi', args.notes_vi), ('en', args.notes_en)) if v}
     manifest = {'schema': 1, 'product': product, 'channel': args.channel, 'serial': serial, 'version': version,
-                'released_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'notes': notes, 'runtime_sha256': record['runtime_sha256'],
+                'released_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'notes': notes, 'runtime_sha256': args.runtime_override or record['runtime_sha256'],
                 'min_version': args.min_version, 'allow_downgrade': args.allow_downgrade, 'packages': packages}
     raw = json.dumps(manifest, indent=1, sort_keys=True).encode('utf-8')
     signature = base64.b64encode(private.sign(raw)).decode()
