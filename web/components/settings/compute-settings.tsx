@@ -63,7 +63,6 @@ export default function ComputeSettings() {
         ))}
       </div>
       <p>{tr("computeMergeNote")}</p>
-      {basic && <p>{tr("ttsComputeBasic")}</p>}
       {config && <p role="status">{tr(ready ? "computeGPUReady" : "computeGPUUnavailable")}{config.capabilities.gpu_name ? ` (${config.capabilities.gpu_name})` : ""}</p>}
       {message && <p role={failed ? "alert" : "status"}>{tr(message)}</p>}
     </section>

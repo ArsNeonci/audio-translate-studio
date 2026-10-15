@@ -44,7 +44,7 @@ Giọng Việt do app tạo được ghép vào video của người dùng. Vide
 - Tách riêng nên: video không phụ đề xong ngay, lỗi hay hủy của `BURN` không ảnh hưởng nó, và Tạo lại chạy lại riêng được `BURN`. Nếu đổi độ phân giải thì ghép video đã mã hóa một lần; `BURN` mã hóa thêm một lần nữa.
 - Ổ đĩa cần chỗ cho cả hai file; ước tính hiện sẵn bên ô tick.
 - Tạo lại: **Phụ đề** (tick = tạo `.srt` rồi `BURN`, không ghép lại; không tick = chỉ `.srt`), **Ghép video** (có thể tick; ghép lại làm video phụ đề cũ thành `STALE`), **Gắn phụ đề vào video** (chạy lại riêng `BURN`).
-- Lỗi: `VIDEO_RESULT_MISSING` (không còn video đã ghép), cách xử lý: Tạo lại → Ghép video.
+- Mã lỗi: H103 (không còn video đã ghép), cách xử lý: Tạo lại → Ghép video; H104 ghép video không thành công; H105 gắn phụ đề không thành công.
 
 ## Độ phân giải và chất lượng
 

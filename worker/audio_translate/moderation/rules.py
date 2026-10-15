@@ -51,18 +51,18 @@ class ReplacementRules:
             if action in ("add", "edit"):
                 source, replacement = payload.get("source"), payload.get("replacement")
                 if not isinstance(source, str) or not source.strip() or not isinstance(replacement, str):
-                    raise RuleError("Original phải có nội dung; Replacement phải là chuỗi (có thể để trống).")
+                    raise RuleError("Từ gốc phải có nội dung; từ thay thế phải là chữ (có thể để trống). Mã lỗi: K101.")
                 source, replacement = normalize(source), normalize(replacement)
                 if len(source) > 1000 or len(replacement) > 10000:
-                    raise RuleError("Original tối đa 1.000 ký tự; Replacement tối đa 10.000 ký tự.")
+                    raise RuleError("Nội dung quá dài: từ gốc tối đa 1.000 ký tự, từ thay thế tối đa 10.000 ký tự. Mã lỗi: K102.")
                 if any(normalize(r["source"]) == source and r["id"] != payload.get("id") for r in rules):
-                    raise RuleError("Original đã có trong danh sách.")
+                    raise RuleError("Từ gốc đã có trong danh sách. Hãy sửa quy tắc đã có. Mã lỗi: K103.")
             if action == "add":
                 rules.append({"id": str(uuid.uuid4()), "source": source, "replacement": replacement})
             elif action in ("edit", "delete"):
                 index = next((i for i, rule in enumerate(rules) if rule["id"] == payload.get("id")), None)
                 if index is None:
-                    raise RuleError("Không tìm thấy rule.")
+                    raise RuleError("Không tìm thấy quy tắc. Tải lại danh sách rồi thử lại. Mã lỗi: K104.")
                 if action == "delete":
                     rules.pop(index)
                 else:

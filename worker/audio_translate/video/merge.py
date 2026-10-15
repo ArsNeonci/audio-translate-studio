@@ -24,6 +24,8 @@ import subprocess
 import sys
 import time
 
+from audio_translate.core.error_ids import AppError
+
 VIDEO_EXTENSIONS = {'.mp4', '.mov', '.m4v', '.mkv', '.webm', '.avi', '.wmv', '.flv', '.ts', '.mts', '.m2ts', '.3gp', '.mpg', '.mpeg'}
 MAX_FILES = 50
 RESOLUTIONS = ('keep', '1080', '720', '480')
@@ -218,7 +220,7 @@ def _filters(clips, width, height, fps):
     return ';'.join(parts)
 
 
-def _ffmpeg(args, job_dir, total_ms, report, cwd=None):
+def _ffmpeg(args, job_dir, total_ms, report, cwd=None, error_id='H104'):
     """Runs ffmpeg with progress on stdout; stops it at once when the run is cancelled or paused."""
     from audio_translate.core.control import Cancelled, check_cancel
     process = subprocess.Popen(['ffmpeg', '-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', *args], cwd=cwd,
@@ -245,7 +247,7 @@ def _ffmpeg(args, job_dir, total_ms, report, cwd=None):
         process.stdout.close(); process.stderr.close()
     check_cancel(job_dir)
     if process.returncode:
-        raise RuntimeError('ffmpeg could not merge the video: ' + ' | '.join(errors[-3:]))
+        raise AppError(error_id, 'ffmpeg failed: ' + ' | '.join(errors[-3:]))
 
 
 def merge(job_dir):
@@ -335,7 +337,7 @@ def burn(job_dir):
         _ffmpeg(['-i', str(source), '-map', '0:v:0', '-map', '0:a:0', '-vf', f"subtitles={subtitle_file.name}:force_style='{subtitle_style(estimate['width'], estimate['height'])}'",
                  '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', f'{kbps}k', '-maxrate', f'{int(kbps * 1.5)}k', '-bufsize', f'{kbps * 2}k',
                  '-g', str(int(round(estimate['fps'] * 2))), '-pix_fmt', 'yuv420p', '-threads', threads, '-c:a', 'copy', '-movflags', '+faststart', '-f', 'mp4', str(temp)],
-                job_dir, length, lambda fraction: progress(job_dir, 'burn', 'VIDEO_BURNING', round(fraction * 1000), 1000), cwd=str(subtitle_file.parent))
+                job_dir, length, lambda fraction: progress(job_dir, 'burn', 'VIDEO_BURNING', round(fraction * 1000), 1000), cwd=str(subtitle_file.parent), error_id='H105')
         os.replace(temp, job_dir / BURN_OUTPUT)
     finally:
         temp.unlink(missing_ok=True)

@@ -1,4 +1,5 @@
 """Offline Hy-MT2 GGUF translation and the unchanged VieNeu API."""
+from audio_translate.core.error_ids import AppError
 import os
 from pathlib import Path
 import sys
@@ -62,7 +63,7 @@ class TTSAdapter:
             return
         source = vieneu_source(self.settings["source"]) / "src"
         if not (source / "vieneu" / "factory.py").is_file():
-            raise RuntimeError("Không tìm thấy VieNeu-TTS source. Đặt VIENEU_SOURCE tới repo nguyên bản.")
+            raise AppError('V103', 'VieNeu source not found; set VIENEU_SOURCE')
         # No editable install, monkeypatch, or bytecode files inside the repo.
         sys.dont_write_bytecode = True
         sys.path.insert(0, str(source))

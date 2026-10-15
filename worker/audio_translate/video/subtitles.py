@@ -8,6 +8,7 @@ a unit is shared between its cues in proportion to their characters (an estimate
 The text is the moderated Vietnamese that was read aloud, never the Chinese source.
 Format: SubRip (.srt), UTF-8, as YouTube accepts it (number, `00:00:00,599 --> 00:00:04,160`, text, blank line).
 """
+from audio_translate.core.error_ids import AppError
 import json
 from pathlib import Path
 import re
@@ -90,7 +91,7 @@ def build(units, settings=None, total_ms=None):
     units = [(_clean(text), length, gap or 0) for text, length, gap in units]
     unknown = [i for i, (_, length, _) in enumerate(units) if length is None]
     if unknown:
-        if not total_ms: raise ValueError('The length of the voice is unknown')
+        if not total_ms: raise AppError('P101', 'the length of the voice is unknown')
         known = sum(length for _, length, _ in units if length is not None) + sum(gap for _, _, gap in units)
         weight = sum(max(1, len(units[i][0])) for i in unknown)
         share = max(0, total_ms - known)
@@ -141,7 +142,7 @@ def read_units(manifest, wav_dir=None):
             except (OSError, RuntimeError, KeyError, TypeError):
                 frames = None
         units.append((row.get('text') or '', None if frames is None else round(frames * 1000 / SAMPLE_RATE), int(row.get('gap_after_ms') or 0)))
-    if not units: raise ValueError('The voice manifest is empty')
+    if not units: raise AppError('P101', 'the voice manifest is empty')
     return units
 
 
@@ -150,9 +151,9 @@ def make(manifest, wav_dir=None, settings=None, total_ms=None):
     units = read_units(manifest, wav_dir)
     known = [length for _, length, _ in units]
     if total_ms and None not in known and abs(sum(known) + sum(gap for _, _, gap in units) - total_ms) > TOLERANCE_MS:
-        raise ValueError('The voice manifest does not match the voice file')
+        raise AppError('P101', 'the voice manifest does not match the voice file')
     cues = build(units, settings, total_ms)
-    if not cues: raise ValueError('The voice has no text to show')
+    if not cues: raise AppError('P101', 'the voice has no text to show')
     return to_srt(cues)
 
 

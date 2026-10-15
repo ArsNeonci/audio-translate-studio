@@ -2,6 +2,8 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.cookiejar import Cookie
+from audio_translate.core import error_ids
+from audio_translate.core.error_ids import AppError
 import json
 import os
 from pathlib import Path
@@ -16,8 +18,10 @@ from audio_translate.transcription import browser_cleanup as cleanup
 from audio_translate.transcription.browser_cleanup import session_root
 
 
-class YouTubeSessionError(RuntimeError):
-    pass
+class YouTubeSessionError(AppError):
+    """A sign-in problem with its ID; its text is the Vietnamese sentence, what to do, and the ID."""
+    def __str__(self):
+        return error_ids.message(self.error_id)
 
 
 def browser_binary():
@@ -101,9 +105,9 @@ def command(ws, method, params=None, session=None):
         response = json.loads(ws.recv(timeout=max(.1, deadline-time.monotonic())))
         if response.get('id') == identity:
             if 'error' in response:
-                raise YouTubeSessionError('Không đọc được phiên YouTube. Đóng cửa sổ kết nối rồi thử lại.')
+                raise YouTubeSessionError('T120')
             return response.get('result', {})
-    raise YouTubeSessionError('Trình duyệt YouTube không phản hồi. Đóng cửa sổ kết nối rồi thử lại.')
+    raise YouTubeSessionError('T121')
 
 
 def live_endpoint():
@@ -121,7 +125,7 @@ def live_endpoint():
 def launch(interactive):
     binary = browser_binary()
     if not binary:
-        raise YouTubeSessionError('Cần Microsoft Edge hoặc Google Chrome. Cài trình duyệt rồi mở lại Kết nối YouTube.')
+        raise YouTubeSessionError('T122')
     profile = session_root() / 'profile'
     profile.mkdir(parents=True, exist_ok=True)
     # A stale port file must not make a new process connect to an old endpoint.
@@ -159,7 +163,7 @@ def launch(interactive):
     if process.poll() is None:
         process.terminate()
     cleanup.stop_hidden()
-    raise YouTubeSessionError('Không mở được profile YouTube. Đóng cửa sổ profile riêng rồi thử lại; kiểm tra chính sách trình duyệt.')
+    raise YouTubeSessionError('T123')
 
 
 def manual_profile_running():
@@ -191,7 +195,7 @@ def open_login():
             url = None
         if url:
             save_state(state='CLOSE_LOGIN_WINDOW')
-            raise YouTubeSessionError('Cửa sổ profile cũ đang dùng chế độ điều khiển từ xa. Hãy đóng cửa sổ YouTube riêng đó, rồi bấm Mở YouTube lại để đăng nhập trong trình duyệt bình thường.')
+            raise YouTubeSessionError('T124')
         launch(True)
         save_state(enabled=True, state='AWAITING_SIGN_IN')
     return status()
@@ -258,7 +262,7 @@ def cookies_for_download():
             close_hidden()
             if manual_profile_running():
                 save_state(state='CLOSE_LOGIN_WINDOW')
-                raise YouTubeSessionError('Hãy đăng nhập xong và đóng các cửa sổ YouTube của profile Audio Studio trước, rồi bấm Kiểm tra kết nối. App không điều khiển cửa sổ đăng nhập.')
+                raise YouTubeSessionError('T125')
             url, owned = launch(False)
             refresh_page(url)
             with socket_for(url) as ws:
@@ -267,12 +271,12 @@ def cookies_for_download():
             save_state(state='SESSION_SAVED' if signed_in else 'SIGN_IN_REQUIRED',
                        last_checked=datetime.now(timezone.utc).isoformat())
             if not signed_in:
-                raise YouTubeSessionError('Phiên YouTube cần đăng nhập. Mở Settings → Kết nối YouTube, đăng nhập rồi bấm Kiểm tra kết nối.')
+                raise YouTubeSessionError('T126')
             return cookies
         except YouTubeSessionError:
             raise
         except Exception:
-            raise YouTubeSessionError('Không đọc được profile YouTube. Mở Settings → Kết nối YouTube rồi đăng nhập lại.') from None
+            raise YouTubeSessionError('T120') from None
         finally:
             if owned is not None:
                 try:
@@ -329,7 +333,7 @@ def main():
             from audio_translate.transcription.ytdlp_update import refresh
             refresh(force=True)
             if not configuration().get('enabled'):
-                raise YouTubeSessionError('Bấm Kết nối YouTube và đăng nhập trước khi kiểm tra.')
+                raise YouTubeSessionError('T127')
             cookies_for_download()
             result = status()
         elif action == 'close_browser':
@@ -340,11 +344,11 @@ def main():
             raise ValueError('Invalid action')
         response = {'status': 200, **result}
     except LockedError:
-        response = {'status': 409, 'error': 'Profile YouTube đang được sử dụng. Chờ vài giây rồi thử lại.'}
+        response = {'status': 409, 'error': 'YouTube đang được dùng ở một cửa sổ khác. Chờ vài giây rồi thử lại.'}
     except YouTubeSessionError as exc:
         response = {'status': 409, 'error': str(exc), **status()}
     except Exception:
-        response = {'status': 500, 'error': 'Không thể quản lý kết nối YouTube. Kiểm tra quyền truy cập thư mục profile.'}
+        response = {'status': 500, 'error': 'Không quản lý được kết nối YouTube. Thử lại sau ít phút.'}
     print(json.dumps(response, ensure_ascii=False))
 
 

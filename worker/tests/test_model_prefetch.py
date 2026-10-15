@@ -1,4 +1,5 @@
 """First-run download of the speech models: runs before the ASR workers, shows progress, resumes, retries, can be cancelled."""
+from audio_translate.core.error_ids import AppError
 import json
 import os
 from pathlib import Path
@@ -71,7 +72,7 @@ class ModelPrefetchTests(unittest.TestCase):
         self.assertEqual((self.fetched, sleeps), (['paraformer-zh'], [3, 6]))     # two failures, backing off, then success
         shutil_target = prefetch.folder('paraformer-zh')
         import shutil; shutil.rmtree(shutil_target)
-        with self.assertRaisesRegex(RuntimeError, 'Phần đã tải được giữ lại') as caught:
+        with self.assertRaises(AppError) as caught:  # C110: the speech data could not be downloaded, what was fetched is kept
             prefetch.ensure_models(self.job, download=self.downloader(fail_first=99), sleep=lambda s: None)
         self.assertIsInstance(caught.exception.__cause__, ConnectionError)
 
@@ -82,7 +83,7 @@ class ModelPrefetchTests(unittest.TestCase):
 
     def test_an_incomplete_result_is_an_error_not_a_silent_success(self):
         for alias in ('fsmn-vad', 'ct-punc'): self.put(alias)
-        with self.assertRaisesRegex(RuntimeError, 'tải chưa đủ'): prefetch.ensure_models(self.job, download=lambda alias: None)
+        with self.assertRaises(AppError): prefetch.ensure_models(self.job, download=lambda alias: None)
 
     def test_the_pipeline_fetches_models_before_any_worker_and_skips_when_all_chunks_are_done(self):
         from audio_translate.transcription import pipeline
@@ -179,14 +180,14 @@ class GatewayBundleTests(unittest.TestCase):
         key = prefetch.model_id('paraformer-zh').replace('/', '--') + '/model.pt'
         self.contents[key] = b'X' * 3000                                         # same size, other bytes: the pinned SHA-256 will not match
         try: self.fetch_all()
-        except RuntimeError: pass                                                # the fake ModelScope adds nothing, so it ends as an incomplete result
+        except AppError: pass                                                # the fake ModelScope adds nothing, so it ends as an incomplete result
         self.assertFalse(self.on_disk(key).exists())
         self.assertFalse(list(self.cache.rglob('*.part')))
         self.assertIn('paraformer-zh', self.modelscope)
 
     def test_an_unreachable_gateway_falls_back_to_modelscope(self):
         def down(*args): raise genius.GatewayError(0, 'UNREACHABLE')
-        with self.assertRaisesRegex(RuntimeError, 'tải chưa đủ'):
+        with self.assertRaises(AppError):
             prefetch.ensure_models(self.job, download=lambda alias: self.modelscope.append(alias), post=down, opener=self.opener, sleep=lambda s: None, interval=0.02)
         self.assertEqual(self.modelscope, list(prefetch.ALIASES))
 
@@ -200,7 +201,7 @@ class GatewayBundleTests(unittest.TestCase):
 
     def test_no_published_bundle_means_modelscope_only(self):
         self.manifest.write_text(json.dumps({'version': 1, 'models': []}), encoding='utf-8')
-        with self.assertRaisesRegex(RuntimeError, 'tải chưa đủ'):
+        with self.assertRaises(AppError):
             self.fetch_all()
         self.assertEqual((self.posts, self.modelscope), ([], list(prefetch.ALIASES)))
 

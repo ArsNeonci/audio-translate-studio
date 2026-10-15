@@ -1,5 +1,6 @@
 """Subtitles (video/subtitles.py): timed from the voice itself, cut at sentence ends and clauses, at most two lines, never overlapping,
 and in the SubRip form YouTube accepts."""
+from audio_translate.core.error_ids import AppError
 import json
 from pathlib import Path
 import re
@@ -58,7 +59,7 @@ class SubtitleTests(unittest.TestCase):
     def test_unknown_lengths_share_the_rest_of_the_voice(self):
         cues = sub.build([('Một hai ba.', None, 0), ('Bốn năm sáu bảy tám chín.', None, 0)], total_ms=10_000)
         self.assertEqual(cues[-1][1], 10_000); self.assertEqual(cues[0][0], 0)
-        with self.assertRaises(ValueError): sub.build([('x', None, 0)])
+        with self.assertRaises(AppError): sub.build([('x', None, 0)])
 
     def test_srt_text_is_what_youtube_reads(self):
         text = sub.to_srt([(0, 4160, 'Xin chào'), (3_723_599, 3_725_000, 'dòng\nhai')])
@@ -83,7 +84,7 @@ class SubtitleTests(unittest.TestCase):
             rows[0]['frames'] = 96000; rows[1]['frames'] = 144000                 # frames recorded: the files are not needed
             (voice / 'm.jsonl').write_text('\n'.join(json.dumps(r) for r in rows), encoding='utf-8')
             self.assertEqual(sub.make(voice / 'm.jsonl', None, total_ms=5500), out)
-            with self.assertRaises(ValueError): sub.make(voice / 'm.jsonl', None, total_ms=60_000)    # a manifest of another voice
+            with self.assertRaises(AppError): sub.make(voice / 'm.jsonl', None, total_ms=60_000)    # a manifest of another voice
             target = voice / 'a.srt'
             self.assertEqual(sub.write(target, voice / 'm.jsonl', None, total_ms=5500), 2)
             self.assertEqual(target.read_bytes()[:3], b'1\n0'); self.assertNotIn(b'\r', target.read_bytes())

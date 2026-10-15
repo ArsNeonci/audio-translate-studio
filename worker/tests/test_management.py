@@ -1,4 +1,5 @@
 """Acceptance coverage for numbering, lifecycle, migration and standalone nodes."""
+from audio_translate.core.error_ids import AppError
 import json
 import os
 from pathlib import Path
@@ -245,7 +246,8 @@ class ManagementTests(unittest.TestCase):
         update_job(d,status='FAILED');manage.reprocess(d.name,'DOWNLOAD');self.assertTrue(source.is_file())
         self.assertEqual([h['id'] for h in manage.history('workflows')],[j['id']]);self.assertEqual(manage.history('tools'),[])
         source.unlink()
-        with self.assertRaisesRegex(ValueError,'tạo workflow mới'):pipeline.download(d)
+        with self.assertRaises(AppError) as gone:pipeline.download(d)
+        self.assertEqual(gone.exception.error_id,'T108')
         with self.assertRaises(ValueError):manage.create('https://youtu.be/1JzKgwOESoM',self.voice,upload=p,input_name='clip.wav',mime='audio/wav')
         with self.assertRaises(ValueError):manage.create(voice=self.voice,upload=p,input_name='clip.mp3',mime='audio/mpeg')
 import sqlite3

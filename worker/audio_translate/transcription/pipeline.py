@@ -3,6 +3,7 @@
 FunASR is installed from worker/requirements.txt in the application environment.
 """
 
+from audio_translate.core.error_ids import AppError
 import argparse
 from contextlib import contextmanager
 import heapq
@@ -96,10 +97,10 @@ def validate_cookie_file(path):
     try:
         lines = Path(path).read_text(encoding="utf-8-sig").splitlines()
     except UnicodeError:
-        raise ValueError("File cookie phải dùng UTF-8 và định dạng Netscape cookies.txt.") from None
-    error = "File cookie không đúng định dạng Netscape cookies.txt. Hãy xuất lại cookie YouTube; không dán chuỗi Cookie từ trình duyệt."
+        raise AppError('T130', 'cookie file is not UTF-8') from None
+    error = "cookie file is not in Netscape cookies.txt format"
     if not lines or not re.match(r"^#(?: Netscape)? HTTP Cookie File", lines[0]):
-        raise ValueError(error)
+        raise AppError('T130', error)
     count = 0
     for line in lines[1:]:
         if line.startswith("#HttpOnly_"):
@@ -110,10 +111,10 @@ def validate_cookie_file(path):
         if (len(fields) != 7 or fields[1] not in ("TRUE", "FALSE")
                 or fields[3] not in ("TRUE", "FALSE")
                 or fields[4] and not fields[4].isdigit()):
-            raise ValueError(error)
+            raise AppError('T130', error)
         count += 1
     if not count:
-        raise ValueError("File cookie chưa chứa cookie nào. Hãy xuất lại cookie YouTube.")
+        raise AppError('T131', 'cookie file holds no cookies')
 
 
 def download(job_dir):
@@ -123,9 +124,9 @@ def download(job_dir):
     from audio_translate.core.storage import read_json
     saved = read_json(job_dir / "job.json")
     if saved.get("source_upload"):
-        raise ValueError("File audio đã tải lên không còn trong workflow này. Hãy tạo workflow mới và chọn lại file.")
+        raise AppError('T108', 'uploaded audio is gone')
     if not saved.get("url"):
-        raise ValueError("Workflow này không có link YouTube.")
+        raise AppError('T109', 'no YouTube link in the job')
     # The yt-dlp release and the order of YouTube clients come from the gateway when one has been published (signed, see
     # ytdlp_update); otherwise the bundled yt-dlp and the built-in order are used. This must happen before yt_dlp is imported.
     from audio_translate.transcription import ytdlp_update
@@ -173,7 +174,7 @@ def download(job_dir):
             chosen["extractor_args"] = {"youtube": {"player_client": [client]}}
         if cookies_file:
             if not Path(cookies_file).is_file():
-                raise FileNotFoundError(f"Không tìm thấy YTDLP_COOKIES_FILE: {cookies_file}")
+                raise AppError('T132', f'YTDLP_COOKIES_FILE not found: {cookies_file}')
             validate_cookie_file(cookies_file)
             chosen["cookiefile"] = cookies_file
         with YoutubeDL(chosen) as ydl:
@@ -190,13 +191,13 @@ def download(job_dir):
         result = ytdlp_update.refresh(force=True)
         error = refused(attempts)
         if result.get("changed"):
-            error = RuntimeError(f"{error} Đã nhận bản cập nhật bộ tải YouTube; bấm Thử lại.")
+            error = AppError('T133', str(error))
         raise error
     if info.get("vcodec") not in (None, "none"):
-        raise RuntimeError("YouTube không cung cấp audio-only stream cho URL này.")
+        raise AppError('T104', 'no audio-only stream for this URL')
     path = source_file(job_dir)
     if not path:
-        raise RuntimeError("yt-dlp không tạo được file audio.")
+        raise AppError('T105', 'the downloader produced no audio file')
     update(job_dir, name=info.get("title") or job["name"], duration_ms=int((info.get("duration") or 0) * 1000), progress=10)
     progress(job_dir,"download","DOWNLOADING",1,1)
     return path
@@ -248,16 +249,16 @@ def refused(attempts):
     """The one error the owner sees after every attempt failed, chosen from what YouTube said."""
     errors = [(kind, error) for _, kind, error in attempts if error]
     if not attempts:
-        return RuntimeError("YouTube yêu cầu xác thực. Mở Settings → Kết nối YouTube rồi đăng nhập.")
+        return AppError('T101', 'no attempt ran')
     if not errors:
-        return RuntimeError("yt-dlp không trả về thông tin video.")
+        return AppError('T106', 'no video information returned')
     texts = [error.lower() for _, error in errors]
     if any("http error 429" in text for text in texts):
-        return RuntimeError("YouTube giới hạn số lượt truy cập (HTTP 429). Hãy chờ trước khi thử lại; kiểm tra VPN/proxy hoặc thử mạng khác nếu lỗi kéo dài.")
+        return AppError('T103', 'HTTP 429')
     with_cookies = [(kind, error) for kind, error in errors if kind]
     if not with_cookies and any("sign in to confirm" in text for text in texts):
         # Only anonymous attempts ran: there is no saved sign-in to use.
-        return RuntimeError("YouTube yêu cầu xác thực. Mở Settings → Kết nối YouTube rồi đăng nhập. Hoặc chọn \"Tệp âm thanh tiếng Trung\" và nạp file audio.")
+        return AppError('T101', 'sign in required, no saved sign-in')
     if with_cookies:
         kind, error = with_cookies[-1]
         text = error.lower()
@@ -265,11 +266,11 @@ def refused(attempts):
             if kind == "profile":
                 from audio_translate.transcription.youtube_session import mark_auth_required
                 mark_auth_required()
-                return RuntimeError("YouTube yêu cầu xác thực lại. Mở Settings → Kết nối YouTube, đăng nhập trong profile riêng rồi Retry DOWNLOAD. Không cần xuất cookie hoặc đóng gói lại app.")
-            return RuntimeError("YouTube vẫn yêu cầu xác thực dù đã dùng cookie. Hãy xuất lại cookie YouTube từ phiên trình duyệt xem được video, cập nhật file rồi bấm Thử lại.")
+                return AppError('T101', 'sign in required, saved profile')
+            return AppError('T101', 'sign in required, cookie file')
         if "needs to be reloaded" in text:
-            return RuntimeError("YouTube từ chối phiên đăng nhập đã lưu (\"The page needs to be reloaded\"). Mở Settings → Kết nối YouTube, đăng nhập lại rồi bấm Thử lại.")
-    return RuntimeError(f"Không tải được audio YouTube: {errors[-1][1]}")
+            return AppError('T102', 'the page needs to be reloaded')
+    return AppError('T107', errors[-1][1])
 
 
 def duration_ms(path):
@@ -358,7 +359,7 @@ def vad_pass(job_dir, source, total_ms):
             if pending_start is not None:
                 out.write(json.dumps([pending_start, consumed * 1000 // RATE]) + "\n")
         if process.wait() != 0:
-            raise RuntimeError("FFmpeg không decode được audio để chạy VAD.")
+            raise AppError('C101', 'ffmpeg could not decode the audio for VAD')
         (job_dir / "working" / "vad.done").write_text("ok", encoding="ascii")
     finally:
         if process.poll() is None:
@@ -412,13 +413,13 @@ def audio_piece(stream, cursor, tail, start_ms, end_ms):
     if start_sample < cursor:
         overlap = cursor - start_sample
         if overlap * 2 > len(tail):
-            raise RuntimeError("Overlap vượt quá bộ đệm audio.")
+            raise AppError('C102', 'overlap exceeds the audio buffer')
         prefix = tail[-overlap * 2:]
     skip = max(0, start_sample - cursor)
     while skip:
         block = stream.read(min(skip * 2, 1024 * 1024))
         if not block:
-            raise RuntimeError("Audio kết thúc trước đoạn VAD dự kiến.")
+            raise AppError('C103', 'audio ended before the expected VAD segment')
         count = len(block) // 2
         cursor += count
         skip -= count
@@ -473,7 +474,7 @@ def transcribe_serial(job_dir, source, chunks):
                 report(job_dir, 3, index + 1, len(chunks))
                 continue
             if not len(audio):
-                raise RuntimeError(f"Đoạn audio {index} trống.")
+                raise AppError('C104', f'audio segment {index} is empty')
             result = model.generate(input=audio, fs=RATE, batch_size_s=30,
                                     batch_size_threshold_s=30, sentence_timestamp=True)
             item = result[0] if result else {}

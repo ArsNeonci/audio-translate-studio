@@ -103,7 +103,7 @@ class SessionTests(unittest.TestCase):
              patch.object(session, 'command', return_value={'cookies': []}):
             with self.assertRaises(session.YouTubeSessionError) as error:
                 session.cookies_for_download()
-        self.assertEqual(classify(error.exception), 'YOUTUBE_AUTH')
+        self.assertEqual(classify(error.exception), 'T126')   # signed out: its own ID
         self.assertEqual(session.status()['state'], 'SIGN_IN_REQUIRED')
 
     def test_disconnect_and_upgrade_preserve_profile(self):

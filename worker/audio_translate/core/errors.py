@@ -25,28 +25,9 @@ def effective_steps(job):
     if job.get('tool_steps'): return list(job['tool_steps'])
     video = job.get('video')
     return [*STEPS, *(SUBTITLE,) * (job.get('subtitle') is not None), *(VIDEO,) * bool(video), *(BURN,) * bool(video and video.get('burn'))]
-GUIDES = {
- 'UNACTIVATED': ('Ứng dụng chưa kích hoạt.', 'License / Renewal', ['Mở License, copy Machine ID và gửi Admin.', 'Nhập token kích hoạt Admin cấp cho máy này.'], []),
- 'EXPIRED': ('License đã hết hạn.', 'License / Renewal', ['Yêu cầu Admin cấp token gia hạn cho cùng máy.', 'Nhập token gia hạn theo đúng thứ tự. History và Download vẫn dùng được.'], []),
- 'CLOCK_ROLLBACK': ('Đồng hồ máy chạy lùi so với lần kiểm tra trước.', 'Windows Date & Time', ['Bật đồng bộ giờ Windows và kiểm tra múi giờ.', 'Không xóa license state; đồng bộ giờ rồi thử lại.'], []),
- 'TRUSTED_TIME_UNAVAILABLE': ('Không xác nhận được thời gian qua Internet.', 'Kết nối HTTPS / proxy của Windows', ['Kiểm tra kết nối Internet và chứng chỉ HTTPS.', 'Thử lại khi ít nhất hai nguồn thời gian có thể truy cập.'], []),
- 'DEPENDENCY_MISSING': ('Thiếu thư viện Python.', 'worker/requirements.txt; .venv', ['Kiểm tra Python trong .venv.', 'Cài dependencies trong project rồi Retry Step.'], [r'.\.venv\Scripts\python.exe -m pip install -r worker/requirements.txt']),
- 'MODEL_MISSING': ('Không tìm thấy model hoặc chưa tải đủ trọng số.', '.env.local: HY_MT_MODEL_PATH / VIENEU_SOURCE; models/Hy-MT2-7B-Q4_K_M; data/model-cache; data/hf-cache', ['Kiểm tra đường dẫn model tồn tại và mạng truy cập kho model.', 'Sửa đường dẫn hoặc tải đầy đủ model chính thức rồi Retry Step.'], []),
- 'FFMPEG_MISSING': ('FFmpeg/ffprobe chưa có trên PATH.', 'PATH của server', ['Cài FFmpeg từ nguồn chính thức, thêm thư mục bin vào PATH.', 'Mở terminal mới và khởi động lại server.'], ['ffmpeg -version', 'ffprobe -version']),
- 'PATH_MISSING': ('File/thư mục hoặc chương trình không tồn tại.', '.env.local; đường dẫn trong thông báo lỗi', ['Kiểm tra đường dẫn và file đầu vào.', 'Sửa đường dẫn; khởi động lại server nếu sửa .env.local.'], []),
- 'FILE_PERMISSION': ('Không có quyền đọc/ghi hoặc file đang bị chương trình khác khóa.', 'data/tmp; data/jobs (legacy); RESULTS_ROOT; data/config; thư mục model', ['Kiểm tra quyền ghi thư mục bằng tài khoản chạy server.', 'Đóng chương trình đang giữ file; cấp quyền cho đúng thư mục rồi Retry Step.'], []),
- 'DISK_FULL': ('Ổ đĩa không còn đủ chỗ.', 'Ổ chứa data/tmp, RESULTS_ROOT và model cache', ['Kiểm tra dung lượng trống.', 'Chuyển hoặc dọn file không cần thiết theo lựa chọn của bạn; giữ input, checkpoints và kết quả đã lưu của job.'], ['Get-PSDrive -PSProvider FileSystem']),
- 'CUDA_OOM': ('GPU không đủ bộ nhớ.', 'Settings → CPU/GPU; data/settings/compute.json; job.json: compute_device', ['Đóng ứng dụng dùng GPU rồi thử lại.', 'Muốn dùng CPU: chọn CPU trong Cài đặt rồi tạo workflow mới. Retry của workflow cũ giữ thiết bị đã chọn.'], ['nvidia-smi']),
- 'CUDA_CONFIG': ('CUDA/PyTorch hoặc backend GPU cấu hình không tương thích.', 'Settings → CPU/GPU; bản PyTorch và llama-cpp-python đã cài', ['Kiểm tra torch.cuda.is_available() và llama_supports_gpu_offload().', 'Cài backend GPU phù hợp rồi Retry; hoặc chọn CPU trong Cài đặt và tạo workflow mới. Workflow đã bắt đầu giữ thiết bị đã chọn.'], [r'.\.venv\Scripts\python.exe -c "import torch; print(torch.cuda.is_available())"']),
- 'YOUTUBE_AUTH': ('YouTube yêu cầu xác thực hoặc phiên đăng nhập không hợp lệ.', 'Settings → Kết nối YouTube', ['Bấm Đăng nhập lại / Mở YouTube và đăng nhập trong cửa sổ profile riêng.', 'Bấm Kiểm tra kết nối rồi Retry DOWNLOAD; không cần khởi động lại server.', 'Nếu vẫn dùng file cookie cũ: cập nhật file YTDLP_COOKIES_FILE dạng Netscape.'], []),
- 'RATE_LIMIT': ('YouTube giới hạn truy cập.', 'Kết nối mạng/VPN/proxy', ['Chờ trước khi Retry Step.', 'Kiểm tra mạng và xác thực trong trình duyệt nếu YouTube yêu cầu.'], []),
- 'VIDEO_MISSING': ('Không tìm thấy video đã chọn: file đã bị đổi tên, chuyển chỗ hoặc xóa.', 'Tạo lại → Ghép video', ['Đưa file về đúng chỗ cũ rồi bấm Retry Step.', 'Hoặc vào Tạo lại, chọn bước Ghép video, bấm Chọn lại video rồi chạy lại.'], []),
- 'VIDEO_UNREADABLE': ('Không đọc được một video đã chọn (file hỏng hoặc không phải video).', 'Tạo lại → Ghép video', ['Mở thử file bằng trình phát video của Windows.', 'Vào Tạo lại, chọn bước Ghép video, bấm Chọn lại video và bỏ file lỗi.'], []),
- 'VIDEO_RESULT_MISSING': ('Không còn video đã ghép để gắn phụ đề (kết quả Ghép video đã bị xóa hoặc chưa tạo xong).', 'Tạo lại → Ghép video', ['Tạo lại bước Ghép video của workflow này, rồi chạy lại Gắn phụ đề.'], []),
- 'SUBTITLE_FAILED': ('Không tạo được phụ đề từ giọng đọc (danh sách câu và file giọng không khớp).', 'Tạo lại → Phụ đề', ['Tạo lại bước Tạo giọng của workflow này, rồi chạy lại Phụ đề.'], []),
- 'VOICE_MISSING': ('Không tìm thấy giọng đọc để ghép (kết quả giọng đọc đã bị xóa hoặc chưa tạo xong).', 'Kết quả bước Tạo giọng', ['Tạo lại giọng đọc của workflow này trước.', 'Với Công cụ 5 và 6: chọn một kết quả còn file giọng đọc.'], []),
- 'ENV_CONFIG': ('Biến môi trường hoặc giá trị cấu hình không hợp lệ.', '.env.local; .env.example; working/adapters.json; RESULTS_ROOT', ['Đối chiếu .env.example; kiểm tra giá trị batch/device/đường dẫn. RESULTS_ROOT phải tách biệt data/tmp và data/jobs.', 'Sửa .env.local rồi khởi động lại server. Nếu job đã chốt adapters.json, sửa đúng trường cấu hình của job trước retry.'], []),
-}
+# One entry per code the program knows: what happened, what to do (from error_ids.py; no paths, commands or settings names).
+from audio_translate.core import error_ids
+GUIDES = {code: (error_ids.ERRORS[eid][0], '', [error_ids.ERRORS[eid][1]], []) for code, eid in error_ids.CODE_IDS.items() if eid in error_ids.ERRORS}
 
 
 def redact(message):
@@ -61,6 +42,8 @@ def redact(message):
 
 
 def classify(exc):
+    if getattr(exc, 'error_id', None) in error_ids.ERRORS:
+        return next((code for code, eid in error_ids.CODE_IDS.items() if eid == exc.error_id), exc.error_id)
     if getattr(exc, 'code', None) in {'UNACTIVATED','EXPIRED','CLOCK_ROLLBACK','TRUSTED_TIME_UNAVAILABLE','WRONG_MACHINE','INVALID','RENEWAL_REQUIRED'}:
         return exc.code
     if getattr(exc, 'code', None) == 'VOICE_MISSING': return 'VOICE_MISSING'
@@ -82,6 +65,12 @@ def classify(exc):
     elif isinstance(exc, ValueError) and any(word in message for word in ['invalid literal', 'environment', 'device', 'batch', 'results_root']): code = 'ENV_CONFIG'
     else: code = 'STEP_FAILED'
     return code
+
+
+def identify(exc):
+    """The short ID of a failure: the one it carries, else the one of its code, else X900."""
+    if getattr(exc, 'error_id', None) in error_ids.ERRORS: return exc.error_id
+    return error_ids.CODE_IDS.get(classify(exc), 'X900')
 
 
 def fix_guide(code):
@@ -134,14 +123,16 @@ def record_failure(job_dir, step, exc):
     item = steps[step]
     code = classify(exc)
     timestamp = datetime.now(timezone.utc).isoformat()
-    failure = {'step': step, 'error_code': code, 'error_message': redact(exc), 'error_type': type(exc).__name__,
+    error_id = identify(exc)
+    # The person sees the sentence and the ID; the raw text of the failure stays in errors.jsonl.
+    failure = {'step': step, 'error_code': code, 'error_id': error_id, 'error_message': error_ids.message(error_id), 'error_type': type(exc).__name__,
                'recoverable_manually': code in GUIDES, 'failed_at': timestamp, 'retry_count': item.get('retry_count', 0)}
     from audio_translate.core.control import now, elapsed, end_run
     item.update(state='FAILED', error=failure, completed_at=now(), duration_ms=item.get('resume_duration_ms',0)+elapsed(item.get('started_at')))
     end_run(job_dir,'FAILED')
     update_job(job_dir, steps=steps, status='FAILED', failed_stage=step.lower(), active_stage=None,
                retry_step=None, error=failure['error_message'])
-    entry = {**failure, 'attempt': item.get('attempt', 1), 'message': failure['error_message'], 'timestamp': timestamp}
+    entry = {**failure, 'attempt': item.get('attempt', 1), 'message': failure['error_message'], 'detail': redact(getattr(exc, 'detail', '') or exc), 'timestamp': timestamp}
     with (job_dir/'errors.jsonl').open('a', encoding='utf-8') as out:
         out.write(json.dumps(entry, ensure_ascii=False)+'\n')
         out.flush()

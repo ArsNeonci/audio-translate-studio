@@ -138,7 +138,7 @@ export default function Home() {
         <h3>{t.home.resourceWarningTitle}</h3>
         <p>{t.home.existingWorkflows.replace("{count}", String(resourceWarning.existing_workflows))}</p>
         <ul>{resourceWarning.reasons.map(reason=><li key={reason}>{tr(reason)}</li>)}</ul>
-        <p>{resourceWarning.estimate_basis==='estimated'?tr("Dự toán RAM model tạm tính; chưa có benchmark thật. "):tr("Dự toán theo bộ nhớ model đã đo. ")}{tr("Bạn có thể xếp hàng chờ; workflow vẫn xử lý lần lượt, không ép chạy song song.")}</p>
+        <p>{tr("Bạn có thể xếp hàng chờ; workflow vẫn xử lý lần lượt, không ép chạy song song.")}</p>
         <button type="button" disabled={busy||!license.allowed||!pendingConvert} onClick={()=>{if(pendingConvert)void convert(pendingConvert,true);}}>{t.home.queueWait}</button>{' '}
         <button type="button" disabled={busy} onClick={()=>{setResourceWarning(null);setPendingConvert(null);}}>{t.home.dismiss}</button>
       </section>}

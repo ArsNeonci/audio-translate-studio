@@ -10,7 +10,7 @@ export const STEPS: Step[] = ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODER
 export const runSteps = (job: {tool_steps?: Step[]; video?: {burn?: boolean} | unknown; subtitle?: unknown}): Step[] =>
   job.tool_steps || [...STEPS, ...(job.subtitle ? ["SUBTITLE" as const] : []), ...(job.video ? ["VIDEO" as const] : []), ...((job.video as {burn?: boolean} | undefined)?.burn ? ["BURN" as const] : [])];
 export type VideoSettings = {files: import("@/components/video/video-picker").VideoClip[]; resolution: string; quality: string; burn?: boolean};
-export type StepError = { step: Step; error_code: string; error_message: string; error_type: string; recoverable_manually: boolean; failed_at: string; retry_count: number };
+export type StepError = { step: Step; error_code: string; error_id?: string; error_message: string; error_type: string; recoverable_manually: boolean; failed_at: string; retry_count: number };
 export type StepState = { state: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "SKIPPED"; progress?: number | null; started_at?: string | null; completed_at?: string | null; duration_ms?: number | null; retry_count: number; attempt: number; output_manifest?: {status:string}[]; error?: StepError };
 export type Job = {
   id: string;

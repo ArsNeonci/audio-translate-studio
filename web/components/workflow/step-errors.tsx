@@ -43,7 +43,7 @@ export default function StepErrors({job}: {job: Pick<Job,"id"|"steps"|"artifacts
   return <div className="step-errors">
     {runSteps(job).map(step => {
       const item = job.steps?.[step];
-      const localizedGuide = guide && item?.error ? localizeGuide(guide, item.error.error_code, language) : null;
+      const localizedGuide = guide && item?.error ? localizeGuide(guide) : null;
       const legacyCompleted = step === "DOWNLOAD" || step === "TRANSCRIPTION" ? job.artifacts?.zh : step === "TRANSLATION" ? job.artifacts?.vi : step === "MODERATION" ? job.artifacts?.moderated : step === "SUBTITLE" ? job.artifacts?.subtitle : step === "VIDEO" ? job.artifacts?.video : step === "BURN" ? job.artifacts?.video_subtitled : job.artifacts?.voice;
       const state = item?.state || (legacyCompleted ? "COMPLETED" : "PENDING");
       const retrying = job.retry_step === step || (busy?.step === step && busy.failedAt === item?.error?.failed_at && job.status === "FAILED");
@@ -52,9 +52,9 @@ export default function StepErrors({job}: {job: Pick<Job,"id"|"steps"|"artifacts
           {item?.error?.recoverable_manually && <button className="text-button" onClick={() => void show(step, true)}>{tr("View Fix Guide")}</button>}
           {step==='TRANSLATION'&&<><button className="action-button" disabled={!license.allowed||retrying||job.status!=='FAILED'} onClick={()=>void retry(step,true)}>{tr('Tiếp tục giai đoạn')}</button><small>{tr('translationContinueHelp')}</small></>}
           <button className="action-button" disabled={!license.allowed || retrying || job.status !== "FAILED"} onClick={() => void retry(step)}>{tr("Chạy lại giai đoạn")}</button><small>{tr("Chỉ xóa dữ liệu của giai đoạn lỗi, giữ kết quả trước đó.")}</small></div>}
-        {open === step && item?.error && <div className="fix-guide"><p className="alert">{item.error.error_code}: {tr(item.error.error_message)}</p><small>{item.error.failed_at} · {item.error.error_type} · {tr("Retry count:")} {item.retry_count}</small>
+        {open === step && item?.error && <div className="fix-guide"><p className="alert">{tr(item.error.error_message)}</p><small>{new Date(item.error.failed_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")} · {tr("Retry count:")} {item.retry_count}</small>
           {step==='TRANSLATION'&&job.translation_failures?.map(failure=><div key={`${failure.row}-${failure.part}`}><p>{tr('translationSegmentFailure',{row:failure.row,part:failure.part+1,start:elapsed(failure.start_ms),end:elapsed(failure.end_ms),count:failure.failure_count})}</p>{failure.source&&<pre>{failure.source}</pre>}<p>{failure.reason}</p>{failure.attempts.map((attempt,index)=><details key={index}><summary>{tr('translationRejectedDraft',{attempt:index+1,seed:attempt.seed})}</summary><pre>{attempt.draft}</pre><small>{attempt.reason}</small></details>)}</div>)}
-          {localizedGuide && <><p>{localizedGuide.cause}</p><p>{tr("File/config:")} {localizedGuide.config}</p><ol>{localizedGuide.checks_and_fixes.map((text,i) => <li key={i}>{text}</li>)}</ol>{localizedGuide.commands.map((command,i) => <pre key={i}>{command}</pre>)}<p>{tr("Sau khi sửa, bấm Retry Step.")}</p></>}
+          {localizedGuide && <><p>{localizedGuide.cause}</p><ol>{localizedGuide.checks_and_fixes.map((text,i) => <li key={i}>{text}</li>)}</ol><p>{tr("Sau khi xong, bấm Chạy lại giai đoạn.")}</p></>}
         </div>}
       </div>;
     })}

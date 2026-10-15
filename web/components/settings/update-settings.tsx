@@ -17,7 +17,7 @@ export default function UpdateSettings() {
     <h2>{tr("updateTitle")}</h2>
     <p>{tr("updateDescription")}</p>
     {state && <>
-      <p role="status"><strong>{tr("updateCurrent", { version: state.installed.version || "—" })}</strong> · {tr("updateChannel", { channel: state.channel })} · {tr("updateLastChecked", { when })}</p>
+      <p role="status"><strong>{tr("updateCurrent", { version: state.installed.version || "—" })}</strong> · {tr("updateLastChecked", { when })}</p>
       <p role="status">{state.offer ? tr(state.offer.required ? "updateRequired" : "updateAvailable", { version: state.offer.version }) : tr(state.error ? "updateCheckError" : "updateUpToDate")}{state.error && !state.offer && <small> · {state.error}</small>}</p>
       <button type="button" className="action-button" disabled={busy} onClick={() => void check()}>{tr(busy ? "updateChecking" : "updateCheck")}</button>
     </>}

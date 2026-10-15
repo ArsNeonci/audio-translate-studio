@@ -1,4 +1,5 @@
 import io
+from audio_translate.core.error_ids import AppError
 import json
 import tempfile
 import unittest
@@ -62,10 +63,10 @@ class PipelineTests(unittest.TestCase):
 
         # (YouTube's answer, cookie file set, expected message, attempts made, last attempt's client)
         cases = [
-            ("Sign in to confirm you're not a bot", False, "Kết nối YouTube", 2, ["mweb"]),
-            ("Sign in to confirm you're not a bot", True, "xuất lại cookie", 5, ["tv"]),
-            ("HTTP Error 429: Too Many Requests", False, "HTTP 429", 1, None),   # no more requests after a 429
-            ("HTTP Error 429: Too Many Requests", True, "HTTP 429", 1, None),
+            ("Sign in to confirm you're not a bot", False, "T101", 2, ["mweb"]),
+            ("Sign in to confirm you're not a bot", True, "T101", 5, ["tv"]),
+            ("HTTP Error 429: Too Many Requests", False, "T103", 1, None),   # no more requests after a 429
+            ("HTTP Error 429: Too Many Requests", True, "T103", 1, None),
         ]
         for message, use_cookies, expected, count, client in cases:
             with self.subTest(message=message, cookies=use_cookies), tempfile.TemporaryDirectory() as folder:
@@ -76,8 +77,9 @@ class PipelineTests(unittest.TestCase):
                 cookie_path.write_text("# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfake-value\n", encoding="utf-8")
                 with patch.dict("os.environ", {"YTDLP_COOKIES_FILE": str(cookie_path) if use_cookies else ""}), patch("yt_dlp.YoutubeDL") as ydl:
                     ydl.return_value.__enter__.return_value.extract_info.side_effect = DownloadError(message)
-                    with self.assertRaisesRegex(RuntimeError, expected):
+                    with self.assertRaises(AppError) as raised:
                         download(job_dir)
+                    self.assertEqual(raised.exception.error_id, expected)
                     self.assertEqual(ydl.call_count, count)
                     options = ydl.call_args.args[0]
                     # The cookie file is used only by the attempts that ask for a sign-in, after the anonymous ones.
@@ -161,13 +163,15 @@ class PipelineTests(unittest.TestCase):
             job_dir = self.make_job(folder)
             fake, attempts = self.fake_youtube(job_dir, [bot, bot, reload, reload, reload])
             with patch("audio_translate.transcription.youtube_session.cookies_for_download", return_value=[object()]), patch("yt_dlp.YoutubeDL", fake):
-                with self.assertRaisesRegex(RuntimeError, "từ chối phiên đăng nhập đã lưu"): download(job_dir)
+                with self.assertRaises(AppError) as raised: download(job_dir)
+                self.assertEqual(raised.exception.error_id, "T102")   # the saved sign-in was refused
             self.assertEqual(len(attempts), 5)
         with tempfile.TemporaryDirectory() as folder:
             job_dir = self.make_job(folder)
             fake, attempts = self.fake_youtube(job_dir, [reload, reload])
             with patch("yt_dlp.YoutubeDL", fake):
-                with self.assertRaisesRegex(RuntimeError, "Không tải được audio YouTube: .*reloaded"): download(job_dir)   # no sign-in involved: the plain error
+                with self.assertRaises(AppError) as raised: download(job_dir)   # no sign-in involved: the plain error
+                self.assertEqual((raised.exception.error_id, "reloaded" in raised.exception.detail), ("T107", True))   # the original stays in the detail
             self.assertEqual(len(attempts), 2)   # no saved sign-in: the attempts that need one are skipped
 
     def test_the_client_order_from_the_gateway_is_followed_and_an_update_is_announced(self):
@@ -178,7 +182,8 @@ class PipelineTests(unittest.TestCase):
             fake, attempts = self.fake_youtube(job_dir, [DownloadError("Requested format is not available"), DownloadError("Requested format is not available")])
             with patch("audio_translate.transcription.ytdlp_update.attempts", return_value=plan), patch("yt_dlp.YoutubeDL", fake):
                 self.refresh.return_value = {"changed": True}
-                with self.assertRaisesRegex(RuntimeError, "Đã nhận bản cập nhật bộ tải YouTube; bấm Thử lại"): download(job_dir)
+                with self.assertRaises(AppError) as raised: download(job_dir)
+                self.assertEqual(raised.exception.error_id, "T133")   # a newer downloader was received: try again
             self.assertEqual([a["client"] for a in attempts], ["tv", "ios"])
 
     def test_cookie_validation_does_not_disclose_malformed_cookie_values(self):
@@ -186,7 +191,7 @@ class PipelineTests(unittest.TestCase):
             path = Path(folder) / "cookies.txt"
             for content in ("SID=fake-secret-value", "# Netscape HTTP Cookie File\nSID=fake-secret-value"):
                 path.write_text(content, encoding="utf-8")
-                with self.assertRaises(ValueError) as raised:
+                with self.assertRaises(AppError) as raised:
                     validate_cookie_file(path)
                 self.assertNotIn("fake-secret-value", str(raised.exception))
             path.write_text("# Netscape HTTP Cookie File\n#HttpOnly_.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tfake-value\n", encoding="utf-8")

@@ -9,6 +9,7 @@ Source: the project's own bucket, through one-hour signed links that the gateway
 model). worker/config/asr-models.json pins every file's size and SHA-256, so a wrong or damaged file is never kept. When the gateway cannot be
 used (no licence yet, offline, the bundle not published), the models are fetched from ModelScope exactly as FunASR would.
 """
+from audio_translate.core.error_ids import AppError
 import hashlib
 import json
 import os
@@ -206,11 +207,11 @@ def ensure_models(job_dir, download=fetch, sleep=time.sleep, interval=1.0, bundl
                     download(alias); break
                 except Exception as error:
                     if attempt == ATTEMPTS:
-                        raise RuntimeError('Không tải được mô hình nhận dạng giọng nói (kiểm tra kết nối mạng). Phần đã tải được giữ lại: bấm Chạy lại giai đoạn để tải tiếp.') from error
+                        raise AppError('C110', str(error)) from error
                     sleep(min(30, 3 * attempt))   # the partial file is kept; the next try continues from it
         finally:
             stop.set(); watcher.join(2)
     if missing():
-        raise RuntimeError('Mô hình nhận dạng giọng nói tải chưa đủ. Bấm Chạy lại giai đoạn để tải tiếp.')
+        raise AppError('C111', 'the speech models are not completely downloaded')
     publish(downloaded_gib=round(downloaded_bytes() / 1024 ** 3, 2), state='MODELS_READY')
     return True

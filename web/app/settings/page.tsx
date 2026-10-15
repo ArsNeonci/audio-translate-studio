@@ -7,6 +7,7 @@ import { useLanguage } from "@/lib/i18n/language-context";
 import ComputeSettings from "@/components/settings/compute-settings";
 import TranslationMemorySettings from "@/components/settings/translation-memory-settings";
 import UpdateSettings from "@/components/settings/update-settings";
+import SupportErrors from "@/components/settings/support-errors";
 
 type Connection = {
   enabled: boolean;
@@ -148,6 +149,7 @@ export default function Settings() {
 
         <TranslationMemorySettings />
         <UpdateSettings />
+        <SupportErrors />
 
         {/* YouTube connection remains independent of appearance preferences. */}
         <section className="youtube-connection" aria-label={tr("YouTube connection")}>
@@ -177,10 +179,7 @@ export default function Settings() {
               ) : null}
               {connection.downloader && (
                 <p className="downloader-state">
-                  {tr("youtubeDownloader", {
-                    version: connection.downloader.version || "?",
-                    source: tr(connection.downloader.source === "gateway" ? "bản cập nhật từ máy chủ" : "bản đi kèm app"),
-                  })}
+                  {tr("youtubeDownloader", { version: connection.downloader.version || "?" })}
                   {connection.downloader.checked_at
                     ? " · " + tr("youtubeDownloaderChecked", { time: new Date(connection.downloader.checked_at * 1000).toLocaleString(language === "vi" ? "vi-VN" : "en-US") })
                     : ""}
