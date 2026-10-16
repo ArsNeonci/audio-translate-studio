@@ -357,7 +357,7 @@ export const translations: Record<Language, Translations> = {
     history: {
       eyebrow: "KẾT QUẢ ĐÃ LƯU",
       title: "Lịch sử",
-      subtitle: "Dùng lại các bước xử lý của quy trình. Tệp âm thanh tối đa 2 GB; tệp văn bản (TXT, MD) tối đa 64 MB.",
+      subtitle: "Các kết quả đã lưu, sẵn sàng xem và tải xuống.",
       searchPlaceholder: "Số, tên hoặc nguồn…",
       allStatuses: "Tất cả trạng thái",
       newest: "Mới nhất trước",
@@ -387,7 +387,7 @@ export const translations: Record<Language, Translations> = {
     tools: {
       eyebrow: "CÔNG CỤ ĐƠN",
       title: "Sử dụng công cụ đơn",
-      subtitle: "Dùng lại các bước xử lý của quy trình. Audio tối đa 2 GiB; UTF-8 TXT/MD/JSONL tối đa 64 MiB, mỗi dòng tối đa 64 KiB.",
+      subtitle: "Dùng lại các bước xử lý của quy trình. Tệp âm thanh tối đa 2 GB; tệp văn bản (TXT, MD, JSONL) tối đa 64 MB.",
       inputFile: "Tệp đầu vào",
       chooseFile: "Chọn tệp",
       noFileChosen: "Chưa chọn tệp",
