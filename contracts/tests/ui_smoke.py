@@ -189,6 +189,20 @@ def main():
             page.get_by_role('button', name='1. Chinese Audio → Chinese Text').click()
             page.set_input_files('input[type=file]', {'name': 'a.txt', 'mimeType': 'text/plain', 'buffer': b'x'})
             check('Tools: a text file is refused for the audio tool', 'WAV, MP3' in page.inner_text('main') and 'a.txt' not in page.inner_text('.file-picker'))
+            # The runs of the single tools carry stop / continue / run again like the workflows
+            def tool_run(number, status, steps):
+                return {'id': f'00000000-0000-4000-8000-{number:012d}', 'workflow_no': number, 'storage_scope': 'tools', 'tool_type': 'translation', 'name': f'run {number}', 'input_file': f'in{number}.txt',
+                        'created_at': '2026-10-15T10:00:00+00:00', 'status': status, 'progress': 10, 'duration_ms': 0, 'tool_steps': steps, 'files': []}
+            runs = [tool_run(1, 'TRANSLATING', ['TRANSLATION']), tool_run(2, 'PAUSED', ['TRANSLATION']), tool_run(3, 'COMPLETED', ['TRANSLATION']), tool_run(4, 'FAILED', ['TRANSLATION'])]
+            page.route('**/api/tools?*', lambda route, request: route.fulfill(status=200, content_type='application/json', body=json.dumps({'jobs': runs, 'total': 4, 'page': 1, 'limit': 20, 'statuses': ['COMPLETED']})))
+            page.goto(base + '/tools'); settle()
+            page.wait_for_selector('.history-list tbody tr', timeout=10000)
+            rows = page.locator('.history-list tbody tr')
+            def titles(i): return [b.get_attribute('title') for b in rows.nth(i).locator('.history-actions button, .history-actions a').all()]
+            check('Tools list: a running tool can be paused, not run again', 'Pause stage' in titles(0) and 'Run the tool again' not in titles(0), str(titles(0)))
+            check('Tools list: a paused tool can be continued or run again', 'Resume stage' in titles(1) and 'Run the tool again' in titles(1), str(titles(1)))
+            check('Tools list: a finished or failed tool can be run again', 'Run the tool again' in titles(2) and 'Run the tool again' in titles(3), str(titles(2)) + str(titles(3)))
+            page.unroute('**/api/tools?*')
             page.goto(base + '/reprocess'); settle()
             check('Reprocess: Subtitles is a restart point', 'Subtitles' in page.locator('select').nth(1).inner_text())
             check('Reprocess: Video merge is a restart point', 'Video merge' in page.locator('select').nth(1).inner_text())

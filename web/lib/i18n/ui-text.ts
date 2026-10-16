@@ -5,6 +5,12 @@ import { translations, type Language } from '@/lib/i18n/i18n';
 export const uiText: Record<string, readonly [string, string]> = {
   'fileWrongType': ['Loại tệp này không dùng được ở đây. Chọn tệp {types}.', 'This file type cannot be used here. Choose a {types} file.'],
   'fileTooBig': ['Tệp quá lớn (tối đa {size}).', 'The file is too large (up to {size}).'],
+  'toolRerun': ['Chạy lại công cụ', 'Run the tool again'],
+  'toolRerunConfirm': ['Chạy lại công cụ #{number}? Kết quả cũ của lần chạy này sẽ được thay bằng kết quả mới.', 'Run tool #{number} again? The earlier result of this run is replaced by the new one.'],
+  'toolRerunQueued': ['Đã xếp hàng chạy lại.', 'Queued to run again.'],
+  'toolPauseQueued': ['Đã yêu cầu dừng sau bước hiện tại; kết quả đã làm được giữ lại.', 'Stop requested after the current step; what is done is kept.'],
+  'toolResumeQueued': ['Đã xếp hàng tiếp tục từ chỗ đã dừng.', 'Queued to continue from where it stopped.'],
+  '[Sensitive detail removed]': ['Có sự cố khi xử lý. Bấm Thử lại; nếu vẫn lỗi hãy gửi mã lỗi này và số quy trình. Mã lỗi: X900.', 'Something went wrong. Press Try again; if it still fails, send this error code and the run number. Error code: X900.'],
   'supportTitle': ['Hỗ trợ', 'Support'],
   'supportDescription': ['Khi gặp lỗi, hãy đọc hoặc chụp lại mã lỗi (ví dụ T101) kèm số quy trình gửi cho người bán để được hỗ trợ nhanh. Đây là 10 lỗi gần nhất.', 'When something fails, send the error code (for example T101) and the run number to the seller. These are the last 10 errors.'],
   'supportNone': ['Chưa có lỗi nào.', 'No errors yet.'],

@@ -42,6 +42,24 @@ class ToolTests(unittest.TestCase):
     def test_workflows_never_use_the_tool_addresser(self):
         self.assertIsNone(tool_addresser(self.job()))
 
+    def test_a_tool_can_be_stopped_continued_and_run_again_like_a_workflow(self):
+        directory = self.upload()
+        steps = read_json(directory / 'job.json')['tool_steps']
+        self.assertEqual(steps, ['TRANSLATION'])
+        # Stop: a queued tool stops at once and keeps what it has; Continue queues it again from where it stopped.
+        manage.cancel(directory.name, 'pause')
+        self.assertEqual(read_json(directory / 'job.json')['status'], 'PAUSED')
+        manage.resume(directory.name)
+        self.assertEqual(read_json(directory / 'job.json')['status'], 'QUEUED')
+        self.assertFalse((directory / 'working' / 'cancel.signal').exists())
+        # Run again: a finished tool starts over from its first step, the other results of the run untouched.
+        job = read_json(directory / 'job.json')
+        job['steps']['TRANSLATION'].update(state='COMPLETED'); job['status'] = 'COMPLETED'
+        atomic_json(directory / 'job.json', job)
+        again = manage.reprocess(directory.name, steps[0])
+        self.assertEqual((again['status'], again['steps']['TRANSLATION']['state']), ('QUEUED', 'PENDING'))
+        self.assertEqual((again['storage_scope'], again['tool_steps']), ('tools', ['TRANSLATION']))
+
     def test_delete_queued_tool_stops_then_removes_everything(self):
         directory = self.upload()
         number = read_json(directory / 'job.json')['workflow_no']
