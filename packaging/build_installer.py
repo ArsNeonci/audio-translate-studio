@@ -291,7 +291,7 @@ def build(product='audio-translate', customer=None):
         if content_key_file:
             from build_vault import build as build_vault, load_key as load_content_key
             vaulted=build_vault(payload/'app',load_content_key(content_key_file))
-            for rel in ['worker/config/genre-lexicon.json','worker/config/source-cleanup.json','worker/config/address-profiles.json','worker/config/names.json','worker/config/translation-prompts.json']:
+            for rel in ['worker/config/genre-lexicon.json','worker/config/source-cleanup.json','worker/config/address-profiles.json','worker/config/names.json','worker/config/translation-prompts.json','worker/config/community-rules.json']:
                 (payload/'app'/rel).unlink(missing_ok=True)
             print(f'Vault written: {", ".join(vaulted)}')
             if os.getenv('AUDIO_RELEASE_HARDENED')=='1':

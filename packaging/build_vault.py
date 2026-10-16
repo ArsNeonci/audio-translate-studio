@@ -20,6 +20,7 @@ ASSETS = {
     'address-profiles': 'worker/config/address-profiles.json',  # asset 3: forms of address
     'names': 'worker/config/names.json',                      # asset 2: Hán-Việt names
     'translation-prompts': 'worker/config/translation-prompts.json',  # asset 1: prompts/strategy
+    'community-rules': 'worker/config/community-rules.json',  # the community moderation list the app starts with (editable by the person)
 }
 
 

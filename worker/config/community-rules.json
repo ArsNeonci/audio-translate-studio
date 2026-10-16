@@ -1,0 +1,2182 @@
+[
+ {
+  "source": "Giết",
+  "replacement": "Hạ gục"
+ },
+ {
+  "source": "Chém",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Đâm",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Bắn",
+  "replacement": "Hạ gục"
+ },
+ {
+  "source": "Thủ tiêu",
+  "replacement": "Xử lý"
+ },
+ {
+  "source": "Thảm sát",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Cắt cổ",
+  "replacement": "Tác động nguy hiểm"
+ },
+ {
+  "source": "Tra tấn",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Hành hạ",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Đánh đập",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Đốm máu",
+  "replacement": "Dấu vết nhạy cảm"
+ },
+ {
+  "source": "Thi thể",
+  "replacement": "Đăng xuất"
+ },
+ {
+  "source": "Xác chết",
+  "replacement": "Đăng xuất"
+ },
+ {
+  "source": "Tự tử",
+  "replacement": "Đăng xuất"
+ },
+ {
+  "source": "Tự sát",
+  "replacement": "Đăng xuất"
+ },
+ {
+  "source": "Treo cổ",
+  "replacement": "Tự kết thúc"
+ },
+ {
+  "source": "Nhảy lầu",
+  "replacement": "Tự kết thúc"
+ },
+ {
+  "source": "Cắt cổ tay",
+  "replacement": "Tự hành hại"
+ },
+ {
+  "source": "Uống thuốc độc",
+  "replacement": "Tự hành hại"
+ },
+ {
+  "source": "Tự hành hại",
+  "replacement": "Tự tổn thương"
+ },
+ {
+  "source": "Chế tạo bom",
+  "replacement": "Vật phẩm nguy hiểm"
+ },
+ {
+  "source": "Thuốc nổ",
+  "replacement": "Vật phẩm nguy hiểm"
+ },
+ {
+  "source": "Súng đạn",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "Dao phay",
+  "replacement": "Vật sắc nhọn"
+ },
+ {
+  "source": "Chất nổ",
+  "replacement": "Vật phẩm nguy hiểm"
+ },
+ {
+  "source": "Khủng bố",
+  "replacement": "Hành vi vi phạm pháp luật"
+ },
+ {
+  "source": "Bắt cóc",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Tống tiền",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Hiếp dâm",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Cưỡng dâm",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Dâm ô",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Ấu dâm",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Làm tình",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Thủ dâm",
+  "replacement": "Tự giao lưu"
+ },
+ {
+  "source": "Bán dâm",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Mại dâm",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Lộ clip nóng",
+  "replacement": "Clip 18+"
+ },
+ {
+  "source": "Xoạc",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Mây mưa",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Lồn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Cặc",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Buồi",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Vú",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Ngực",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Mông",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Âm đạo",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Dương vật",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Bao quy đầu",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Bướm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Chim",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Gái gọi",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Phò",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Điếm",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Đ*m",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đ*ch",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đ*o",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "V*l",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Mẹ nó",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Địt mẹ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đ*t Mẹ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Chó chết",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đĩ mẹ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Mất dạy",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Ngu",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Óc chó",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Điên",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Khùng",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ chó",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Thần kinh",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Hủ lậu",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Biến thái",
+  "replacement": "Kẻ B Thai"
+ },
+ {
+  "source": "Ma túy",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Ke",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Kẹo",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Đá",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Heroine",
+  "replacement": "Chất cấm"
+ },
+ {
+  "source": "Cần sa",
+  "replacement": "Chất cấm"
+ },
+ {
+  "source": "Bóng cười",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Xì ke",
+  "replacement": "Người dùng chất kích thích"
+ },
+ {
+  "source": "Thuốc lắc",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Đập đá",
+  "replacement": "Sử dụng chất cấm"
+ },
+ {
+  "source": "Tài xỉu",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Xóc đĩa",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Cá độ bóng đá",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Nhà cái",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Baccarat",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Poker",
+  "replacement": "Trò chơi bài"
+ },
+ {
+  "source": "Nổ hũ",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Quay hũ",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Cược chấp",
+  "replacement": "Dự đoán tỷ số"
+ },
+ {
+  "source": "Game bài đổi thưởng",
+  "replacement": "Game giải trí"
+ },
+ {
+  "source": "Hack tài khoản",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Crack phần mềm",
+  "replacement": "Bản không chính thức"
+ },
+ {
+  "source": "Cheat game",
+  "replacement": "Mẹo chơi"
+ },
+ {
+  "source": "Bẻ khóa",
+  "replacement": "Mở khóa"
+ },
+ {
+  "source": "Tool hack",
+  "replacement": "Công cụ hỗ trợ"
+ },
+ {
+  "source": "Lừa đảo",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Đa cấp lừa đảo",
+  "replacement": "Mô hình không lành mạnh"
+ },
+ {
+  "source": "Chữa dứt điểm",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Đặc trị 100%",
+  "replacement": "Hỗ trợ giảm triệu chứng"
+ },
+ {
+  "source": "Chữa khỏi hoàn toàn",
+  "replacement": "Cải thiện sức khỏe"
+ },
+ {
+  "source": "Thuốc giả",
+  "replacement": "Sản phẩm không rõ nguồn gốc"
+ },
+ {
+  "source": "Vắc-xin gây chết người",
+  "replacement": "Yếu tố vắc-xin"
+ },
+ {
+  "source": "Anti-vax",
+  "replacement": "Quan điểm vắc-xin"
+ },
+ {
+  "source": "Biến chủng nguy hiểm",
+  "replacement": "Biến chủng mới"
+ },
+ {
+  "source": "Bắc Kỳ (miệt thị)",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Nam Kỳ (miệt thị)",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Trung Kỳ (miệt thị)",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Bê đê (xúc phạm)",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Bóng hủ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Chuyển giới giả dạng",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Địt",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Địt con mẹ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đụ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đụ má",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đù",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đù má",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đéo",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đ.m",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Dm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đmm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Dmm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đcm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Dcm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đkm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đjt",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đ!t",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đ**",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đ.t",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đ.éo",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Vcl",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Vkl",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Vl",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Vãi lồn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Vãi cả lồn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Vãi lìn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Clgt",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Clm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Cmm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Cmn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Dcmm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Sml",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Lìn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Loz",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Lz",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "L**",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Cứt",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "C**",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "B***",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Mẹ kiếp",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Mả mẹ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Má mày",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Con mẹ mày",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Mẹ mày",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Khốn nạn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Khốn kiếp",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ khốn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Súc vật",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Thằng chó",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Con chó",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Chó đẻ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ chó má",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đĩ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đĩ điếm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đĩ thõa",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Con đĩ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Cave",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ điên",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Tâm thần",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Thiểu năng",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đần",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Ngu xuẩn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Ngu như bò",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Thằng ngu",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ ngu",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ ăn hại",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Rác rưởi",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ rác",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Câm mồm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Im mồm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Fuck",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "F*ck",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Fck",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Fuk",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Wtf",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Stfu",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Shit",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Sh*t",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Bitch",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "B*tch",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Dick",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Pussy",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Slut",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Whore",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Asshole",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Bastard",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Motherfucker",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Cunt",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Kill",
+  "replacement": "Hạ gục"
+ },
+ {
+  "source": "K1ll",
+  "replacement": "Hạ gục"
+ },
+ {
+  "source": "Giết chết",
+  "replacement": "Hạ gục"
+ },
+ {
+  "source": "Giết người",
+  "replacement": "Hạ gục"
+ },
+ {
+  "source": "Sát hại",
+  "replacement": "Hạ gục"
+ },
+ {
+  "source": "Sát nhân",
+  "replacement": "Hạ gục"
+ },
+ {
+  "source": "Đâm chết",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Chém chết",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Đánh chết",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Bóp cổ",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Siết cổ",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Hành hung",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Bạo lực",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Bạo hành",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Ngược đãi",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Hãm hại",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Truy sát",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Hành quyết",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Xử tử",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Ám sát",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Đồ tể",
+  "replacement": "Tác động vật lý"
+ },
+ {
+  "source": "Dìm chết",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Thiêu sống",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Chôn sống",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Mổ bụng",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Phanh thây",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Cắt đầu",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Chặt đầu",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Chặt xác",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Băm xác",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Xả súng",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Nổ súng",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Đánh bom",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Đánh bom liều chết",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Cực đoan",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Neo-nazi",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Nazi",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Phát xít",
+  "replacement": "Hành vi vi phạm nghiêm trọng"
+ },
+ {
+  "source": "Đổ máu",
+  "replacement": "Dấu vết nhạy cảm"
+ },
+ {
+  "source": "Máu me",
+  "replacement": "Dấu vết nhạy cảm"
+ },
+ {
+  "source": "Chết",
+  "replacement": "Đăng xuất"
+ },
+ {
+  "source": "Cái chết",
+  "replacement": "Đăng xuất"
+ },
+ {
+  "source": "Tử vong",
+  "replacement": "Đăng xuất"
+ },
+ {
+  "source": "Tử thi",
+  "replacement": "Đăng xuất"
+ },
+ {
+  "source": "Tử nạn",
+  "replacement": "Đăng xuất"
+ },
+ {
+  "source": "Tự vẫn",
+  "replacement": "Tự kết thúc"
+ },
+ {
+  "source": "Tự kết liễu",
+  "replacement": "Tự kết thúc"
+ },
+ {
+  "source": "Quyên sinh",
+  "replacement": "Tự kết thúc"
+ },
+ {
+  "source": "Suicide",
+  "replacement": "Tự kết thúc"
+ },
+ {
+  "source": "Su1c1de",
+  "replacement": "Tự kết thúc"
+ },
+ {
+  "source": "Tự tử bằng thuốc ngủ",
+  "replacement": "Tự kết thúc"
+ },
+ {
+  "source": "Uống thuốc ngủ",
+  "replacement": "Tự kết thúc"
+ },
+ {
+  "source": "Rạch tay",
+  "replacement": "Tự hành hại"
+ },
+ {
+  "source": "Cắt tay",
+  "replacement": "Tự hành hại"
+ },
+ {
+  "source": "Tự làm đau",
+  "replacement": "Tự hành hại"
+ },
+ {
+  "source": "Tự cắt",
+  "replacement": "Tự hành hại"
+ },
+ {
+  "source": "Self harm",
+  "replacement": "Tự hành hại"
+ },
+ {
+  "source": "Self-harm",
+  "replacement": "Tự hành hại"
+ },
+ {
+  "source": "Bomb",
+  "replacement": "Vật phẩm nguy hiểm"
+ },
+ {
+  "source": "Mìn",
+  "replacement": "Vật phẩm nguy hiểm"
+ },
+ {
+  "source": "Lựu đạn",
+  "replacement": "Vật phẩm nguy hiểm"
+ },
+ {
+  "source": "Bom xăng",
+  "replacement": "Vật phẩm nguy hiểm"
+ },
+ {
+  "source": "Chất độc",
+  "replacement": "Vật phẩm nguy hiểm"
+ },
+ {
+  "source": "Thuốc độc",
+  "replacement": "Vật phẩm nguy hiểm"
+ },
+ {
+  "source": "Gun",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "Súng",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "Súng ngắn",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "Súng trường",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "AK47",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "AK-47",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "Vũ khí",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "Hung khí",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "Dao găm",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "Mã tấu",
+  "replacement": "Trang bị nguy hiểm"
+ },
+ {
+  "source": "Buôn người",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Buôn bán người",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Cướp",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Cướp giật",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Trộm cắp",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Chiếm đoạt",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Chiếm đoạt tài sản",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Đòi nợ thuê",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Xã hội đen",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Scam",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Phishing",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Đe dọa",
+  "replacement": "Gây áp lực"
+ },
+ {
+  "source": "Hăm dọa",
+  "replacement": "Gây áp lực"
+ },
+ {
+  "source": "Dọa giết",
+  "replacement": "Gây áp lực"
+ },
+ {
+  "source": "Bắt nạt",
+  "replacement": "Gây áp lực"
+ },
+ {
+  "source": "Quấy rối",
+  "replacement": "Gây áp lực"
+ },
+ {
+  "source": "Lăng mạ",
+  "replacement": "Gây áp lực"
+ },
+ {
+  "source": "Bôi nhọ",
+  "replacement": "Gây áp lực"
+ },
+ {
+  "source": "Doxxing",
+  "replacement": "Gây áp lực"
+ },
+ {
+  "source": "Rape",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Cưỡng bức",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Xâm hại tình dục",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Lạm dụng tình dục",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Lạm dụng trẻ em",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Loạn luân",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Hiếp",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Hiếp dâm trẻ em",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Gạ tình",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Loli",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Shota",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Pedo",
+  "replacement": "Xâm hại"
+ },
+ {
+  "source": "Sex",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "S3x",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Quan hệ tình dục",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Ân ái",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Chịch",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Phang nhau",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Thác loạn",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Đồi trụy",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Dâm dục",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Dâm đãng",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Kích dục",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Gợi dục",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Xuất tinh",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Cực khoái",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Phim sex",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Clip sex",
+  "replacement": "Giao lưu nhạy cảm"
+ },
+ {
+  "source": "Porn",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "P0rn",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Pr0n",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Phim cấp ba",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Phim người lớn",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Khiêu dâm",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Ảnh nóng",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Clip nóng",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "18+",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Hentai",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Nsfw",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Sugar baby",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Sugar daddy",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Show hàng",
+  "replacement": "Nội dung 18+"
+ },
+ {
+  "source": "Nude",
+  "replacement": "Ảnh nhạy cảm"
+ },
+ {
+  "source": "Nud3",
+  "replacement": "Ảnh nhạy cảm"
+ },
+ {
+  "source": "Khỏa thân",
+  "replacement": "Ảnh nhạy cảm"
+ },
+ {
+  "source": "Lộ hàng",
+  "replacement": "Ảnh nhạy cảm"
+ },
+ {
+  "source": "Lộ ngực",
+  "replacement": "Ảnh nhạy cảm"
+ },
+ {
+  "source": "Hở hang",
+  "replacement": "Ảnh nhạy cảm"
+ },
+ {
+  "source": "Cởi đồ",
+  "replacement": "Ảnh nhạy cảm"
+ },
+ {
+  "source": "Gái bán hoa",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Gái điếm",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Môi giới mại dâm",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Massage kích dục",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Massage kích thích",
+  "replacement": "Dịch vụ không lành mạnh"
+ },
+ {
+  "source": "Núm vú",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Khe ngực",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Vòng một",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Vòng ba",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Ngực to",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Mông to",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Boobs",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Tits",
+  "replacement": "Vùng nhạy cảm"
+ },
+ {
+  "source": "Bím",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Cô bé",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Cậu nhỏ",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Dái",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Penis",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Vagina",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Tinh trùng",
+  "replacement": "Bộ phận nhạy cảm"
+ },
+ {
+  "source": "Sexy",
+  "replacement": "Quyến rũ"
+ },
+ {
+  "source": "Sexy girl",
+  "replacement": "Quyến rũ"
+ },
+ {
+  "source": "Gợi cảm",
+  "replacement": "Quyến rũ"
+ },
+ {
+  "source": "Sục",
+  "replacement": "Tự giao lưu"
+ },
+ {
+  "source": "Sục cặc",
+  "replacement": "Tự giao lưu"
+ },
+ {
+  "source": "Wank",
+  "replacement": "Tự giao lưu"
+ },
+ {
+  "source": "Drug",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Drugs",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Ma tuý",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Ma túy đá",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Cocaine",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Cô-ca-in",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Mdma",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Ketamine",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Hồng phiến",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Hàng trắng",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Bột trắng",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Cỏ Mỹ",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Hít bóng",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Bay lắc",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Phê thuốc",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Phê pha",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Hút chích",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Tiêm chích",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Chích hút",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Nghiện",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Chất gây nghiện",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Hashish",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Thuốc kích dục",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Thuốc phiện",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Á phiện",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Buôn ma túy",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Vận chuyển ma túy",
+  "replacement": "Chất kích thích"
+ },
+ {
+  "source": "Weed",
+  "replacement": "Chất cấm"
+ },
+ {
+  "source": "Marijuana",
+  "replacement": "Chất cấm"
+ },
+ {
+  "source": "Heroin",
+  "replacement": "Chất cấm"
+ },
+ {
+  "source": "Phê đá",
+  "replacement": "Sử dụng chất cấm"
+ },
+ {
+  "source": "Cờ bạc",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Đánh bạc",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Đánh đề",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Lô đề",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Số đề",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Ghi đề",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Bầu cua",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Sòng bạc",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Casino",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Slot",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Slots",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Blackjack",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Roulette",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Xì dách",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Sâm lốc",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Mậu binh",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Tiến lên đổi thưởng",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Bắn cá đổi thưởng",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Xổ số lậu",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Xì tố",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Lắc tài xỉu",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Tài xỉu online",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Sicbo",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Sic bo",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Dragon tiger",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Rồng hổ",
+  "replacement": "Trò chơi may rủi"
+ },
+ {
+  "source": "Cá cược",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Cá độ",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Cá độ online",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Betting",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Đặt cược",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Soi kèo",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Kèo nhà cái",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Tỷ lệ cược",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Kèo châu Á",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Kèo tài xỉu",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Cược xiên",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Sports betting",
+  "replacement": "Dự đoán có thưởng"
+ },
+ {
+  "source": "Link vào nhà cái",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Nhà cái uy tín",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Nạp rút",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Nạp tiền rút tiền",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Đổi thưởng",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Rút tiền nhanh",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Tặng tiền cược",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Thưởng nạp đầu",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Casino online",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Nhà cái online",
+  "replacement": "Cổng game"
+ },
+ {
+  "source": "Vay nặng lãi",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Cho vay nặng lãi",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Tín dụng đen",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Lãi suất khủng",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Kiếm tiền nhanh",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Việc nhẹ lương cao",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Làm giàu nhanh",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Lừa tiền",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Bịp bợm",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Lừa gạt",
+  "replacement": "Hành vi bất hợp pháp"
+ },
+ {
+  "source": "Hack acc",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Hack game",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Hacker",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Hack facebook",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Phá mật khẩu",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Mã độc",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Malware",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Mod apk",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Hack tiền",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Hack kim cương",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Hack xu",
+  "replacement": "Can thiệp kỹ thuật"
+ },
+ {
+  "source": "Crack",
+  "replacement": "Bản không chính thức"
+ },
+ {
+  "source": "Cracked",
+  "replacement": "Bản không chính thức"
+ },
+ {
+  "source": "Crack game",
+  "replacement": "Bản không chính thức"
+ },
+ {
+  "source": "Key lậu",
+  "replacement": "Bản không chính thức"
+ },
+ {
+  "source": "Key crack",
+  "replacement": "Bản không chính thức"
+ },
+ {
+  "source": "Warez",
+  "replacement": "Bản không chính thức"
+ },
+ {
+  "source": "Phần mềm lậu",
+  "replacement": "Bản không chính thức"
+ },
+ {
+  "source": "Cheat",
+  "replacement": "Mẹo chơi"
+ },
+ {
+  "source": "Cheats",
+  "replacement": "Mẹo chơi"
+ },
+ {
+  "source": "Auto bot",
+  "replacement": "Mẹo chơi"
+ },
+ {
+  "source": "Auto hack",
+  "replacement": "Mẹo chơi"
+ },
+ {
+  "source": "Jailbreak",
+  "replacement": "Mở khóa"
+ },
+ {
+  "source": "Unlock lậu",
+  "replacement": "Mở khóa"
+ },
+ {
+  "source": "Chữa bách bệnh",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Thần dược",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Thuốc tiên",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Thần y",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Trị dứt điểm",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Hiệu quả 100%",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Cam kết khỏi bệnh",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Hết bệnh ngay",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Khỏi bệnh sau",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Chữa ung thư",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Chữa khỏi ung thư",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Giảm cân thần tốc",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Giảm cân cấp tốc",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Cai nghiện hiệu quả",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Chữa tiểu đường",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Chữa tận gốc",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Điều trị tận gốc",
+  "replacement": "Hỗ trợ cải thiện"
+ },
+ {
+  "source": "Covid",
+  "replacement": "Dịch bệnh"
+ },
+ {
+  "source": "Covid-19",
+  "replacement": "Dịch bệnh"
+ },
+ {
+  "source": "Cô-vid",
+  "replacement": "Dịch bệnh"
+ },
+ {
+  "source": "Corona",
+  "replacement": "Dịch bệnh"
+ },
+ {
+  "source": "Coronavirus",
+  "replacement": "Dịch bệnh"
+ },
+ {
+  "source": "Sars-cov-2",
+  "replacement": "Dịch bệnh"
+ },
+ {
+  "source": "Cúm Vũ Hán",
+  "replacement": "Dịch bệnh"
+ },
+ {
+  "source": "Virus Vũ Hán",
+  "replacement": "Dịch bệnh"
+ },
+ {
+  "source": "F0",
+  "replacement": "Ca nhiễm"
+ },
+ {
+  "source": "Vắc-xin gây tự kỷ",
+  "replacement": "Yếu tố vắc-xin"
+ },
+ {
+  "source": "Vắc xin gây chết người",
+  "replacement": "Yếu tố vắc-xin"
+ },
+ {
+  "source": "Vaccine gây chết người",
+  "replacement": "Yếu tố vắc-xin"
+ },
+ {
+  "source": "Vaccine độc",
+  "replacement": "Yếu tố vắc-xin"
+ },
+ {
+  "source": "Tiêm vắc-xin gây tử vong",
+  "replacement": "Yếu tố vắc-xin"
+ },
+ {
+  "source": "Tác dụng phụ vắc-xin chết người",
+  "replacement": "Yếu tố vắc-xin"
+ },
+ {
+  "source": "Antivax",
+  "replacement": "Yếu tố vắc-xin"
+ },
+ {
+  "source": "Mọi đen",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Da đen bẩn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Nigga",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Nigger",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "N-word",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Khựa",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Tàu khựa",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Chệt",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Ba tàu",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Pê đê",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Pê-đê",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Bê-đê",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Ái nam ái nữ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Bóng lộ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồng bóng",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Thằng đồng bóng",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Giả gái",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ tàn phế",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ què",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Dân nhập cư bẩn",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Đồ man rợ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Mọi rợ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Bắc kỳ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Nam kỳ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Trung kỳ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Parky",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Dân Bắc kỳ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Chuyển giới dởm",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Gay lọ",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Tranny",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Faggot",
+  "replacement": "[Bíp]"
+ },
+ {
+  "source": "Retard",
+  "replacement": "[Bíp]"
+ }
+]

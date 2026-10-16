@@ -266,7 +266,7 @@ def assert_in(item, collection):
 
 
 def isolated_env(work):
-    return {**os.environ, 'AUDIO_DATA_DIR': str(work / 'data'), 'RESULTS_ROOT': str(work / 'data' / 'results'),
+    return {**os.environ, 'AUDIO_NO_RULE_SEED': '1', 'AUDIO_DATA_DIR': str(work / 'data'), 'RESULTS_ROOT': str(work / 'data' / 'results'),
             'AUDIO_LICENSE_STATE_ROOT': str(work / 'license'), 'HY_MT_MODEL_PATH': str(work / 'no-model' / 'model.gguf'),
             'AUDIO_SHELL': '', 'NEXT_TELEMETRY_DISABLED': '1', 'PYTHONUTF8': '1'}
 

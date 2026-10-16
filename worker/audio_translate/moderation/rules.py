@@ -1,6 +1,8 @@
 """Literal, non-cascading NFC replacements and persistent rule CRUD."""
 from contextlib import contextmanager
 import json
+import os
+from pathlib import Path
 import re
 import sys
 import unicodedata
@@ -19,14 +21,45 @@ def normalize(value):
     return unicodedata.normalize("NFC", value)
 
 
+ROOT = Path(__file__).resolve().parents[3]   # app root: worker/audio_translate/moderation/rules.py
+
+
+def community_rules():
+    """The community list that ships with the app: [{source, replacement}], from the vault (the plaintext file only in development)."""
+    from audio_translate.core import vault
+    return vault.load_json("community-rules", ROOT / "worker" / "config" / "community-rules.json")
+
+
 class ReplacementRules:
-    def __init__(self, config_dir=None):
+    def __init__(self, config_dir=None, seed=None):
         self.directory = config_dir or DATA / "config"
         self.path = self.directory / "replacement-rules.json"
         self.lock_path = self.directory / "replacement-rules.lock"
+        self.seeded_path = self.directory / "replacement-rules.seeded.json"
+        # seed: the loader of the starting list (None = the one shipped with the app, False = no starting list, for tests)
+        self.seed = community_rules if seed is None else seed
 
-    def read(self):
+    def read(self, seed=True):
+        if seed and self.seed and not self.seeded_path.exists(): self.seed_once()
         return read_json(self.path) if self.path.exists() else []
+
+    def seed_once(self):
+        """Puts the shipped community list in, once per installation: rules the person already has are kept and only missing words are added.
+        After that the list is theirs (edit, delete); a deleted word is not put back. Called with the lock held. Nothing is marked done when
+        the list cannot be read yet (for example before the licence is active), so the next read tries again."""
+        if self.seed is community_rules and os.environ.get("AUDIO_NO_RULE_SEED") == "1": return   # tests and harnesses that start from an empty list
+        try:
+            shipped = self.seed()
+            rules = read_json(self.path) if self.path.exists() else []
+            known = {normalize(rule["source"]) for rule in rules}
+            for item in shipped:
+                source, replacement = normalize(item["source"]).strip(), normalize(item["replacement"])
+                if source and source not in known:
+                    rules.append({"id": str(uuid.uuid4()), "source": source, "replacement": replacement}); known.add(source)
+            atomic_json(self.path, rules)
+            atomic_json(self.seeded_path, {"version": 1, "rules": len(shipped)})
+        except Exception:
+            return
 
     @contextmanager
     def locked(self):
@@ -41,7 +74,7 @@ class ReplacementRules:
             with self.locked():
                 return {"rules": self.read(), "locked": False}
         except LockedError:
-            return {"rules": self.read(), "locked": True}
+            return {"rules": self.read(seed=False), "locked": True}
 
     def mutate(self, action, payload):
         # Lock covers the read/validate/write transaction. Moderation holds this
