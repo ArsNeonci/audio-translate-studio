@@ -1557,7 +1557,6 @@ button:disabled {
 .video-result { display: flex; flex-direction: column; gap: 10px; width: 100%; }
 .video-result video { width: 100%; max-height: 360px; background: #000; border-radius: 8px; }
 .video-result-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.video-open-inline { display: block; margin-top: 4px; padding: 2px 8px; font-size: 12px; }
 
 /* Subtitle settings and the burn-in option. */
 .subtitle-options { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-end; border: 1px solid #e1e6dc; border-radius: 10px; padding: 12px 14px; margin: 8px 0 0; max-width: 880px; }
