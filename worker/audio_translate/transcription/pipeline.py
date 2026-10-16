@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -215,7 +216,9 @@ def try_attempts(job_dir, plan, fetch, error_type, load_cookies):
     for step in plan:
         if step.get("cookies"):
             if not loaded:
+                loading = time.monotonic()
                 profile = load_cookies()
+                step["sign_in_read_seconds"] = round(time.monotonic() - loading, 1)
                 cookies, loaded = (profile, None if profile is not None else os.getenv("YTDLP_COOKIES_FILE") or None), True
             if cookies == (None, None):
                 continue
@@ -225,11 +228,14 @@ def try_attempts(job_dir, plan, fetch, error_type, load_cookies):
                 if leftover.name.endswith((".part", ".ytdl")) or ".part-" in leftover.name:
                     leftover.unlink(missing_ok=True)
         kind = None if not step.get("cookies") else ("profile" if cookies[0] is not None else "file")
+        began = time.monotonic()
         try:
             info = fetch(step.get("client"), *(cookies if step.get("cookies") else (None, None)))
+            step["seconds"] = round(time.monotonic() - began, 1)
             attempts.append((step, kind, None))
             if info: return info, attempts
         except error_type as exc:
+            step["seconds"] = round(time.monotonic() - began, 1)
             attempts.append((step, kind, str(exc)))
             if any(marker in str(exc).lower() for marker in FINAL_ERRORS):
                 break
@@ -239,7 +245,8 @@ def try_attempts(job_dir, plan, fetch, error_type, load_cookies):
 def write_attempts(job_dir, attempts, version):
     """What was tried, for support: client, whether a sign-in was used, and the first part of the error. No cookie values."""
     from audio_translate.core.storage import atomic_json
-    rows = [{"client": step.get("client") or "default", "cookies": kind, "ok": error is None, "error": (error or "")[-300:] or None}
+    rows = [{"client": step.get("client") or "default", "cookies": kind, "ok": error is None, "seconds": step.get("seconds"), "sign_in_read_seconds": step.get("sign_in_read_seconds"),
+             "error": (error or "")[-300:] or None}
             for step, kind, error in attempts]
     (job_dir / "working").mkdir(exist_ok=True)
     atomic_json(job_dir / "working" / "download-attempts.json", {"yt_dlp": version or "bundled", "attempts": rows})

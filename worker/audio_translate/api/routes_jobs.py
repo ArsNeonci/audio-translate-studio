@@ -11,6 +11,7 @@ from audio_translate.api import management
 from audio_translate.api.history import ensure_history, history_list
 from audio_translate.api.jobs import get_job, list_jobs, retry_job, scheduler, valid_youtube_url
 from audio_translate.api.license import license_denial
+from audio_translate.api import timing
 from audio_translate.api.runtime import worker_command
 from audio_translate.api.web import json_response, origin_allowed, threaded
 from audio_translate.core.storage import DATA
@@ -64,8 +65,12 @@ async def jobs():
 
 @router.post('/api/jobs')
 async def create(request: Request):
+    watch = timing.Stopwatch()
     denied = await threaded(license_denial)
-    if denied: return denied
+    watch.mark('licence')
+    if denied:
+        timing.log('create', watch, outcome='refused')
+        return denied
     if not request.headers.get('content-type', '').startswith('application/json'): return await create_from_upload(request)
     try: data = json.loads(await request.body())
     except ValueError: return json_response({'error': 'JSON không hợp lệ.'}, 400)
@@ -84,11 +89,18 @@ async def create(request: Request):
     if 'mode' in data and mode not in TRANSLATION_MODES: return json_response({'error': 'Invalid translation mode'}, 400)
     try:
         await threaded(ensure_history)
+        watch.mark('storage')
         result = await threaded(command, {'action': 'convert', 'url': url, 'voice': voice, 'style': style, 'address': None if mode == 'genius' else address,
                                           'mode': mode, 'auto': auto is True, 'queue_only': queue_only or False, 'video': video, 'subtitle': subtitle})
-    except Exception: return json_response({'error': 'Không kiểm tra được tài nguyên. Chưa tạo workflow; hãy thử lại.'}, 503)
+    except Exception:
+        watch.mark('failed')
+        timing.log('create', watch, outcome='error')
+        return json_response({'error': 'Không kiểm tra được tài nguyên. Chưa tạo workflow; hãy thử lại.'}, 503)
+    watch.mark('worker')
     status = result.pop('status')
+    inside = result.pop('timings', None)
     if status == 200: scheduler.soon()
+    timing.log('create', watch, inside, outcome=status)
     return json_response(result, 201 if status == 200 else status, no_store=True)
 
 

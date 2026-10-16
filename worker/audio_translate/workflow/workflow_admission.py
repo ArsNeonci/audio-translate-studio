@@ -95,11 +95,15 @@ def convert(url, voice=None, queue_only=False, style=None, address=None, mode=No
     from audio_translate.core.license_gate import assert_allowed
     from audio_translate.core.storage import file_lock
     from audio_translate.workflow.manage import create
-    assert_allowed()
+    import time
+    begun = time.monotonic(); timings = {}
+    def took(name): timings[name] = round((time.monotonic() - begun) * 1000)
+    assert_allowed(); took('licence')
     # Check + create serialized across tabs/processes, not merely a browser check.
     with file_lock(DATA/'management-locks'/'convert-admission.lock'):
+        took('lock')
         # The lane broker admits queued workflows when resources allow; Convert only queues.
-        assessment = preflight()
+        assessment = preflight(); took('machine_check')
         source = {'upload':upload,'input_name':input_name,'mime':mime} if upload else {}
-        job = create(url, voice, style=style, address=address, mode=mode, auto=auto, video=video, subtitle=subtitle, **source)
-        return {'status':200, 'job':job, 'assessment':assessment}
+        job = create(url, voice, style=style, address=address, mode=mode, auto=auto, video=video, subtitle=subtitle, **source); took('created')
+        return {'status':200, 'job':job, 'assessment':assessment, 'timings':timings}
