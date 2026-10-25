@@ -78,13 +78,13 @@ class UpdateTests(unittest.TestCase):
                  'too big': (b'{' + b' ' * 70000 + b'}', sig)}
         for name, (r, s) in cases.items():
             with self.assertRaises(up.ManifestError, msg=name): up.verify(r, s, product=PRODUCT)
-        bad = {'another product': {'product': 'audio-translate-basic'}, 'another channel': {'channel': 'test'}, 'no serial': {'serial': 0}, 'schema': {'schema': 2},
+        bad = {'another product': {'product': 'audio-translate-legacy'}, 'another channel': {'channel': 'test'}, 'no serial': {'serial': 0}, 'schema': {'schema': 2},
                'version': {'version': 'latest'}, 'runtime': {'runtime_sha256': 'xyz'}, 'min version': {'min_version': 'new'}, 'downgrade flag': {'allow_downgrade': 'yes'},
                'notes': {'notes': {'vi': 'x' * 5000}}, 'no packages': {'packages': []}}
         for name, change in bad.items():
             with self.assertRaises(up.ManifestError, msg=name): up.verify(*self.signed(self.manifest(**change)), product=PRODUCT)
         m = self.manifest()
-        paths = {'another edition': ('path', f'updates/audio-translate-basic/3.2.1/AudioTranslate-Plus-3.2.1-app.zip'), 'another version': ('path', f'updates/{PRODUCT}/3.9.9/a-app.zip'),
+        paths = {'another edition': ('path', f'updates/audio-translate-legacy/3.2.1/AudioTranslate-Plus-3.2.1-app.zip'), 'another version': ('path', f'updates/{PRODUCT}/3.9.9/a-app.zip'),
                  'traversal': ('path', f'updates/{PRODUCT}/3.2.1/../../x.zip'), 'wrong extension': ('path', f'updates/{PRODUCT}/3.2.1/a-app.exe'),
                  'too large': ('size', 600 * 1024 ** 2), 'hash': ('sha256', 'z' * 64)}
         for name, (field, value) in paths.items():
@@ -191,7 +191,7 @@ class UpdateTests(unittest.TestCase):
     def test_a_package_with_the_right_hash_but_the_wrong_content_is_never_ready(self):
         # Signed and intact, yet not something updater.exe may apply here.
         cases = {'the runtime inside': package_bytes(extra=['runtime/python/python.exe']), 'another release': package_bytes(version='3.9.9'),
-                 'another product': package_bytes(product='audio-translate-basic'), 'another runtime': package_bytes(runtime='c' * 64),
+                 'another product': package_bytes(product='audio-translate-legacy'), 'another runtime': package_bytes(runtime='c' * 64),
                  'no updater': package_bytes(missing=['updater.exe']), 'a path that leaves the folder': package_bytes(extra=['app/../../evil.txt'])}
         for name, blob in cases.items():
             up._download.update(state='idle')

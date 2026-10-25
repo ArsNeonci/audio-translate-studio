@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 KEYS = ROOT / 'worker' / 'config' / 'app-update-keys.json'
 sys.path.insert(0, str(ROOT / 'worker'))
 sys.path.insert(0, str(ROOT / 'packaging'))
-EDITIONS = {'basic': 'audio-translate-basic', 'plus': 'audio-translate-plus'}
+EDITIONS = {'plus': 'audio-translate-plus'}
 MAX_INSTALLER = int(3.5 * 1024 ** 3)
 
 

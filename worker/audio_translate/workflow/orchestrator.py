@@ -141,20 +141,12 @@ def run(job_dir):
                         transition(job_dir, step, 'COMPLETED')
                         metadata(job_dir)
                         continue
-                from audio_translate.workflow.manage import needs_review
-                if step == 'TTS' and needs_review(job):
-                    # Basic: stop before paid Voice generation; nothing is sent or billed until the user continues.
-                    end_run(job_dir, 'AWAITING_REVIEW')
-                    update_job(job_dir, retry_step=None, failed_stage=None, error=None)
-                    metadata(job_dir)
-                    return 0
                 transition(job_dir, step, 'RUNNING')
                 statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'SUBTITLE': 'SUBTITLE_BUILDING', 'VIDEO': 'VIDEO_MERGING', 'BURN': 'VIDEO_BURNING'}
                 update_job(job_dir, active_stage=step.lower(), status=statuses[step])
                 metadata(job_dir)
-                # Genius translation and Basic voice generation run on the VPS and hold no local model memory.
-                from audio_translate.core.edition import is_basic
-                remote = (step == 'TRANSLATION' and job.get('translation_mode') == 'genius') or (step == 'TTS' and is_basic())
+                # Genius translation runs on the VPS and holds no local model memory.
+                remote = step == 'TRANSLATION' and job.get('translation_mode') == 'genius'
                 lease.stage(f'{step.lower()}-remote' if remote else step.lower())
                 result = subprocess.run([sys.executable, str(ROOT/'worker'/'orchestrator.py'), str(job_dir), "--stage", step.lower()], env=env)
                 lease.stage(None)

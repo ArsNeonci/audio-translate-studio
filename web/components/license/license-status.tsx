@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 /** lease: the short online access token (VALID/GRACE/EXPIRED/NONE/REVOKED); perpetual: the licence never ends (expiry year 2100 or later). */
-export type LicenseStatus = {status: string; expires_at?: string; sequence?: number; edition?: "basic" | "plus"; lease?: string | null; perpetual?: boolean; update_required?: boolean};
+export type LicenseStatus = {status: string; expires_at?: string; sequence?: number; lease?: string | null; perpetual?: boolean; update_required?: boolean};
 /** A valid licence whose lease lapsed because the app was offline too long: only going online is needed. */
 export const leaseOffline = (license: LicenseStatus) => license.status === "ACTIVE" && license.lease === "EXPIRED";
 
@@ -50,5 +50,5 @@ export default function LicenseBanner() {
   const { tr } = useLanguage();
   const license = useLicense();
   if (leaseOffline(license)) return <LeaseOfflineNotice license={license} onChange={license.setLicense} />;
-  return <p className={license.allowed ? "license-banner" : "alert"}><span>{tr("License:")} {tr(license.status)}</span>{license.edition&&<><span aria-hidden="true"> · </span><span>{tr("Gói:")} {tr(`edition.${license.edition}`)}</span></>}<span aria-hidden="true"> · </span><Link href="/license">{tr(license.perpetual ? "Giấy phép" : "Kích hoạt / Gia hạn")}</Link>{!license.allowed && tr(" · Bạn vẫn có thể mở History và tải file đã tạo.")}</p>;
+  return <p className={license.allowed ? "license-banner" : "alert"}><span>{tr("License:")} {tr(license.status)}</span><span aria-hidden="true"> · </span><Link href="/license">{tr(license.perpetual ? "Giấy phép" : "Kích hoạt / Gia hạn")}</Link>{!license.allowed && tr(" · Bạn vẫn có thể mở History và tải file đã tạo.")}</p>;
 }

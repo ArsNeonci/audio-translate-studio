@@ -1,6 +1,6 @@
 // The shapes the local API returns (worker/audio_translate/api); the UI and the API agree on them through contracts/app-api.openapi.json.
 import type { TranscriptionStep } from "@/lib/shared/transcription-progress";
-export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "SUBTITLE_BUILDING" | "VIDEO_MERGING" | "VIDEO_BURNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING" | "AWAITING_REVIEW";
+export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "SUBTITLE_BUILDING" | "VIDEO_MERGING" | "VIDEO_BURNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "DELETING";
 export type Artifact = "source" | "zh" | "vi" | "moderated" | "voice" | "subtitle" | "video" | "video_subtitled";
 export type Stage = "transcription" | "translation" | "moderation" | "tts" | "subtitle" | "video" | "burn";
 export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS" | "SUBTITLE" | "VIDEO" | "BURN";
@@ -24,9 +24,6 @@ export type Job = {
   selected_address_profile?: string | null;
   translation_mode?: "genius";
   pause_reason?: string | null;
-  tts_auto?: boolean;
-  review_skipped?: boolean;
-  tts_remote_progress?: {units_done:number;billed_chars:number};
   genius_progress?: {chunks_done:number;chunks_total:number;rows_done:number;rows_total:number;flagged_rows:number[];billed_chars:number};
   compute_device?: "cpu" | "gpu";
   storage_scope?: "workflows" | "tools";

@@ -7,7 +7,7 @@ from audio_translate.transcription.asr_runtime import GIB, hardware, reserve, fi
 from audio_translate.core.storage import DATA, read_json
 from audio_translate.core.memory_policy import required
 
-TERMINAL = {'COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'DELETING', 'AWAITING_REVIEW'}
+TERMINAL = {'COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'DELETING'}
 
 
 def pending_jobs():
@@ -91,7 +91,7 @@ def preflight():
     return assess(snapshot, jobs, allocation, threads, basis)
 
 
-def convert(url, voice=None, queue_only=False, style=None, address=None, mode=None, auto=False, upload=None, input_name=None, mime='', video=None, subtitle=None):
+def convert(url, voice=None, queue_only=False, style=None, address=None, mode=None, upload=None, input_name=None, mime='', video=None, subtitle=None):
     from audio_translate.core.license_gate import assert_allowed
     from audio_translate.core.storage import file_lock
     from audio_translate.workflow.manage import create
@@ -105,5 +105,5 @@ def convert(url, voice=None, queue_only=False, style=None, address=None, mode=No
         # The lane broker admits queued workflows when resources allow; Convert only queues.
         assessment = preflight(); took('machine_check')
         source = {'upload':upload,'input_name':input_name,'mime':mime} if upload else {}
-        job = create(url, voice, style=style, address=address, mode=mode, auto=auto, video=video, subtitle=subtitle, **source); took('created')
+        job = create(url, voice, style=style, address=address, mode=mode, video=video, subtitle=subtitle, **source); took('created')
         return {'status':200, 'job':job, 'assessment':assessment, 'timings':timings}

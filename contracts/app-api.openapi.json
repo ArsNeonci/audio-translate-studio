@@ -131,11 +131,6 @@
         "403": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LicenseDenied"}}}},
         "409": {"x-untested": "needs an ACTIVE licence", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
-    "/api/jobs/{id}/review": {
-      "post": {"summary": "Basic: continue to paid voice or finish without it (body {decision})", "x-licensed": true, "responses": {
-        "200": {"x-untested": "needs an ACTIVE licence", "content": {"application/json": {"schema": {"type": "object", "required": ["job"]}}}},
-        "403": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LicenseDenied"}}}}}}
-    },
     "/api/jobs/{id}/steps/{step}": {
       "get": {"summary": "Fix guide for a failed step", "responses": {
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StepGuide"}}}},
@@ -309,11 +304,6 @@
         "200": {"x-no-store": true, "x-untested": "the seeded tool run has no output yet", "content": {"application/octet-stream": {}}},
         "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
-    "/api/tools/{id}/review": {
-      "post": {"summary": "Basic: continue or finish a tool run held before voice", "x-licensed": true, "responses": {
-        "200": {"x-untested": "needs an ACTIVE licence", "content": {"application/json": {"schema": {"type": "object"}}}},
-        "403": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LicenseDenied"}}}}}}
-    },
     "/api/voices": {
       "get": {"summary": "Voices, voice styles and address profiles", "responses": {
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Voices"}}}}}}
@@ -369,13 +359,13 @@
       "CharacterSheetEnvelope": {"type": "object", "required": ["sheet", "editable"], "properties": {"sheet": {"anyOf": [{"$ref": "#/components/schemas/CharacterSheet"}, {"type": "null"}]}, "editable": {"type": "boolean"}}},
       "StepGuide": {"type": "object", "required": ["error", "fix_guide"], "properties": {"error": {"type": ["string", "object", "null"]}, "fix_guide": {"type": ["string", "object", "array", "null"]}}},
       "LicenseStatus": {"type": "object", "required": ["http_status", "product_id", "status", "edition"],
-        "properties": {"http_status": {"type": "integer"}, "product_id": {"type": "string"}, "status": {"type": "string", "pattern": "^[A-Z_]+$"}, "edition": {"enum": ["basic", "plus"]},
+        "properties": {"http_status": {"type": "integer"}, "product_id": {"type": "string"}, "status": {"type": "string", "pattern": "^[A-Z_]+$"},
           "expires_at": {"type": "string"}, "sequence": {"type": "integer"}, "allowed": {"type": "boolean"},
           "lease": {"type": ["string", "null"], "description": "Lease phase (VALID, GRACE, EXPIRED, NONE, REVOKED), null when the service cannot say; only when status is ACTIVE"},
           "perpetual": {"type": "boolean", "description": "The licence never ends (expiry year 2100 or later): nothing to renew"},
           "renewal": {"type": "object", "description": "Only from POST /api/license/lease: the outcome of the lease request"}}},
       "MachineId": {"type": "object", "required": ["http_status", "machine_id", "product_id", "edition"],
-        "properties": {"http_status": {"type": "integer"}, "machine_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "product_id": {"type": "string"}, "edition": {"enum": ["basic", "plus"]}}},
+        "properties": {"http_status": {"type": "integer"}, "machine_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "product_id": {"type": "string"}}},
       "LicenseCommandResult": {"type": "object", "required": ["http_status", "status"],
         "properties": {"http_status": {"type": "integer"}, "status": {"type": "string", "pattern": "^[A-Z_]+$"}, "product_id": {"type": "string"}, "error": {"type": "string"}}},
       "ModelState": {"type": "object", "required": ["phase", "done", "total"],

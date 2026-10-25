@@ -40,9 +40,9 @@ def authenticode_sign(path):
     subprocess.run(command,check=True)
     return True
 
-# Legacy single product plus the two editions. Admin injects each edition's public
+# Legacy single product plus the Plus edition. Admin injects the edition's public
 # config and build-only trust anchor into its own files, so builds never overwrite each other.
-EDITIONS={'audio-translate':'','audio-translate-basic':'Basic','audio-translate-plus':'Plus'}
+EDITIONS={'audio-translate':'','audio-translate-plus':'Plus'}
 
 def product_files(product):
     if product not in EDITIONS:raise RuntimeError('UNKNOWN_PRODUCT')
@@ -104,10 +104,6 @@ def compile_stub(source_name,output,work,product,version,edition):
 
 def copy_tree(source,target,ignore=None):
     shutil.copytree(source,target,dirs_exist_ok=True,ignore=ignore or shutil.ignore_patterns('__pycache__','*.pyc','.git'))
-
-# Basic generates the voice on the VPS: no VieNeu source and no TTS-only packages in its payload.
-# (funasr imports onnxruntime only in its model-export utility, not for transcription.)
-TTS_ONLY = {'sea-g2p', 'onnxruntime'}
 
 # Everything yt-dlp[default] pulls in, plus what the YouTube update channel and the sign-in browser need.
 REQUIRED_PACKAGES=('yt-dlp','yt-dlp-ejs','certifi','mutagen','pycryptodomex','requests','urllib3','websockets','brotli','psutil','cryptography','fastapi','starlette','uvicorn','pydantic','h11')
@@ -205,11 +201,6 @@ def build(product='audio-translate', customer=None):
         # voice-previews are served by the API from app/public (one copy), not as UI files.
         copy_tree(WEB/'out',payload/'app'/'ui',shutil.ignore_patterns('voice-previews'))
         if (WEB/'public').is_dir():copy_tree(WEB/'public',payload/'app'/'public')
-        basic=edition=='Basic'
-        if basic:
-            # Refresh the bundled voice list from the build machine's VieNeu presets.
-            subprocess.run([sys.executable,str(ROOT/'worker'/'tools'/'export_voice_catalog.py')],check=True)
-        if not (ROOT/'worker'/'config'/'voice-catalog.json').is_file():raise RuntimeError('VOICE_CATALOG_MISSING')
         copy_tree(ROOT/'worker',payload/'app'/'worker',shutil.ignore_patterns('tests','dev','docs','test_*','verify_*','smoke_*','tmp*','__pycache__','*.pyc','*.md','*.egg-info'))
         runtime_dir = ROOT/'runtime'/'llama'
         runtime_record = json.loads((runtime_dir/'provenance.json').read_text())
@@ -241,12 +232,11 @@ def build(product='audio-translate', customer=None):
         (payload/'runtime'/'ffmpeg').mkdir(parents=True,exist_ok=True)
         for path in ffmpeg.glob('*'):
             if path.suffix.lower()=='.dll' or path.name in ['ffmpeg.exe','ffprobe.exe']:shutil.copy2(path,payload/'runtime'/'ffmpeg'/path.name)
-        packages=python_runtime(payload/'runtime'/'python',TTS_ONLY if basic else frozenset())
-        if not basic:
-            vieneu=WORKSPACE/'VieNeu-TTS-main'
-            copy_tree(vieneu/'src',payload/'providers'/'VieNeu'/'src')
-            for name in ['LICENSE','LICENSE.md']:
-                if (vieneu/name).exists():shutil.copy2(vieneu/name,payload/'providers'/'VieNeu'/name)
+        packages=python_runtime(payload/'runtime'/'python')
+        vieneu=WORKSPACE/'VieNeu-TTS-main'
+        copy_tree(vieneu/'src',payload/'providers'/'VieNeu'/'src')
+        for name in ['LICENSE','LICENSE.md']:
+            if (vieneu/name).exists():shutil.copy2(vieneu/name,payload/'providers'/'VieNeu'/name)
         # Verify the exact offline model that the gateway serves; never ship a source clone or HF cache.
         model_dir=ROOT/'models'/'Hy-MT2-7B-Q4_K_M'
         model_record=json.loads((model_dir/'provenance.json').read_text())
@@ -280,9 +270,8 @@ def build(product='audio-translate', customer=None):
             if str(ROOT) in page.read_text(encoding='utf-8',errors='ignore'):raise RuntimeError('UI_PAYLOAD_REFERENCES_BUILD_MACHINE')
         print('Static UI payload OK')
         # Smoke the shipped runtime without host Python or user-site dependencies.
-        modules='sys, importlib.util, llama_cpp, cryptography, numpy, torch, torchaudio, transformers, funasr, distutils.version, funasr.models.seaco_paraformer.model, funasr.models.ct_transformer.model, yt_dlp, yt_dlp_ejs, certifi, mutagen, Cryptodome, brotli, soundfile, soxr, audio_translate.core.storage, audio_translate.workflow.results'+('' if basic else ', onnxruntime, sea_g2p')
-        absent='; assert importlib.util.find_spec("onnxruntime") is None and importlib.util.find_spec("sea_g2p") is None' if basic else ''
-        subprocess.run([str(payload/'runtime'/'python'/'python.exe'),'-c',f'import {modules}{absent}; assert not any("Roaming" in p or ".venv" in p for p in sys.path); print("Portable runtime imports and isolation OK")'],env={**os.environ,'PYTHONNOUSERSITE':'1'},check=True)
+        modules='sys, importlib.util, llama_cpp, cryptography, numpy, torch, torchaudio, transformers, funasr, distutils.version, funasr.models.seaco_paraformer.model, funasr.models.ct_transformer.model, yt_dlp, yt_dlp_ejs, certifi, mutagen, Cryptodome, brotli, soundfile, soxr, audio_translate.core.storage, audio_translate.workflow.results, onnxruntime, sea_g2p'
+        subprocess.run([str(payload/'runtime'/'python'/'python.exe'),'-c',f'import {modules}; assert not any("Roaming" in p or ".venv" in p for p in sys.path); print("Portable runtime imports and isolation OK")'],env={**os.environ,'PYTHONNOUSERSITE':'1'},check=True)
         # Phase 2B: encrypt asset data (1-5) into the vault and, for hardened builds, compile the
         # asset code to .pyd. Admin supplies the 32-byte content key (AUDIO_CONTENT_KEY_FILE) whose
         # value must equal the core's embedded content_key (trust anchor). The plaintext asset

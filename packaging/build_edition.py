@@ -1,6 +1,6 @@
-"""Build one paid edition's installer from start to finish.
+"""Build the Plus installer from start to finish.
 
-    python packaging/build_edition.py basic            (or plus)
+    python packaging/build_edition.py plus
     python packaging/build_edition.py plus --dry-run   show every step, change nothing
     python packaging/build_edition.py plus --push-lease  also send the new version's key to the gateway when done
 
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKSPACE = ROOT.parent
 ADMIN = WORKSPACE / 'admin-system-server' / 'admin-system'
 ADMIN_PYTHON = ADMIN / '.venv' / 'Scripts' / 'python.exe'
-EDITIONS = {'basic': 'audio-translate-basic', 'plus': 'audio-translate-plus'}
+EDITIONS = {'plus': 'audio-translate-plus'}
 MIN_FREE_RAM_GIB, MIN_FREE_DISK_GIB = 5.0, 20.0  # a build compiles Rust, bundles Next.js and zips ~600 MB; measured nowhere, deliberately generous
 
 

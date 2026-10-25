@@ -539,11 +539,7 @@ def synthesize(job_dir, adapter=None):
         return
     progress(job_dir, "tts", "TTS_GENERATING", 0, total)
     runtime = None
-    if adapter is None and config.get('backend') == 'remote':
-        # Basic: the VPS generates the voice; nothing is loaded locally.
-        from audio_translate.tts.remote import RemoteTTS
-        runtime = RemoteTTS(job_dir, config)
-    elif adapter is None:
+    if adapter is None:
         from audio_translate.tts.tts_runtime import Runtime, policy
         if config['device'] == 'cpu' and policy()['enabled']:
             runtime = Runtime(job_dir,config)

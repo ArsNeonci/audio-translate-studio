@@ -152,7 +152,7 @@ def run_cases(c, ids):
     c.call('unknown step', 'GET', '/api/jobs/{id}/steps/{step}', {'id': C, 'step': 'BOGUS'}, status=409)
     c.call('step guide of an unknown job', 'GET', '/api/jobs/{id}/steps/{step}', {'id': NOID, 'step': 'TRANSLATION'}, status=404)
     c.call('step retry needs a licence', 'POST', '/api/jobs/{id}/steps/{step}', {'id': C, 'step': 'TRANSLATION'}, status=403)
-    for action in ('retry', 'reprocess', 'resume', 'review'):
+    for action in ('retry', 'reprocess', 'resume'):
         c.call(f'{action} needs a licence', 'POST', '/api/jobs/{id}/' + action, v, data='{}', status=403)
     for action in ('pause', 'cancel', 'abort'):
         c.call(f'{action} an unknown job', 'POST', '/api/jobs/{id}/' + action, {'id': NOID}, data='{}', status=404)
@@ -223,7 +223,6 @@ def run_cases(c, ids):
     c.call('unknown tool run', 'GET', '/api/tools/{id}', {'id': NOID}, status=404)
     c.call('new tool run needs a licence', 'POST', '/api/tools', json_body={'tool': 'transcription', 'url': 'https://youtu.be/1JzKgwOESoM'}, status=403)
     c.call('tool output not ready', 'GET', '/api/tools/{id}/files/{fileId}', {'id': T, 'fileId': 'VI_MD'}, status=404)
-    c.call('tool review needs a licence', 'POST', '/api/tools/{id}/review', {'id': T}, data='{}', status=403)
 
     # Voices
     listed = c.call('voices', 'GET', '/api/voices', expect=lambda r: assert_in(ids['voice'], [x['id'] for x in r.json()['voices']]))

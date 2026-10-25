@@ -22,10 +22,10 @@ from audio_translate.core.storage import DATA
 from audio_translate.workflow.results import RESULTS
 
 STEPS = ('DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS', 'SUBTITLE', 'VIDEO', 'BURN')
-TERMINAL = ('COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'DELETING', 'AWAITING_REVIEW')
+TERMINAL = ('COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'DELETING')
 # Working-folder files merged into a job when it is read; never written back into job.json.
 TELEMETRY = {'asr-runtime.json': 'asr_runtime', 'lane.json': 'lane', 'translation-runtime.json': 'translation_runtime',
-             'translation-progress.json': 'translation_progress', 'genius-progress.json': 'genius_progress', 'tts-remote-progress.json': 'tts_remote_progress'}
+             'translation-progress.json': 'translation_progress', 'genius-progress.json': 'genius_progress'}
 DERIVED = ('artifacts', 'transcription_steps', *TELEMETRY.values(), 'translation_failures', 'pause_requested', 'delete_requested')
 
 
@@ -237,9 +237,9 @@ class Scheduler:
             current = get_job(job_id)
             if current and current.get('delete_requested'):
                 worker_command('manage.py', {'action': 'finish_abort', 'id': job_id}); self.soon(); return
-            if code != 0 and current and current.get('status') not in ('FAILED', 'COMPLETED', 'CANCELLED', 'PAUSED', 'DELETING', 'AWAITING_REVIEW'):
+            if code != 0 and current and current.get('status') not in ('FAILED', 'COMPLETED', 'CANCELLED', 'PAUSED', 'DELETING'):
                 worker_failure(current, 'STEP_FAILED', f'Worker dừng với exit code {code}. Xem working/worker.log.')
-            if code == 0 and current and current.get('status') not in ('COMPLETED', 'FAILED', 'QUEUED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'DELETING', 'AWAITING_REVIEW'):
+            if code == 0 and current and current.get('status') not in ('COMPLETED', 'FAILED', 'QUEUED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'DELETING'):
                 return   # an older worker still owns this job: leave its status intact
             self.soon()
         except Exception:

@@ -86,7 +86,7 @@ sealed class ProgressWindow : Form {
 static class Installer {
     const string Version="@@VERSION@@";
     const string Product="@@PRODUCT@@";
-    // "Basic"/"Plus"; empty for the legacy single product. Data stays shared across editions.
+    // "Plus"; empty for the legacy single product. Data stays shared across editions.
     const string Edition="@@EDITION@@";
     static readonly bool Vietnamese = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "vi";
     static string T(string vi, string en) { return Vietnamese ? vi : en; }

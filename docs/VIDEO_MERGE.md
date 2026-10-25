@@ -1,6 +1,6 @@
 # Ghép video (Video merge)
 
-Từ 3.0.0, giống nhau ở Basic và Plus, không tính phí.
+Từ 3.0.0, không tính phí.
 
 Giọng Việt do app tạo được ghép vào video của người dùng. Video không bắt buộc. Có thể chọn ở ba nơi:
 

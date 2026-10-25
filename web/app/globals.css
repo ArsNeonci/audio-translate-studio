@@ -338,19 +338,6 @@ button:hover:not(:disabled),
   font-size: 12px;
 }
 
-.review-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.review-actions small {
-  flex-basis: 100%;
-  color: #66736a;
-}
-
 .voice-options {
   position: absolute;
   top: calc(100% + 6px);

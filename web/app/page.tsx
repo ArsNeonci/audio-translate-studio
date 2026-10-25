@@ -10,7 +10,6 @@ import RulesPanel from "@/components/rules/rules-panel";
 import VoiceSelect from "@/components/voice/voice-select";
 import AddressProfileSelect from "@/components/voice/address-profile-select";
 import TranslationModeSelect from "@/components/voice/translation-mode-select";
-import AutoTtsToggle from "@/components/voice/auto-tts-toggle";
 import type {TranslationMode} from "@/lib/shared/translation-modes";
 import {addressForStyle} from "@/lib/shared/address-profiles";
 import {audioDuration,percent,runNumber} from "@/lib/shared/format";
@@ -23,7 +22,7 @@ import SubtitleOptions, { defaultSubtitle, subtitleValid, type SubtitleSettings 
 
 const duration = audioDuration;
 const AUDIO_TYPES=".wav,.mp3,.m4a,.flac,.ogg,.aac,.webm,.mp4";
-type ConvertInput={url:string;file?:File;voice?:string;style?:string;address?:string;mode?:TranslationMode;auto?:boolean;video?:ReturnType<typeof videoPayload>;subtitle?:SubtitleSettings};
+type ConvertInput={url:string;file?:File;voice?:string;style?:string;address?:string;mode?:TranslationMode;video?:ReturnType<typeof videoPayload>;subtitle?:SubtitleSettings};
 type ResourceWarning={reasons:string[];ram_available_gib:number;required_available_gib:number;cpu_percent:number;existing_workflows:number;estimate_basis:string};
 
 export default function Home() {
@@ -33,11 +32,10 @@ export default function Home() {
   // Source of the Chinese audio: a YouTube link, or a file when YouTube refuses the download.
   const [source,setSource]=useState<"link"|"file">("link"),[file,setFile]=useState<File|null>(null);
   const [voice,setVoice]=useState(""),[style,setStyle]=useState(""),[address,setAddress]=useState("");
-  const [mode,setMode]=useState<TranslationMode>("normal"),[auto,setAuto]=useState(false);
+  const [mode,setMode]=useState<TranslationMode>("normal");
   const [video,setVideo]=useState<VideoChoice>(emptyVideo);
   const [subtitle,setSubtitle]=useState<SubtitleSettings>(defaultSubtitle);
   const videoBlocked=(video.files.length>0&&!videoReady(video))||!subtitleValid(subtitle);
-  const basic=license.edition==="basic";
   const chooseStyle=useCallback((value:string)=>{setStyle(value);setAddress(addressForStyle(value));},[]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [busy, setBusy] = useState(false);
@@ -64,7 +62,7 @@ export default function Home() {
   async function start(event: React.FormEvent) {
     event.preventDefault();
     // Genius handles forms of address itself, so none is sent.
-    const extra={...(basic?{auto}:{}),...(source==="file"&&file?{file}:{}),...(video.files.length?{video:videoPayload(video)}:{}),subtitle};
+    const extra={...(source==="file"&&file?{file}:{}),...(video.files.length?{video:videoPayload(video)}:{}),subtitle};
     if(source==="file"&&!file)return;
     const link=source==="file"?"":url;
     await convert(mode==="genius"?{url:link,voice:voice||undefined,style:style||undefined,mode,...extra}:{url:link,voice:voice||undefined,style:style||undefined,address:address||undefined,...extra});
@@ -74,7 +72,7 @@ export default function Home() {
     const {file:upload,...fields}=input;
     if(!upload)return apiFetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fields,queue_only }) });
     const params=new URLSearchParams({name:upload.name});
-    for(const [key,value] of Object.entries(fields))if(key!=="url"&&value!==undefined&&value!==false)params.set(key,value===true?"1":typeof value==="object"?JSON.stringify(value):String(value));
+    for(const [key,value] of Object.entries(fields))if(key!=="url"&&value!==undefined)params.set(key,typeof value==="object"?JSON.stringify(value):String(value));
     if(queue_only)params.set("queue_only","1");
     return apiFetch(`/api/jobs?${params}`,{method:"POST",headers:{"Content-Type":upload.type||"application/octet-stream"},body:upload});
   }
@@ -130,7 +128,6 @@ export default function Home() {
       <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={chooseStyle} />
       <TranslationModeSelect value={mode} onChange={setMode} />
       {mode==="normal"&&<AddressProfileSelect value={address} onChange={setAddress} />}
-      {basic&&<AutoTtsToggle checked={auto} onChange={setAuto} />}
       <details className="video-optional"><summary>{tr("subtitleOptional")}</summary><SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} /></details>
       <details className="video-optional" open={video.files.length>0||undefined}><summary>{tr("videoOptional")}</summary><VideoPicker value={video} onChange={setVideo} disabled={busy} /></details>
       {message && <p className="alert" role="alert">{message}</p>}

@@ -71,12 +71,12 @@ class UploadTests(LiveApi):
 
     def test_a_file_becomes_a_workflow_and_the_temporary_copy_goes(self):
         audio = bytes([7]) * (3 * 1024 * 1024 + 17)
-        r = self.post('/api/jobs?name=clip.mp3&voice=v1&style=drama&mode=genius&address=drama&auto=1&queue_only=1', audio, {'Content-Type': 'audio/mpeg'})
+        r = self.post('/api/jobs?name=clip.mp3&voice=v1&style=drama&mode=genius&address=drama&queue_only=1', audio, {'Content-Type': 'audio/mpeg'})
         self.assertEqual((r.status_code, r.json()), (201, {'job': {'id': 'job-1'}}))
         payload, received = self.calls[-1]['payload'], self.calls[-1]['bytes']
-        self.assertEqual({k: payload.get(k) for k in ('action', 'url', 'tool', 'input_name', 'mime', 'voice', 'style', 'mode', 'address', 'auto', 'queue_only')},
+        self.assertEqual({k: payload.get(k) for k in ('action', 'url', 'tool', 'input_name', 'mime', 'voice', 'style', 'mode', 'address', 'queue_only')},
                          {'action': 'convert', 'url': '', 'tool': None, 'input_name': 'clip.mp3', 'mime': 'audio/mpeg', 'voice': 'v1', 'style': 'drama',
-                          'mode': 'genius', 'address': None, 'auto': True, 'queue_only': True})   # Genius handles forms of address itself
+                          'mode': 'genius', 'address': None, 'queue_only': True})   # Genius handles forms of address itself
         self.assertEqual(received, audio)
         self.assertEqual((self.leftovers(), self.scheduled), ([], 1))
 
@@ -84,7 +84,7 @@ class UploadTests(LiveApi):
         r = self.post('/api/jobs?name=clip.wav&address=drama', b'x' * 1000, {'Content-Type': ''})
         self.assertEqual(r.status_code, 201, r.text)
         payload = self.calls[-1]['payload']
-        self.assertEqual((payload['queue_only'], payload['auto'], payload['address']), (False, False, 'drama'))
+        self.assertEqual((payload['queue_only'], payload['address']), (False, 'drama'))
 
     def test_refused_before_the_worker_is_asked(self):
         for query in ('?name=a%2Fb.mp3', '', '?name=clip.mp3&style=nope', '?name=clip.mp3&mode=nope', '?name=clip.mp3&address=nope'):

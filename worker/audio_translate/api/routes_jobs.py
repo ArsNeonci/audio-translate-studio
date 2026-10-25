@@ -1,5 +1,5 @@
 """Everything that starts or steers work, moved together with the scheduler (was app/api/jobs/**, app/api/tools/route.ts,
-app/api/tools/[id]/review, app/api/quit and lib/server/app-control.ts)."""
+app/api/quit and lib/server/app-control.ts)."""
 import asyncio
 import json
 import os
@@ -17,7 +17,7 @@ from audio_translate.api.web import json_response, origin_allowed, threaded
 from audio_translate.core.storage import DATA
 
 router = APIRouter()
-management.after_start.append(scheduler.soon)   # reprocess, resume and review start work: let the scheduler see it
+management.after_start.append(scheduler.soon)   # reprocess and resume start work: let the scheduler see it
 
 VOICE_STYLES = ('default', 'drama', 'survival', 'rebirth')
 ADDRESS_PROFILES = ('neutral', 'drama', 'survival', 'rebirth')
@@ -75,12 +75,11 @@ async def create(request: Request):
     try: data = json.loads(await request.body())
     except ValueError: return json_response({'error': 'JSON không hợp lệ.'}, 400)
     data = data if isinstance(data, dict) else {}
-    url, voice, style, address, queue_only, mode, auto = (data.get(k) for k in ('url', 'voice', 'style', 'address', 'queue_only', 'mode', 'auto'))
+    url, voice, style, address, queue_only, mode = (data.get(k) for k in ('url', 'voice', 'style', 'address', 'queue_only', 'mode'))
     video = video_settings(data.get('video'))
     if video is False: return json_response({'error': 'Invalid video settings'}, 400)
     subtitle = video_settings(data.get('subtitle'))
     if subtitle is False: return json_response({'error': 'Invalid subtitle settings'}, 400)
-    if 'auto' in data and not isinstance(auto, bool): return json_response({'error': 'Invalid auto option'}, 400)
     if not isinstance(url, str) or not valid_youtube_url(url): return json_response({'error': 'Hãy nhập URL video YouTube hợp lệ (HTTPS).'}, 400)
     if 'voice' in data and not isinstance(voice, str): return json_response({'error': 'Invalid voice'}, 400)
     if 'style' in data and style not in VOICE_STYLES: return json_response({'error': 'Invalid voice style'}, 400)
@@ -91,7 +90,7 @@ async def create(request: Request):
         await threaded(ensure_history)
         watch.mark('storage')
         result = await threaded(command, {'action': 'convert', 'url': url, 'voice': voice, 'style': style, 'address': None if mode == 'genius' else address,
-                                          'mode': mode, 'auto': auto is True, 'queue_only': queue_only or False, 'video': video, 'subtitle': subtitle})
+                                          'mode': mode, 'queue_only': queue_only or False, 'video': video, 'subtitle': subtitle})
     except Exception:
         watch.mark('failed')
         timing.log('create', watch, outcome='error')
@@ -127,7 +126,7 @@ async def create_from_upload(request: Request):
         await threaded(ensure_history)
         result = await threaded(command, {'action': 'convert', 'url': '', 'upload': str(upload), 'input_name': name, 'mime': request.headers.get('content-type', ''),
                                           'voice': params.get('voice') or None, 'style': style, 'address': address, 'mode': mode,
-                                          'auto': params.get('auto') == '1', 'queue_only': params.get('queue_only') == '1', 'video': video, 'subtitle': subtitle})
+                                          'queue_only': params.get('queue_only') == '1', 'video': video, 'subtitle': subtitle})
         status = result.pop('status')
         if status == 200: scheduler.soon()
         return json_response(result, 201 if status == 200 else status, no_store=True)
@@ -191,9 +190,8 @@ def _manage(action, scope='workflows'):
     return handler
 
 
-for _action in ('abort', 'cancel', 'pause', 'reprocess', 'resume', 'review'):
+for _action in ('abort', 'cancel', 'pause', 'reprocess', 'resume'):
     router.add_api_route(f'/api/jobs/{{job_id}}/{_action}', _manage(_action), methods=['POST'])
-router.add_api_route('/api/tools/{job_id}/review', _manage('review', 'tools'), methods=['POST'])
 
 
 # --- tools ---------------------------------------------------------------------------------------------------------------
@@ -251,8 +249,7 @@ async def create_tool(request: Request):
         upload, refusal = await receive_upload(request, limit)
         if refusal: return json_response({'error': 'Upload too large'}, 413)
         result = await threaded(command, {'action': 'create', 'tool': tool, 'upload': str(upload), 'input_name': name, 'mime': request.headers.get('content-type', ''),
-                                          'voice': params.get('voice'), 'style': style, 'address': address, 'mode': mode,
-                                          'auto': tool == 'tts' and params.get('auto') == '1'})
+                                          'voice': params.get('voice'), 'style': style, 'address': address, 'mode': mode})
         status = result.pop('status')
         if status == 200: scheduler.soon()
         return json_response(result, 201 if status == 200 else status)

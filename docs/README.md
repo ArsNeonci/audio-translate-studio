@@ -11,7 +11,7 @@
 | [VOICE_PREVIEWS.md](VOICE_PREVIEWS.md) | Xem trước giọng đọc |
 | [VOICE_STYLES.md](VOICE_STYLES.md) | Kiểu giọng Mặc định/Drama/Sinh tồn/Trọng sinh: số đo nguồn và cách áp dụng |
 | [ADDRESS_FORMS.md](ADDRESS_FORMS.md) | Xưng hô, giới tính và thuật ngữ theo thể loại: bảng nhân vật, sửa giới tính, từ điển, kiểm tra khi dịch |
-| [BUILD_RELEASE.md](BUILD_RELEASE.md) | Tự build bộ cài Basic/Plus bằng một lệnh (`packaging/build_edition.py`), quy tắc tăng phiên bản, lỗi thường gặp, bản phát hành cứng |
+| [BUILD_RELEASE.md](BUILD_RELEASE.md) | Tự build bộ cài Plus bằng một lệnh (`packaging/build_edition.py`), quy tắc tăng phiên bản, lỗi thường gặp, bản phát hành cứng |
 | [TOOLS.md](TOOLS.md) | Bốn tool đơn lẻ: link YouTube, xưng hô, xóa khi đang chạy, chạy song song |
 | [WORKFLOW_LIFECYCLE.md](WORKFLOW_LIFECYCLE.md) | Vòng đời, tạm dừng và tiếp tục workflow |
 | [MULTI_WORKFLOW_SCHEDULER.md](MULTI_WORKFLOW_SCHEDULER.md) | Chạy nhiều workflow cùng lúc, chia luồng theo tài nguyên (đã triển khai) |

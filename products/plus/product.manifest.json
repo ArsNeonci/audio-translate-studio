@@ -17,8 +17,7 @@
     "app_id": "audio-translates",
     "app_name": "Audio Translate",
     "services": [
-      "translation",
-      "tts"
+      "translation"
     ]
   }
 }

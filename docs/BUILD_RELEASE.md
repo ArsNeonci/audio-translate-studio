@@ -1,8 +1,8 @@
-# Tự build bộ cài Basic và Plus
+# Tự build bộ cài Plus
 
 Hướng dẫn cho chủ sản phẩm tự build, không cần nhờ agent. Nguồn: `packaging/build_installer.py`, `packaging/build_security_core.py`, `admin-system/release_config.py`, `admin-system/export_build_keys.py` và `docs/SECURITY_PHASE_*_RESULT.md`.
 
-Trạng thái: 2026-10-07. Script `packaging/build_edition.py` mới viết và **chỉ đã chạy thử ở chế độ `--dry-run`** (kiểm tra máy và in các bước); tôi chưa build thật gói Basic/Plus nào bằng nó. Các bước bên trong là những lệnh sẵn có.
+Trạng thái: 2026-10-07. Script `packaging/build_edition.py` mới viết và **chỉ đã chạy thử ở chế độ `--dry-run`** (kiểm tra máy và in các bước); tôi chưa build thật gói nào bằng nó. Các bước bên trong là những lệnh sẵn có.
 
 ---
 
@@ -12,15 +12,13 @@ Mở terminal, chạy **bằng Python của chính repo này**:
 
 ```
 cd C:\Workspace\Audio-translate\audio-translates
-.venv\Scripts\python.exe packaging\build_edition.py basic
 .venv\Scripts\python.exe packaging\build_edition.py plus
 ```
 
-Mỗi lệnh build **một gói**, mất khoảng 10 đến 30 phút (ước tính, chưa đo), kết quả nằm ở:
+Lệnh build gói Plus, mất khoảng 10 đến 30 phút (ước tính, chưa đo), kết quả nằm ở:
 
 | Gói | File cài | Bản ghi phát hành |
 |---|---|---|
-| Basic | `dist\AudioTranslate-Basic-<version>.exe` | `dist\release-audio-translate-basic-<version>.json` |
 | Plus | `dist\AudioTranslate-Plus-<version>.exe` | `dist\release-audio-translate-plus-<version>.json` |
 
 Tùy chọn:
@@ -51,14 +49,14 @@ Khóa của gói đã có sẵn trên gateway nên **không cần đẩy khóa l
 Máy này đã có đủ (preflight đã báo `ok` cho từng mục): môi trường admin, `node_modules`, bộ Rust riêng trong `C:\Workspace\Audio-translate\.tools\rust`, .NET Framework 4 (`csc.exe`), model dịch `models\Hy-MT2-7B-Q4_K_M`. Máy mới cần cài đủ các thứ này (xem README của từng thành phần).
 
 Cần có sẵn và chạy được:
-- admin-system đã đăng ký hai gói (`audio-translate-basic`, `audio-translate-plus`); chỉ cần mở admin một lần là tự đăng ký.
+- admin-system đã đăng ký gói `audio-translate-plus`; chỉ cần mở admin một lần là tự đăng ký.
 - Không có workflow đang chạy: build ngốn RAM và CPU, dễ làm workflow tạm dừng vì thiếu RAM.
 
 ---
 
 ## 3. Làm từng bước bằng tay (khi cần tìm lỗi)
 
-Thay `<gói>` bằng `audio-translate-basic` hoặc `audio-translate-plus`, `<ver>` bằng phiên bản trong manifest.
+Thay `<gói>` bằng `audio-translate-plus`, `<ver>` bằng phiên bản trong manifest.
 
 ```
 cd C:\Workspace\Audio-translate\admin-system
@@ -70,7 +68,7 @@ set AUDIO_CONTENT_KEY_FILE=<thư mục khóa>\<gói>.key
 .venv\Scripts\python.exe packaging\build_installer.py --product <gói>
 
 cd C:\Workspace\Audio-translate\admin-system
-.venv\Scripts\python.exe audit_package.py --edition basic       (hoặc plus)
+.venv\Scripts\python.exe audit_package.py --edition plus
 ```
 
 ---
@@ -94,7 +92,7 @@ cd C:\Workspace\Audio-translate\admin-system
 | `billing-gateway` (gateway, cổng thanh toán, webhook) | Không | Triển khai lại lên VM (`README` của billing-gateway) |
 | `admin-system` | Không | Đóng và mở lại admin |
 
-**Bản nháp và bản đã phát hành.** Một phiên bản mới build là **bản nháp**: sửa mã rồi build lại cùng số phiên bản thì bản dựng được thay thế (không phải xóa gì). Khi chạy `publish_update.py` cho kênh `stable`, bản ghi phát hành được đánh dấu `published: true`; từ đó mã của số phiên bản đó không đổi được nữa (script dừng với `VERSION_ALREADY_RELEASED`) và cần **tăng phiên bản**: trong **cả hai** file `products\basic\product.manifest.json` và `products\plus\product.manifest.json`, sửa `version` (ví dụ `1.2.0` thành `1.2.1`) **và** `artifact_path` cho khớp (`dist/AudioTranslate-Basic-1.2.1.exe`). Rồi chạy lại `build_edition.py`; bước 1 tự đăng ký phiên bản mới với admin.
+**Bản nháp và bản đã phát hành.** Một phiên bản mới build là **bản nháp**: sửa mã rồi build lại cùng số phiên bản thì bản dựng được thay thế (không phải xóa gì). Khi chạy `publish_update.py` cho kênh `stable`, bản ghi phát hành được đánh dấu `published: true`; từ đó mã của số phiên bản đó không đổi được nữa (script dừng với `VERSION_ALREADY_RELEASED`) và cần **tăng phiên bản**: trong file `products\plus\product.manifest.json`, sửa `version` (ví dụ `1.2.0` thành `1.2.1`) **và** `artifact_path` cho khớp (`dist/AudioTranslate-Plus-1.2.1.exe`). Rồi chạy lại `build_edition.py`; bước 1 tự đăng ký phiên bản mới với admin.
 
 Phiên bản chỉ là thông tin: không quyết định giấy phép, khóa giải mã hay việc app có chạy được. Người dùng cài hay cập nhật lên bản mới đều **thay thế tại chỗ** bản đang có (một thư mục cho mỗi gói), giấy phép và dữ liệu được giữ nguyên.
 

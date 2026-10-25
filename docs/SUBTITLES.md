@@ -1,6 +1,6 @@
 # Phụ đề tiếng Việt (.srt)
 
-Từ 3.1.0, giống nhau ở Basic và Plus, không tính phí.
+Từ 3.1.0, không tính phí.
 
 ## Định dạng
 - **SubRip (`.srt`), UTF-8**, theo trang hỗ trợ của YouTube (https://support.google.com/youtube/answer/2734698).

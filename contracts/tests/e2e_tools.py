@@ -25,7 +25,7 @@ import run_app_contract as harness  # noqa: E402
 
 ROOT = harness.ROOT
 ISOLATED_ENV = harness.isolated_env   # the original; main() swaps the harness's copy for env_for
-TERMINAL = ('COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'AWAITING_REVIEW')
+TERMINAL = ('COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL')
 failures = []
 
 

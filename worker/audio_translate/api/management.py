@@ -1,4 +1,4 @@
-"""Stop, pause, resume, reprocess, review, abort and delete a run (was lib/server/management.ts)."""
+"""Stop, pause, resume, reprocess, abort and delete a run (was lib/server/management.ts)."""
 import json
 
 from audio_translate.api.license import license_denial
@@ -6,7 +6,7 @@ from audio_translate.api.runtime import worker_command
 from audio_translate.api.web import json_response
 
 TRANSLATION_MODES = ('normal', 'genius')
-STARTS_WORK = ('reprocess', 'resume', 'review')
+STARTS_WORK = ('reprocess', 'resume')
 NO_BODY = ('cancel', 'pause', 'resume')
 # Set by the scheduler module when it owns the queue (G4 jobs group): called after an action that may start work.
 after_start = []

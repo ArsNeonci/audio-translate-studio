@@ -6,10 +6,7 @@ Mô tả cách app Audio Translate được ghép từ các phần. Chi tiết t
 
 Ứng dụng Windows chạy trên máy người dùng: tải audio (YouTube hoặc file tiếng Trung) → chép lời tiếng Trung → dịch sang tiếng Việt → kiểm duyệt bằng luật thay thế → tạo giọng đọc. Có hai gói:
 
-| Gói | Khác biệt |
-|---|---|
-| **Plus** | Tạo giọng ngay trên máy. |
-| **Basic** | Tạo giọng qua dịch vụ trực tuyến; dừng ở bước duyệt trước khi tạo giọng, trừ khi bật ô Auto. |
+Chỉ có gói **Plus**: tạo giọng ngay trên máy. Gói Basic (tạo giọng qua dịch vụ trực tuyến) đã bị gỡ.
 
 Dịch có hai chế độ: chạy trên máy (Hy-MT2-7B, tải sau khi cài) hoặc dịch vụ trực tuyến (tính phí, theo hạn mức).
 
@@ -40,7 +37,7 @@ Khi đã cài, dữ liệu người dùng (kích hoạt, kết quả, model đã
 
 ## Đóng gói
 
-`python packaging/build_edition.py basic|plus` build lõi bảo mật, vỏ Tauri, UI tĩnh, gom Python/Node/FFmpeg và ghép bộ cài (`installer.cs`, .NET) dưới 4 GiB; model dịch không nằm trong bộ cài. Xem [BUILD_RELEASE.md](BUILD_RELEASE.md) và [CLEAN_ARCHITECTURE.md](CLEAN_ARCHITECTURE.md).
+`python packaging/build_edition.py plus` build lõi bảo mật, vỏ Tauri, UI tĩnh, gom Python/Node/FFmpeg và ghép bộ cài (`installer.cs`, .NET) dưới 4 GiB; model dịch không nằm trong bộ cài. Xem [BUILD_RELEASE.md](BUILD_RELEASE.md) và [CLEAN_ARCHITECTURE.md](CLEAN_ARCHITECTURE.md).
 
 ## Kiểm thử
 

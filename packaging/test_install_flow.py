@@ -1,6 +1,6 @@
 """Install, update and uninstall with the real .NET stubs, and the cleanup that stops everything of an installation - on Windows only.
 
-Uses its own edition ("Test", version 9.9.9), so a real Basic/Plus installation, its shortcut and the user's data are never touched. The tests of the
+Uses its own edition ("Test", version 9.9.9), so a real Plus installation, its shortcut and the user's data are never touched. The tests of the
 replace-in-place design (one folder per edition, old versioned copies removed, a newer release never replaced, a failed install leaving the old copy) run
 in a private folder and a private registry path (AUDIO_INSTALL_PARENT, AUDIO_UNINSTALL_ROOT).
 Never passes /DATA to the uninstaller. Run: .venv\\Scripts\\python.exe -m unittest packaging.test_install_flow  (from audio-translates)

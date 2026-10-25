@@ -17,7 +17,7 @@ def reset(job_dir, step):
         'SUBTITLE':['voice.vi.srt*'],
         'VIDEO':['video.vi.mp4*','working/video-*','working/video-open.pending'],
         'BURN':['video.vi.sub.mp4*','working/burn-*'],
-        'TTS':['voice/*','voice.vi.wav*','working/voice-checkpoints/*','working/tts.done.json','working/tts-runtime.json','working/tts-worker-*.log','working/tts-calibration/*','working/tts-remote-state.json','working/tts-remote-progress.json'],
+        'TTS':['voice/*','voice.vi.wav*','working/voice-checkpoints/*','working/tts.done.json','working/tts-runtime.json','working/tts-worker-*.log','working/tts-calibration/*'],
     }
     job_file=job_dir/'job.json'
     if step=='DOWNLOAD' and job_file.exists() and read_json(job_file).get('source_upload'):

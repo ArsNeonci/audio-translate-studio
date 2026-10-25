@@ -87,7 +87,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual((self.failures, self.soon), ([], []))
 
     def test_a_failed_exit_of_a_stopped_job_is_not_a_failure(self):
-        for status in ('PAUSED', 'CANCELLED', 'AWAITING_REVIEW'):
+        for status in ('PAUSED', 'CANCELLED'):
             self.failures.clear(); self.watch(status, 1)
             self.assertEqual(self.failures, [], status)
 

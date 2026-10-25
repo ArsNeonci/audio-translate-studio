@@ -79,15 +79,6 @@ class SubtitleWorkflowTests(unittest.TestCase):
         again = manage.create(tool='subtitle', voice_job=job['id'])
         self.assertEqual(self.run_all(results.workspace(again['id'])), ['subtitle'])
 
-    def test_skipping_the_voice_skips_the_subtitles_too(self):
-        with patch.object(manage, 'needs_review', lambda job: False):
-            job = manage.create('https://youtu.be/1JzKgwOESoM', self.voice)
-        d = results.workspace(job['id']); self.prepare(d)
-        update = read_json(d / 'job.json'); update['status'] = 'AWAITING_REVIEW'; update['tts_auto'] = False
-        (d / 'job.json').write_text(json.dumps(update), encoding='utf-8')
-        done = manage.review(job['id'], 'finish')
-        self.assertEqual((done['status'], done['steps']['SUBTITLE']['state']), ('COMPLETED', 'SKIPPED'))
-
     def frame(self, out, item, name):
         target = Path(self.temp.name) / f'{name}.png'
         subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(out / item['path']), '-frames:v', '1', str(target)], check=True)

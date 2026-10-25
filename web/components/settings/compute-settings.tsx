@@ -3,7 +3,6 @@ import { apiFetch } from "@audio/ui";
 
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n/language-context";
-import { useLicense } from "@/components/license/license-status";
 
 type Compute = {
   device: "cpu" | "gpu";
@@ -44,10 +43,7 @@ export default function ComputeSettings() {
     } finally { setBusy(false); }
   }
 
-  const license = useLicense();
-  const basic = license.edition === "basic";
-  // Basic generates the voice on the server, so local TTS GPU support is not required there.
-  const ready = config && config.capabilities.transcription && config.capabilities.translation && (basic || config.capabilities.tts);
+  const ready = config && config.capabilities.transcription && config.capabilities.translation && config.capabilities.tts;
   return (
     <section className="lang-switcher-card" aria-label={tr("computeTitle")}>
       <h2>{tr("computeTitle")}</h2>

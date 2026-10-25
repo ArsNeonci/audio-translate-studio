@@ -2,12 +2,8 @@
 import ast
 import os
 from pathlib import Path
-from audio_translate.core.storage import ROOT, DATA, read_json, atomic_json, file_lock
+from audio_translate.core.storage import DATA, read_json, atomic_json, file_lock
 from audio_translate.core.providers import vieneu_source
-
-# Basic installers ship without VieNeu (the VPS generates the voice): voices come from this catalog,
-# exported on the build machine by worker/tools/export_voice_catalog.py.
-CATALOG = ROOT/'worker'/'config'/'voice-catalog.json'
 
 
 def live_presets():
@@ -35,13 +31,8 @@ def live_presets():
 
 
 def discover():
-    if (vieneu_source()/'src'/'vieneu'/'v3turbo.py').is_file():
-        voices, default = live_presets()
-        items = [{'id': key, 'label': key, 'description': value.get('description', ''), 'aliases': value.get('aliases', [])} for key, value in voices.items()]
-    else:
-        catalog = read_json(CATALOG) if CATALOG.is_file() else {'voices': []}
-        items, default = catalog['voices'], catalog.get('default_voice_id')
-        voices = {item['id']: item for item in items}
+    voices, default = live_presets()
+    items = [{'id': key, 'label': key, 'description': value.get('description', ''), 'aliases': value.get('aliases', [])} for key, value in voices.items()]
     if not voices: raise ValueError('VieNeu has no available voice presets')
     if default not in voices: default = items[0]['id']
     settings = DATA/'config'/'preferences.json'

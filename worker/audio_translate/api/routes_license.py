@@ -5,7 +5,7 @@ import threading
 from fastapi import APIRouter, Request
 
 from audio_translate.api import billing, license as lease, model
-from audio_translate.api.runtime import edition, license_command
+from audio_translate.api.runtime import license_command
 from audio_translate.api.web import json_response, origin_allowed, threaded
 
 router = APIRouter()
@@ -19,8 +19,7 @@ async def license_status(request: Request):
     action = 'machine' if request.query_params.get('machine') == '1' else 'status'
     result = await threaded(license_command, {'action': action})
     if action == 'status': result = await threaded(lease.describe, result)
-    tier = await threaded(edition)
-    return json_response({**result, 'edition': tier}, result.get('http_status', 503), no_store=True)
+    return json_response(result, result.get('http_status', 503), no_store=True)
 
 
 @router.post('/api/license/lease')
@@ -29,8 +28,7 @@ async def license_lease_check(request: Request):
     if not origin_allowed(request): return json_response(ORIGIN_REJECTED, 403)
     renewal = await threaded(lease.ensure_lease, True)
     result = await threaded(lease.describe, await threaded(license_command, {'action': 'status'}))
-    tier = await threaded(edition)
-    return json_response({**result, 'edition': tier, 'renewal': renewal}, result.get('http_status', 503), no_store=True)
+    return json_response({**result, 'renewal': renewal}, result.get('http_status', 503), no_store=True)
 
 
 @router.post('/api/license')

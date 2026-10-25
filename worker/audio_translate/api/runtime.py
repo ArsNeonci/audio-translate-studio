@@ -91,17 +91,3 @@ def license_command(payload):
     if process.returncode or len(out) > 65536: return unavailable
     try: return json.loads(out)
     except ValueError: return unavailable
-
-
-_edition = None
-
-
-def edition():
-    """basic or plus, from the Product ID compiled into the core (edition.ts)."""
-    global _edition
-    if _edition: return _edition
-    value = license_command({'action': 'identity'})
-    if value.get('http_status') != 200 or not value.get('product_id'): return 'basic'
-    tier = value.get('tier') or ('basic' if value['product_id'].endswith('-basic') else 'plus')
-    _edition = 'plus' if tier == 'plus' else 'basic'
-    return _edition
