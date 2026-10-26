@@ -73,6 +73,10 @@ def provider_signature(config):
     hub=Path(os.getenv('HF_HOME',str(DATA/'hf-cache')))/'hub'
     for path in sorted(hub.glob('models--*/refs/*')):
         if path.is_file():sha.update(str(path).encode());sha.update(path.read_bytes())
+    # A fine-tuned voice also depends on its pack; other voices keep their signature (and cache).
+    from audio_translate.tts.voice_packs import find, signature
+    pack=find(config.get('voice'))
+    if pack:sha.update(b'voice-pack');sha.update(signature(pack).encode())
     return sha.hexdigest()
 
 

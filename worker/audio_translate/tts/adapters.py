@@ -56,25 +56,38 @@ class TTSAdapter:
     def __init__(self, settings, threads=None):
         self.settings = settings
         self.engine = None
+        self.engine_key = None
+        self.voice = None
         self.threads = threads or max(1, int(os.getenv('AI_NUM_THREADS', '4')))
 
     def load(self):
-        if self.engine is not None:
+        # A fine-tuned voice (voice pack) runs on its own patched model; switching to or from it reloads the engine.
+        from audio_translate.tts import voice_packs
+        pack = voice_packs.find(self.settings["voice"])
+        key = voice_packs.signature(pack) if pack else None
+        if self.engine is not None and self.engine_key == key:
+            self.voice = voice_packs.engine_voice(pack) if pack else self.settings["voice"]
+            if not pack: self.engine.get_preset_voice(self.voice)
             return
         source = vieneu_source(self.settings["source"]) / "src"
         if not (source / "vieneu" / "factory.py").is_file():
             raise AppError('V103', 'VieNeu source not found; set VIENEU_SOURCE')
         # No editable install, monkeypatch, or bytecode files inside the repo.
         sys.dont_write_bytecode = True
-        sys.path.insert(0, str(source))
+        if str(source) not in sys.path: sys.path.insert(0, str(source))
         os.environ.setdefault("HF_HOME", str(DATA / "hf-cache"))
         from vieneu import Vieneu
+        self.engine = None
+        # The pack's patched folder replaces the ONNX graphs; it exists only for the CPU engine.
+        extra = {"backend": "onnx", "onnx_dir": str(voice_packs.prepare(pack))} if pack else {}
         self.engine = Vieneu(mode="v3turbo", device=self.settings["device"], precision=self.settings["precision"],
-                             threads=self.threads, max_batch_size=1)
+                             threads=self.threads, max_batch_size=1, **extra)
         if self.engine.sample_rate != self.sample_rate:
             raise RuntimeError("Unexpected VieNeu sample rate")
+        self.engine_key = key
         # Validate the requested preset instead of silently changing voices.
-        self.engine.get_preset_voice(self.settings["voice"])
+        if pack: self.voice = voice_packs.engine_voice(pack)
+        else: self.voice = self.settings["voice"]; self.engine.get_preset_voice(self.voice)
 
     from audio_translate.core.control import complete_task
     @complete_task
@@ -87,7 +100,7 @@ class TTSAdapter:
                 handle.write(np.zeros(1, dtype=np.float32))
                 return
             self.load()
-            for chunk in self.engine.infer_stream(text, voice=self.settings["voice"], max_chars=256,
+            for chunk in self.engine.infer_stream(text, voice=self.voice, max_chars=256,
                     max_new_frames=1000, apply_watermark=False):
                 from audio_translate.core.control import check_cancel
                 check_cancel()

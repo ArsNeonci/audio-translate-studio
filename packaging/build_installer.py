@@ -63,6 +63,7 @@ def source_hash(product='audio-translate'):
     files.extend(p for p in (WORKSPACE/'VieNeu-TTS-main'/'src').rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix != '.pyc')
     files.append(WORKSPACE/'VieNeu-TTS-main'/'LICENSE')
     files.append(ROOT/'models'/'Hy-MT2-7B-Q4_K_M'/'provenance.json')
+    files.extend(p for p in (ROOT/'models'/'voice-packs').glob('*/*') if p.is_file())
     files.append(ROOT/'runtime'/'llama'/'provenance.json')
     files.append(ROOT/'worker'/'config'/'translation-runtime.json')
     files.append(ROOT/'worker'/'config'/'tts-runtime.json')
@@ -253,6 +254,16 @@ def build(product='audio-translate', customer=None):
         # The app downloads them after activation from the gateway's signed link and checks the same SHA-256 (worker/audio_translate/api/model.py).
         for name in ['provenance.json','LICENSE','MODEL_CARD.md']:
             shutil.copy2(model_dir/name,destination/name)
+        # Fine-tuned voices (worker/audio_translate/tts/voice_packs.py): a small LoRA delta each, applied to the VieNeu model on first use.
+        # Kept out of git (models/ is ignored); every pack must carry a delta that matches its recorded hash.
+        packs_dir=ROOT/'models'/'voice-packs'
+        if packs_dir.is_dir():
+            for pack in sorted(p for p in packs_dir.iterdir() if (p/'voice.json').is_file()):
+                record=json.loads((pack/'voice.json').read_text(encoding='utf-8'))
+                if digest(pack/record['delta']['file'])!=record['delta']['sha256']:raise RuntimeError(f'VOICE_PACK_DELTA_MISMATCH: {pack.name}')
+                (payload/'app'/'models'/'voice-packs'/pack.name).mkdir(parents=True,exist_ok=True)
+                for name in ['voice.json',record['delta']['file']]:shutil.copy2(pack/name,payload/'app'/'models'/'voice-packs'/pack.name/name)
+                print(f'Voice pack: {record["id"]}')
         shutil.copy2(ROOT/'packaging'/'app_cleanup.py',payload/'app_cleanup.py')
         # The desktop shell (Tauri) is what the shortcut starts: a window around the local API, which it starts, watches and ends.
         shutil.copy2(shell_binary,payload/'AudioTranslate.exe')

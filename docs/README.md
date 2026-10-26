@@ -9,6 +9,7 @@
 | [TRANSLATION_CHECKPOINTS.md](TRANSLATION_CHECKPOINTS.md) | Hàng đợi hữu hạn, checkpoint từng đoạn, xuất liên tiếp và Continue khi Translation lỗi |
 | [TTS_CPU.md](TTS_CPU.md) | Tự điều chỉnh TTS CPU |
 | [VOICE_PREVIEWS.md](VOICE_PREVIEWS.md) | Xem trước giọng đọc |
+| [VOICE_PACKS.md](VOICE_PACKS.md) | Giọng fine-tune (Thùy Dương): gói delta LoRA, vá model ONNX lúc chạy, kiểm chứng |
 | [VOICE_STYLES.md](VOICE_STYLES.md) | Kiểu giọng Mặc định/Drama/Sinh tồn/Trọng sinh: số đo nguồn và cách áp dụng |
 | [ADDRESS_FORMS.md](ADDRESS_FORMS.md) | Xưng hô, giới tính và thuật ngữ theo thể loại: bảng nhân vật, sửa giới tính, từ điển, kiểm tra khi dịch |
 | [BUILD_RELEASE.md](BUILD_RELEASE.md) | Tự build bộ cài Plus bằng một lệnh (`packaging/build_edition.py`), quy tắc tăng phiên bản, lỗi thường gặp, bản phát hành cứng |

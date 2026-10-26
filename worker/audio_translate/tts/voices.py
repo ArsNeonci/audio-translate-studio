@@ -27,6 +27,9 @@ def live_presets():
             voices.update({name:value for name,value in extra.get('presets',extra.get('voices',{})).items() if value.get('speaker_emb') is not None})
             default = extra.get('default_voice', default)
         except (ImportError, OSError): pass
+    # Fine-tuned voices shipped with the app (tts/voice_packs.py). Like the adapter, a pack wins over a preset of the same name.
+    from audio_translate.tts.voice_packs import packs, preset_entry
+    voices.update({name: preset_entry(pack) for name, pack in packs().items()})
     return voices, default
 
 

@@ -175,6 +175,13 @@
       "key": "cb326697b0b219a2622024de5057dab9b1349790e20e2c11660d71f8a3b68d75",
       "recipe": "659f43a3ec9f0d44914a147a9e2d156671a96293e24340d39147fd0a528aadb8",
       "duration_ms": 1280
+    },
+    {
+      "id": "Thùy Dương",
+      "text": "Tên tôi là Thùy Dương.",
+      "key": "046685327e465a6cba1ed78735f795fc044a53fa1672ce65cac8a2e6541c57b4",
+      "recipe": "3a6d6a7e2031f8838246b5e8d6e3dbaf071ef3b8e99b923eb3d30ebf8be95e83",
+      "duration_ms": 1200
     }
   ]
 }

@@ -79,6 +79,7 @@ __pycache__/
 /models/
 /runtime/llama/
 /data/tts-cache/
+/data/voice-packs/
 /data/logs/
 /data/settings/
 

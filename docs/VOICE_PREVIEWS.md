@@ -5,7 +5,7 @@ contain an independent play button. Playing a sample never changes the selected
 voice and never starts TTS. Only one audio element is used per picker, with the
 previous clip stopped on switching. Browser audio is requested by user clicks.
 
-Generate all 25 samples once:
+Generate all 26 samples once (25 VieNeu presets and the fine-tuned voice packs, docs/VOICE_PACKS.md):
 
     $env:PYTHONPATH="worker"; .venv/Scripts/python.exe -m audio_translate.tts.voice_previews --wait-idle
 
