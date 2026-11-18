@@ -16,7 +16,9 @@ STEPS = ['DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS']
 SUBTITLE = 'SUBTITLE'
 VIDEO = 'VIDEO'
 BURN = 'BURN'
-OPTIONAL = (SUBTITLE, VIDEO, BURN)
+# SPLIT is the one step of tool 7 (the Chinese text cut into numbered parts for a chatbot); no workflow has it.
+SPLIT = 'SPLIT'
+OPTIONAL = (SUBTITLE, VIDEO, BURN, SPLIT)
 ALL_STEPS = [*STEPS, *OPTIONAL]
 
 

@@ -18,6 +18,7 @@ export default function SiteHeader() {
     { href: "/history", label: t.nav.history },
     { href: "/tools", label: t.nav.tools },
     { href: "/reprocess", label: t.nav.reprocess },
+    { href: "/overlays", label: t.nav.overlays },
     { href: "/rules", label: t.nav.rules },
     { href: "/settings", label: t.nav.settings },
     { href: "/license", label: t.nav.license },

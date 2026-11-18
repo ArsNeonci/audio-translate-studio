@@ -14,6 +14,9 @@ tool và workflow chạy cùng lúc được chia luồng và tự nhường đ�
 | 4. Vietnamese Text → Voice | TXT/MD/JSONL + giọng, kiểu giọng | `TTS` |
 | 5. Giọng Việt → Phụ đề (.srt) | Một giọng đọc đã xong của workflow hoặc tool 4, cùng hai thông số phụ đề | `SUBTITLE` (xem `docs/SUBTITLES.md`) |
 | 6. Giọng Việt + Video → Video | Một giọng đọc đã xong của workflow hoặc tool 4, cùng các video chọn bằng hộp chọn file của Windows; ô tick **Gắn phụ đề vào video** (kèm hai thông số phụ đề) | `VIDEO`; có tick: `VIDEO`, `BURN` (xem `docs/VIDEO_MERGE.md`) |
+| 7. Tách văn bản | Bản chép tiếng Trung của một quy trình đã chạy (workflow hoặc công cụ 1) hoặc tệp TXT/MD/JSONL; số ký tự mỗi phần (500–20 000) và lời nhắc ở đầu mỗi tệp | `SPLIT` (xem `docs/MANUAL_TRANSLATION.md`) |
+
+Công cụ 7 cắt bản chép thành các tệp `part-001.md`… có mã `[số]` từng đoạn (kèm `parts.zip`) để người dùng đưa lần lượt cho chatbot của mình; bản dịch gom lại được nạp ở trang Tạo lại.
 
 Thứ tự công cụ theo đúng luồng: giọng (4) → phụ đề (5) → video (6). Từ 3.2.1 công cụ phụ đề là số 5 và công cụ video là số 6 (ở 3.1.x và 3.2.0 là ngược lại).
 

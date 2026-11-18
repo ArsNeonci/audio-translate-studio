@@ -5,6 +5,10 @@ Completed workflow rows/details leave the main Studio on its next polling refres
 this does not delete outputs or checkpoints. API enumeration still includes history
 for Reprocess and scheduling compatibility.
 
+A workflow created with "Translate by hand" (job.manual_translation) stops before Translation with status AWAITING_TRANSLATION: it holds no
+lane or model, counts as stopped everywhere (delete, Reprocess) and continues when the person loads the translation (Reprocess from Moderation,
+`docs/MANUAL_TRANSLATION.md`).
+
 Pause uses a cooperative signal with mode=pause. The UI continues showing the
 running stage/elapsed with a persistent stopping status until worker acknowledgement.
 ASR stops dispatching new segments, drains assigned segments to atomic checkpoints,

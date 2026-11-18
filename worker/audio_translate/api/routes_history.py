@@ -15,7 +15,7 @@ from audio_translate.api.web import json_response, threaded
 
 router = APIRouter()
 KINDS = {'source': 'SOURCE', 'zh': 'ZH', 'vi': 'VI', 'moderated': 'MODERATED', 'voice': 'VOICE'}
-EDITABLE = ('COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL')
+EDITABLE = ('COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'AWAITING_TRANSLATION')
 
 
 @router.get('/api/history')

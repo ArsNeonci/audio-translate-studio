@@ -104,8 +104,9 @@ def probe(path):
             'bitrate': bitrate or int(stat.st_size * 8 / duration)}
 
 
-def validate(config):
-    """The video settings sent by the page, checked and with every clip probed again (the page's own numbers are never trusted)."""
+def validate(config, current_overlay=None):
+    """The video settings sent by the page, checked and with every clip probed again (the page's own numbers are never trusted).
+    `overlay` is the choice of logo template ("default", "none" or a template id); the run keeps a snapshot of the template it names."""
     if not isinstance(config, dict): raise ValueError('Invalid video settings')
     files = config.get('files')
     if not isinstance(files, list) or not 1 <= len(files) <= MAX_FILES: raise ValueError(f'Choose 1 to {MAX_FILES} videos')
@@ -122,6 +123,10 @@ def validate(config):
     if resolution not in allowed: raise ValueError('That resolution is higher than the videos')
     result = {'files': clips, 'resolution': resolution, 'quality': quality}
     if burn: result['burn'] = True   # the BURN step (subtitles drawn into a second video) follows this merge
+    from audio_translate.video import overlays
+    try: snapshot = overlays.resolve(config.get('overlay'), clips, current_overlay)
+    except overlays.OverlayError as error: raise VideoError(error.code)
+    if snapshot: result['overlay'] = snapshot   # the logos and pictures laid on the picture (video/overlays.py); they force the encode
     return result
 
 
@@ -134,12 +139,12 @@ def resolutions(clips):
 def _even(value): return max(2, int(round(value / 2)) * 2)
 
 
-def plan(clips, resolution, quality, voice_ms, burn=False):
+def plan(clips, resolution, quality, voice_ms, burn=False, overlay=False):
     """How the merge will run and how big the file will be (estimate)."""
     first = clips[0]
     same = all(c['codec'] == first['codec'] and c['width'] == first['width'] and c['height'] == first['height'] and abs(c['fps'] - first['fps']) < 0.01
                and c['pix_fmt'] == first['pix_fmt'] and c['rotation'] == first['rotation'] for c in clips)
-    copy = resolution == 'keep' and same and first['codec'] in COPYABLE_CODECS and not burn   # drawing text needs the picture re-encoded
+    copy = resolution == 'keep' and same and first['codec'] in COPYABLE_CODECS and not burn and not overlay   # drawing text or a logo needs the picture re-encoded
     portrait = first['height'] > first['width']
     if resolution == 'keep':
         width, height = _even(first['width']), _even(first['height'])
@@ -210,13 +215,26 @@ def published_file(job_id, kind):
     return path if path.is_file() and path.is_relative_to(directory.resolve()) else None
 
 
-def _filters(clips, width, height, fps):
+def _filters(clips, width, height, fps, pictures=()):
+    """The clips joined into one picture; `pictures` [(x, y, size, opacity)] are laid on it in order, the inputs following the clips."""
     parts = []
     for index, _ in enumerate(clips):
         parts.append(f'[{index}:v:0]scale={width}:{height}:force_original_aspect_ratio=decrease,'
                      f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={fps},format=yuv420p[v{index}]')
     joined = ''.join(f'[v{i}]' for i in range(len(clips)))
-    parts.append(f'{joined}concat=n={len(clips)}:v=1:a=0[out]')
+    if not pictures:
+        parts.append(f'{joined}concat=n={len(clips)}:v=1:a=0[out]')
+        return ';'.join(parts)
+    parts.append(f'{joined}concat=n={len(clips)}:v=1:a=0[cat]')
+    previous = 'cat'
+    for index, (x, y, size, opacity) in enumerate(pictures):
+        source = len(clips) + index
+        mix = f',colorchannelmixer=aa={opacity:.3f}' if opacity < 1 else ''
+        # A still picture is one frame; the overlay repeats it for as long as the video runs (eof_action=repeat is the default).
+        parts.append(f'[{source}:v]scale={size}:-2,format=rgba{mix}[p{index}]')
+        parts.append(f'[{previous}][p{index}]overlay={x}:{y}:format=auto[o{index}]')
+        previous = f'o{index}'
+    parts.append(f'[{previous}]format=yuv420p[out]')
     return ';'.join(parts)
 
 
@@ -264,7 +282,15 @@ def merge(job_dir):
     for item in config.get('files') or []:
         clips.append(probe(item['path']))
     if not clips: raise VideoError('VIDEO_MISSING')
-    estimate = plan(clips, config.get('resolution', 'keep'), config.get('quality', 'high'), length)
+    snapshot = config.get('overlay')
+    estimate = plan(clips, config.get('resolution', 'keep'), config.get('quality', 'high'), length, overlay=bool(snapshot))
+    pictures, inputs_after = [], []
+    if snapshot:
+        from audio_translate.video import overlays
+        for asset, x, y, size, opacity in overlays.pixel_items(snapshot, estimate['width'], estimate['height']):
+            found = overlays.picture(job_dir, asset)
+            if not found: raise VideoError('OVERLAY_MISSING')
+            pictures.append((x, y, size, opacity)); inputs_after += ['-i', str(found)]
     from audio_translate.workflow import results
     target_dir = results.destination(job['id'])
     if disk_free(target_dir) < needed_bytes(estimate) or disk_free(job_dir) < needed_bytes(estimate):
@@ -292,8 +318,8 @@ def merge(job_dir):
             # Different clips, or another resolution or quality: encode them once, only as much as the voice needs.
             share = min(0.8, max(0.3, estimate['clips_ms'] / (estimate['clips_ms'] + length / 8)))
             kbps = estimate['video_kbps']
-            inputs = [arg for c in clips for arg in ('-i', c['path'])]
-            _ffmpeg([*inputs, '-filter_complex', _filters(clips, estimate['width'], estimate['height'], estimate['fps']), '-map', '[out]', '-an',
+            inputs = [arg for c in clips for arg in ('-i', c['path'])] + inputs_after
+            _ffmpeg([*inputs, '-filter_complex', _filters(clips, estimate['width'], estimate['height'], estimate['fps'], pictures), '-map', '[out]', '-an',
                      '-t', f'{length / 1000:.3f}', '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', f'{kbps}k', '-maxrate', f'{int(kbps * 1.5)}k',
                      '-bufsize', f'{kbps * 2}k', '-g', str(int(round(estimate['fps'] * 2))), '-pix_fmt', 'yuv420p', '-threads', threads, '-f', 'mp4', str(base)],
                     job_dir, min(estimate['clips_ms'], length), report(0, share))

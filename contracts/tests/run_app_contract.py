@@ -14,6 +14,7 @@ the real gateway (every gateway call needs an active licence). The YouTube sessi
 so only refusals are sent to /api/settings/youtube.
 """
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -223,6 +224,53 @@ def run_cases(c, ids):
     c.call('unknown tool run', 'GET', '/api/tools/{id}', {'id': NOID}, status=404)
     c.call('new tool run needs a licence', 'POST', '/api/tools', json_body={'tool': 'transcription', 'url': 'https://youtu.be/1JzKgwOESoM'}, status=403)
     c.call('tool output not ready', 'GET', '/api/tools/{id}/files/{fileId}', {'id': T, 'fileId': 'VI_MD'}, status=404)
+
+
+    # Logos and pictures (video/overlays.py)
+    png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
+    as_png = {'Content-Type': 'image/png'}
+    as_text = {'Content-Type': 'text/plain'}
+    NOASSET, NOTEMPLATE = 'f' * 32, '0' * 12
+    c.call('overlays start empty', 'GET', '/api/overlays', expect=lambda r: assert_eq((r.json()['assets'], r.json()['templates'], r.json()['defaults']), ([], [], {})))
+    c.call('picture of an unknown type', 'POST', '/api/overlays/assets', params={'name': 'logo.svg'}, data=png, headers=as_png, status=400)
+    c.call('picture that is not a picture', 'POST', '/api/overlays/assets', params={'name': 'x.png'}, data=b'not a picture', headers=as_png, status=400)
+    c.call('picture from another site', 'POST', '/api/overlays/assets', params={'name': 'logo.png'}, data=png, headers={**as_png, **EVIL}, status=403)
+    added = c.call('add a picture', 'POST', '/api/overlays/assets', params={'name': 'logo.png'}, data=png, headers=as_png, status=201,
+                   expect=lambda r: assert_eq((r.json()['asset']['width'], r.json()['asset']['name']), (1, 'logo')))
+    asset = added.json().get('asset', {}).get('id', NOASSET)
+    c.call('the picture', 'GET', '/api/overlays/assets/{id}', {'id': asset}, expect=lambda r: assert_eq((r.headers['content-type'], r.content[:4]), ('image/png', b'\x89PNG')))
+    c.call('an unknown picture', 'GET', '/api/overlays/assets/{id}', {'id': NOASSET}, status=404)
+    c.call('a malformed picture id', 'GET', '/api/overlays/assets/{id}', {'id': 'x'}, status=404)
+    item = {'asset': asset, 'x': 0.05, 'y': 0.05, 'w': 0.2, 'opacity': 1}
+    mine = {'name': 'Kênh A', 'orientation': 'landscape', 'items': [item]}
+    c.call('template with an unknown picture', 'POST', '/api/overlays/templates', json_body={**mine, 'items': [{**item, 'asset': NOASSET}]}, status=400)
+    c.call('template outside the frame', 'POST', '/api/overlays/templates', json_body={**mine, 'items': [{**item, 'x': 0.95}]}, status=400)
+    c.call('template with another orientation', 'POST', '/api/overlays/templates', json_body={**mine, 'orientation': 'square'}, status=400)
+    c.call('template not JSON', 'POST', '/api/overlays/templates', data='x', headers=as_text, status=415)
+    c.call('template from another site', 'POST', '/api/overlays/templates', json_body=mine, headers=EVIL, status=403)
+    made = c.call('create a template', 'POST', '/api/overlays/templates', json_body=mine, status=201, expect=lambda r: assert_eq(len(r.json()['template']['items']), 1))
+    tid = made.json().get('template', {}).get('id', NOTEMPLATE)
+    c.call('a second template with that name', 'POST', '/api/overlays/templates', json_body={**mine, 'name': 'kênh a'}, status=409)
+    c.call('replace a template', 'POST', '/api/overlays/templates', json_body={**mine, 'id': tid, 'items': [item, {**item, 'x': 0.7}]}, expect=lambda r: assert_eq(len(r.json()['template']['items']), 2))
+    c.call('replace an unknown template', 'POST', '/api/overlays/templates', json_body={**mine, 'id': NOTEMPLATE}, status=404)
+    c.call('default of the other orientation', 'PUT', '/api/overlays/defaults', json_body={'orientation': 'portrait', 'template': tid}, status=400)
+    c.call('default of an unknown template', 'PUT', '/api/overlays/defaults', json_body={'orientation': 'landscape', 'template': NOTEMPLATE}, status=404)
+    c.call('default not JSON', 'PUT', '/api/overlays/defaults', data='x', headers=as_text, status=415)
+    c.call('default from another site', 'PUT', '/api/overlays/defaults', json_body={'orientation': 'landscape', 'template': tid}, headers=EVIL, status=403)
+    c.call('set the default', 'PUT', '/api/overlays/defaults', json_body={'orientation': 'landscape', 'template': tid}, expect=lambda r: assert_eq(r.json(), {'landscape': tid}))
+    c.call('a picture a template uses stays', 'DELETE', '/api/overlays/assets/{id}', {'id': asset}, status=409)
+    c.call('delete a picture from another site', 'DELETE', '/api/overlays/assets/{id}', {'id': asset}, headers=EVIL, status=403)
+    c.call('delete an unknown picture', 'DELETE', '/api/overlays/assets/{id}', {'id': NOASSET}, status=404)
+    c.call('delete a template from another site', 'DELETE', '/api/overlays/templates/{id}', {'id': tid}, headers=EVIL, status=403)
+    c.call('delete an unknown template', 'DELETE', '/api/overlays/templates/{id}', {'id': NOTEMPLATE}, status=404)
+    c.call('delete the template', 'DELETE', '/api/overlays/templates/{id}', {'id': tid})
+    c.call('the default went with it', 'GET', '/api/overlays', expect=lambda r: assert_eq((r.json()['defaults'], r.json()['templates']), ({}, [])))
+    c.call('delete the picture', 'DELETE', '/api/overlays/assets/{id}', {'id': asset})
+    c.call('a deleted picture is gone', 'GET', '/api/overlays/assets/{id}', {'id': asset}, status=404)
+
+    # Manual translation: Chinese runs for tool 7, and the file loaded into a run
+    c.call('runs with Chinese text for tool 7', 'GET', '/api/split/sources', expect=lambda r: assert_eq(isinstance(r.json()['sources'], list), True))
+    c.call('load a file needs a licence', 'POST', '/api/jobs/{id}/import', v, params={'step': 'MODERATION', 'name': 'vi.md'}, data='[1] a', headers=as_text, status=403)
 
     # Voices
     listed = c.call('voices', 'GET', '/api/voices', expect=lambda r: assert_in(ids['voice'], [x['id'] for x in r.json()['voices']]))

@@ -10,6 +10,7 @@ import RulesPanel from "@/components/rules/rules-panel";
 import VoiceSelect from "@/components/voice/voice-select";
 import AddressProfileSelect from "@/components/voice/address-profile-select";
 import TranslationModeSelect from "@/components/voice/translation-mode-select";
+import ManualTranslationToggle from "@/components/voice/manual-translation-toggle";
 import type {TranslationMode} from "@/lib/shared/translation-modes";
 import {addressForStyle} from "@/lib/shared/address-profiles";
 import {audioDuration,percent,runNumber} from "@/lib/shared/format";
@@ -22,7 +23,7 @@ import SubtitleOptions, { defaultSubtitle, subtitleValid, type SubtitleSettings 
 
 const duration = audioDuration;
 const AUDIO_TYPES=".wav,.mp3,.m4a,.flac,.ogg,.aac,.webm,.mp4";
-type ConvertInput={url:string;file?:File;voice?:string;style?:string;address?:string;mode?:TranslationMode;video?:ReturnType<typeof videoPayload>;subtitle?:SubtitleSettings};
+type ConvertInput={url:string;file?:File;voice?:string;style?:string;address?:string;mode?:TranslationMode;manual?:boolean;video?:ReturnType<typeof videoPayload>;subtitle?:SubtitleSettings};
 type ResourceWarning={reasons:string[];ram_available_gib:number;required_available_gib:number;cpu_percent:number;existing_workflows:number;estimate_basis:string};
 
 export default function Home() {
@@ -33,6 +34,7 @@ export default function Home() {
   const [source,setSource]=useState<"link"|"file">("link"),[file,setFile]=useState<File|null>(null);
   const [voice,setVoice]=useState(""),[style,setStyle]=useState(""),[address,setAddress]=useState("");
   const [mode,setMode]=useState<TranslationMode>("normal");
+  const [manual,setManual]=useState(false);   // the person translates by hand: the workflow stops after the Chinese text
   const [video,setVideo]=useState<VideoChoice>(emptyVideo);
   const [subtitle,setSubtitle]=useState<SubtitleSettings>(defaultSubtitle);
   const videoBlocked=(video.files.length>0&&!videoReady(video))||!subtitleValid(subtitle);
@@ -65,6 +67,7 @@ export default function Home() {
     const extra={...(source==="file"&&file?{file}:{}),...(video.files.length?{video:videoPayload(video)}:{}),subtitle};
     if(source==="file"&&!file)return;
     const link=source==="file"?"":url;
+    if(manual){await convert({url:link,voice:voice||undefined,style:style||undefined,manual:true,...extra});return;}
     await convert(mode==="genius"?{url:link,voice:voice||undefined,style:style||undefined,mode,...extra}:{url:link,voice:voice||undefined,style:style||undefined,address:address||undefined,...extra});
   }
 
@@ -72,7 +75,7 @@ export default function Home() {
     const {file:upload,...fields}=input;
     if(!upload)return apiFetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fields,queue_only }) });
     const params=new URLSearchParams({name:upload.name});
-    for(const [key,value] of Object.entries(fields))if(key!=="url"&&value!==undefined)params.set(key,typeof value==="object"?JSON.stringify(value):String(value));
+    for(const [key,value] of Object.entries(fields))if(key!=="url"&&value!==undefined)params.set(key,value===true?"1":typeof value==="object"?JSON.stringify(value):String(value));
     if(queue_only)params.set("queue_only","1");
     return apiFetch(`/api/jobs?${params}`,{method:"POST",headers:{"Content-Type":upload.type||"application/octet-stream"},body:upload});
   }
@@ -126,8 +129,9 @@ export default function Home() {
       <form onSubmit={start} className="convert-form">{source==="link"?<><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /></>:<FilePicker accept={AUDIO_TYPES} file={file} onChange={value=>{setFile(value);setResourceWarning(null);setPendingConvert(null);}} chooseLabel={t.tools.chooseFile} emptyLabel={t.tools.noFileChosen} inputLabel={t.tools.inputFile} rejectLabel={tr("fileWrongType", { types: AUDIO_TYPES.split(",").map(item => item.slice(1).toUpperCase()).join(", ") })} maxBytes={2 * 1024 ** 3} tooBigLabel={tr("fileTooBig", { size: "2 GB" })} />}<button type="submit" disabled={busy || !license.allowed || (source==="file"&&!file) || videoBlocked}>{busy ? t.home.checking : t.home.convert} ↗</button></form>
       {source==="file"&&<p className="source-hint">{tr("Dùng khi YouTube chặn tải: tải audio bằng công cụ khác rồi chọn file ở đây (WAV, MP3, M4A, FLAC, OGG, AAC, WEBM, MP4; tối đa 2 GB). Workflow bỏ qua bước tải YouTube.")}</p>}
       <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={chooseStyle} />
-      <TranslationModeSelect value={mode} onChange={setMode} />
-      {mode==="normal"&&<AddressProfileSelect value={address} onChange={setAddress} />}
+      <ManualTranslationToggle value={manual} onChange={setManual} disabled={busy} />
+      {!manual&&<TranslationModeSelect value={mode} onChange={setMode} />}
+      {!manual&&mode==="normal"&&<AddressProfileSelect value={address} onChange={setAddress} />}
       <details className="video-optional"><summary>{tr("subtitleOptional")}</summary><SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} /></details>
       <details className="video-optional" open={video.files.length>0||undefined}><summary>{tr("videoOptional")}</summary><VideoPicker value={video} onChange={setVideo} disabled={busy} /></details>
       {message && <p className="alert" role="alert">{message}</p>}
@@ -152,6 +156,7 @@ export default function Home() {
           <td>{new Date(job.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}</td>
           <td className="output-cell"><button type="button" onClick={() => view(selected === job.id ? null : job.id)}>{selected === job.id ? t.home.closeDetails : t.home.details}</button>
             {job.status === "FAILED" && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.retry}</button>}
+            {job.status === "AWAITING_TRANSLATION" && <><small className="manual-hint">{tr("manualWaiting")}</small><Link className="text-button" href={`/tools?tool=split&source=${job.id}`}>{tr("manualSplitLink")}</Link> <Link className="text-button" href={`/reprocess?id=${job.id}&step=MODERATION`}>{tr("manualLoadLink")}</Link></>}
             {job.status === "COMPLETED" && job.workflow_version !== 2 && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.continueTranslate}</button>}</td>
           <td><WorkflowActions job={job} onChanged={refresh} onNotice={setMessage} canResume={license.allowed}/></td>
         </tr>)}

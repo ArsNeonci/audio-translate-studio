@@ -1,24 +1,27 @@
 "use client";
 import { apiFetch } from "@audio/ui";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useOverlays } from "@/components/overlay/overlay-types";
 import { useLanguage } from "@/lib/i18n/language-context";
 
 /** One clip as the local API checked it (worker/audio_translate/video/merge.py probe); `error` when it cannot be used. */
 export type VideoClip = { path: string; name: string; error?: string; duration_ms?: number; width?: number; height?: number; fps?: number; codec?: string; size?: number };
 /** burn: after the plain video, also make a second one with the subtitles drawn into the picture (the BURN step; re-encodes the whole video). The tick is the choice. */
-export type VideoChoice = { files: VideoClip[]; resolution: string; quality: string; burn: boolean };
+/** overlay: the logo template laid on the picture: "default" (the default of the first clip's orientation), "none" or a template id; overlayName names a saved one. */
+export type VideoChoice = { files: VideoClip[]; resolution: string; quality: string; burn: boolean; overlay: string; overlayName?: string };
 type Estimate = { files: VideoClip[]; error?: string; resolutions?: string[]; resolution?: string; plan?: { mode: "copy" | "encode"; repeats: number | null; size_bytes: number | null; bytes_per_hour: number; voice_ms?: number | null };
   burn_plan?: { size_bytes: number | null; bytes_per_hour: number; voice_ms?: number | null; seconds_per_voice_second?: number | null } | null;
   free_bytes?: number; needed_bytes?: number | null; enough?: boolean | null };
 
-export const emptyVideo = (): VideoChoice => ({ files: [], resolution: "keep", quality: "high", burn: false });
+export const emptyVideo = (): VideoChoice => ({ files: [], resolution: "keep", quality: "high", burn: false, overlay: "default" });
 /** What the API receives: only the paths and the choices (the clips are checked again on the server). */
 export const videoPayload = (choice: VideoChoice) => choice.files.length ? { files: choice.files.map(f => ({ path: f.path })), resolution: choice.resolution, quality: choice.quality,
-  ...(choice.burn ? { burn: true } : {}) } : undefined;
+  overlay: choice.overlay, ...(choice.burn ? { burn: true } : {}) } : undefined;
 export const videoReady = (choice: VideoChoice) => choice.files.length > 0 && choice.files.every(f => !f.error);
 /** The saved settings of a run, as a choice the picker can show. */
-export const videoFromJob = (video?: { files?: VideoClip[]; resolution?: string; quality?: string; burn?: boolean } | null): VideoChoice =>
-  video?.files?.length ? { files: video.files, resolution: video.resolution || "keep", quality: video.quality || "high", burn: !!video.burn } : emptyVideo();
+export const videoFromJob = (video?: { files?: VideoClip[]; resolution?: string; quality?: string; burn?: boolean; overlay?: { id: string; name: string } | null } | null): VideoChoice =>
+  video?.files?.length ? { files: video.files, resolution: video.resolution || "keep", quality: video.quality || "high", burn: !!video.burn, overlay: video.overlay?.id || "none", overlayName: video.overlay?.name } : emptyVideo();
 
 /** A clip's length with seconds (audioDuration shows hours and minutes only, which reads 0h 00m for every clip under a minute). */
 const clipLength = (ms: number) => {
@@ -37,18 +40,19 @@ export default function VideoPicker({ value, onChange, voiceJob, disabled }: { v
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [fetched, setEstimate] = useState<Estimate | null>(null);
+  const { data: library } = useOverlays();
   const estimate = value.files.length ? fetched : null;
   const latest = useRef(value);
   useEffect(() => { latest.current = value; }, [value]);
 
   // The estimate follows the clips, the choices and the voice; one request when they rest.
-  const key = JSON.stringify([value.files.map(f => f.path), value.resolution, value.quality, voiceJob || null, value.burn]);
+  const key = JSON.stringify([value.files.map(f => f.path), value.resolution, value.quality, voiceJob || null, value.burn, value.overlay]);
   useEffect(() => {
     if (!value.files.length) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       void apiFetch("/api/video/estimate", { method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal,
-        body: JSON.stringify({ paths: value.files.map(f => f.path), resolution: value.resolution, quality: value.quality, burn: value.burn, ...(voiceJob ? { voice_job: voiceJob } : {}) }) })
+        body: JSON.stringify({ paths: value.files.map(f => f.path), resolution: value.resolution, quality: value.quality, burn: value.burn, overlay: value.overlay, ...(voiceJob ? { voice_job: voiceJob } : {}) }) })
         .then(r => r.json()).then((data: Estimate) => {
           setEstimate(data);
           const current = latest.current;
@@ -90,6 +94,11 @@ export default function VideoPicker({ value, onChange, voiceJob, disabled }: { v
   const plan = estimate?.plan;
   const burn = value.burn ? estimate?.burn_plan : null;
   const resolutions = estimate?.resolutions || ["keep"];
+  // The default template is the one of the first clip's orientation; a template of a saved run that was deleted since stays chosen under its own name.
+  const first = value.files[0], side = first && first.height && first.width && first.height > first.width ? "portrait" : "landscape";
+  const defaultTemplate = library?.templates.find(template => template.id === library.defaults[side]);
+  const chosenTemplate = value.overlay === "default" ? defaultTemplate : library?.templates.find(template => template.id === value.overlay);
+  const keptOnly = value.overlay !== "default" && value.overlay !== "none" && !!library && !chosenTemplate;
   return <section className="video-picker" aria-label={tr("videoTitle")}>
     <div className="video-picker-head">
       <strong>{tr("videoTitle")}</strong>
@@ -111,10 +120,17 @@ export default function VideoPicker({ value, onChange, voiceJob, disabled }: { v
       <label>{tr("videoResolution")}<select value={value.resolution} disabled={disabled} onChange={e => onChange({ ...value, resolution: e.target.value })}>
         {["keep", "1080", "720", "480"].map(r => <option key={r} value={r} disabled={!resolutions.includes(r)}>{tr(`videoResolution.${r}`)}</option>)}
       </select></label>
+      <label>{tr("overlayLabel")}<select value={value.overlay} disabled={disabled} onChange={e => onChange({ ...value, overlay: e.target.value })}>
+        <option value="default">{defaultTemplate ? tr("overlayDefault", { name: defaultTemplate.name }) : tr("overlayDefaultNone")}</option>
+        <option value="none">{tr("overlayNone")}</option>
+        {library?.templates.map(template => <option key={template.id} value={template.id}>{template.name} · {template.orientation === "portrait" ? "9:16" : "16:9"}</option>)}
+        {keptOnly && <option value={value.overlay}>{tr("overlayKept", { name: value.overlayName || value.overlay })}</option>}
+      </select></label>
       {(plan?.mode === "encode" || value.burn) && <label>{tr("videoQuality")}<select value={value.quality} disabled={disabled} onChange={e => onChange({ ...value, quality: e.target.value })}>
         {["high", "medium", "light"].map(q => <option key={q} value={q}>{tr(`videoQuality.${q}`)}</option>)}
       </select></label>}
     </div>}
+    {value.files.length > 0 && <small className="video-overlay-note">{(chosenTemplate || keptOnly) && <>{tr("overlayEncode")}{" "}</>}<Link href="/overlays">{tr("overlayManage")}</Link></small>}
     {value.files.length > 0 && <div className="video-burn">
       <label className="auto-tts-toggle"><input type="checkbox" checked={value.burn} disabled={disabled} onChange={e => onChange({ ...value, burn: e.target.checked })} />
         <span>{tr("burnLabel")}</span><small>{tr("burnHelp")}</small></label>

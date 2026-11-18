@@ -11,7 +11,7 @@ export default function PipelineStatus({job}:{job:Run;readOnly?:boolean}){
   const [clock,setClock]=useState(0);
   useEffect(()=>{const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[]);
   const effective=runSteps(job);
-  const active=!["COMPLETED","FAILED","CANCELLED","PAUSED","PARTIAL","DELETING"].includes(job.status);
+  const active=!["COMPLETED","FAILED","CANCELLED","PAUSED","PARTIAL","AWAITING_TRANSLATION","DELETING"].includes(job.status);
   const time=(start?:string|null)=>start&&clock?Math.max(0,clock-Date.parse(start)):0;
   const phases=transcriptionView(job);
   const rows=effective.flatMap<{label:string;item:TranscriptionStep|undefined}>(stage=>stage==='TRANSCRIPTION'?phases.map((item,index)=>({label:`${tr("TRANSCRIPTION")} ${index+1}/4`,item:{...item,output_manifest:index===3?job.steps?.TRANSCRIPTION?.output_manifest:undefined}})): [{label:tr(stage),item:job.steps?.[stage]}]);

@@ -6,6 +6,7 @@ export interface Translations {
     history: string;
     tools: string;
     reprocess: string;
+    overlays: string;
     rules: string;
     settings: string;
     license: string;
@@ -228,6 +229,7 @@ export const translations: Record<Language, Translations> = {
       history: "Lịch sử",
       tools: "Công cụ",
       reprocess: "Tạo lại",
+      overlays: "Logo & ảnh",
       rules: "Quy tắc cộng đồng",
       settings: "Cài đặt",
       license: "Giấy phép",
@@ -274,6 +276,7 @@ export const translations: Record<Language, Translations> = {
       CANCELLED: "Đã dừng (phiên cũ)",
       PAUSED: "Đã dừng tạm",
       PARTIAL: "Một phần",
+      AWAITING_TRANSLATION: "Chờ bản dịch",
       DELETING: "Đang xóa",
       QUEUED: "Đang chờ",
       DOWNLOADING: "Đang tải audio",
@@ -475,6 +478,7 @@ export const translations: Record<Language, Translations> = {
       history: "History",
       tools: "Tools",
       reprocess: "Reprocess",
+      overlays: "Logos & images",
       rules: "Community Rules",
       settings: "Settings",
       license: "License",
@@ -521,6 +525,7 @@ export const translations: Record<Language, Translations> = {
       CANCELLED: "Stopped (old session)",
       PAUSED: "Paused",
       PARTIAL: "Partial",
+      AWAITING_TRANSLATION: "Waiting for translation",
       DELETING: "Deleting",
       QUEUED: "Queued",
       DOWNLOADING: "Downloading audio",

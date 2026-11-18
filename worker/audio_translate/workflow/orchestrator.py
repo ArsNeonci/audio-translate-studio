@@ -65,6 +65,9 @@ def run_stage(job_dir, stage):
             merge(job_dir, chunks)
             if not prepare_transcript(job_dir):
                 raise RuntimeError("Transcription did not produce the canonical Chinese files")
+    elif stage == "split":
+        from audio_translate.translation.manual_text import run_split
+        run_split(job_dir)
     elif stage == "subtitle":
         from audio_translate.video.subtitles import run as build_subtitles
         build_subtitles(job_dir)
@@ -130,8 +133,16 @@ def run(job_dir):
                 job = read_json(job_dir / "job.json")
                 state = initial_steps(job)[step]['state']
                 if state == 'COMPLETED':
-                    publish_step(job_dir, step)
+                    # A step the person skipped by loading a later input (Reprocess) has no files of its own to publish.
+                    if initial_steps(job)[step].get('origin') != 'skipped': publish_step(job_dir, step)
                     continue
+                if step == 'TRANSLATION' and job.get('manual_translation') and not requested:
+                    # The person translates by hand: the run stops here, holds no model and no lane, and waits for the translation to be loaded
+                    # (Reprocess from Moderation). Nothing is lost: the Chinese text is already published.
+                    end_run(job_dir, 'AWAITING_TRANSLATION')
+                    update_job(job_dir, retry_step=None, active_stage=None, failed_stage=None, error=None)
+                    metadata(job_dir)
+                    return 0
                 if any(initial_steps(job)[s]['state'] != 'COMPLETED' for s in effective[:effective.index(step)]):
                     raise RuntimeError("Previous steps must be completed")
                 if step in STEPS[2:]:
@@ -142,7 +153,7 @@ def run(job_dir):
                         metadata(job_dir)
                         continue
                 transition(job_dir, step, 'RUNNING')
-                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'SUBTITLE': 'SUBTITLE_BUILDING', 'VIDEO': 'VIDEO_MERGING', 'BURN': 'VIDEO_BURNING'}
+                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'SUBTITLE': 'SUBTITLE_BUILDING', 'VIDEO': 'VIDEO_MERGING', 'BURN': 'VIDEO_BURNING', 'SPLIT': 'SPLITTING'}
                 update_job(job_dir, active_stage=step.lower(), status=statuses[step])
                 metadata(job_dir)
                 # Genius translation runs on the VPS and holds no local model memory.
@@ -189,7 +200,7 @@ def run(job_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("job_dir", type=Path)
-    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts", "subtitle", "video", "burn"])
+    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts", "subtitle", "video", "burn", "split"])
     args = parser.parse_args()
     try:
         if args.stage:

@@ -25,6 +25,11 @@ def build(destination=None, target_dir=None):
     destination = Path(destination or shell/'bin'/'AudioTranslate.exe')
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(binary, destination)
+    loader = binary.parent / 'WebView2Loader.dll'
+    if target.endswith('-gnu') and not loader.is_file():
+        raise RuntimeError('WEBVIEW2_LOADER_MISSING: ' + str(loader))
+    if loader.is_file():
+        shutil.copy2(loader, destination.parent / loader.name)
     return destination
 
 

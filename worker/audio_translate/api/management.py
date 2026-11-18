@@ -29,6 +29,8 @@ def management_response(body, job_id, action, scope='workflows'):
         return json_response({'error': 'Invalid video settings'}, 400)
     if action == 'reprocess' and 'subtitle' in payload and not isinstance(payload['subtitle'], dict):
         return json_response({'error': 'Invalid subtitle settings'}, 400)
+    if action == 'reprocess' and 'import_id' in payload and not (isinstance(payload['import_id'], str) and len(payload['import_id']) == 32):
+        return json_response({'error': 'The loaded file is no longer available; load it again'}, 400)
     if action == 'reprocess' and 'burn' in payload and not isinstance(payload['burn'], bool):
         return json_response({'error': 'Invalid subtitle settings'}, 400)
     result = worker_command('manage.py', {**payload, 'action': action, 'id': job_id, 'scope': scope})

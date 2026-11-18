@@ -246,3 +246,24 @@
 :root[data-theme="dark"] .video-list li.video-bad small { color: #f2b8b5; }
 :root[data-theme="dark"] .subtitle-options, :root[data-theme="dark"] .video-burn { border-color: var(--dark-border); }
 :root[data-theme="dark"] .subtitle-options small { color: var(--dark-muted); }
+
+:root[data-theme="dark"] .manual-hint, :root[data-theme="dark"] .import-panel small, :root[data-theme="dark"] .import-notes,
+:root[data-theme="dark"] .video-overlay-note, :root[data-theme="dark"] .overlay-empty, :root[data-theme="dark"] .overlay-page small,
+:root[data-theme="dark"] .overlay-board-empty, :root[data-theme="dark"] .import-preview td:first-child { color: var(--dark-muted); }
+:root[data-theme="dark"] :is(.import-panel, .overlay-asset, .overlay-templates li, .overlay-editor) { background: var(--dark-surface); border-color: var(--dark-border); }
+:root[data-theme="dark"] .overlay-templates li.editing { background: var(--dark-raised); border-color: var(--dark-accent); }
+:root[data-theme="dark"] .import-preview td { border-color: var(--dark-border); }
+:root[data-theme="dark"] .import-ok { color: #8fd9a8; }
+:root[data-theme="dark"] .split-tool textarea { background: var(--dark-surface); color: var(--foreground); border-color: var(--dark-border); }
+:root[data-theme="dark"] .overlay-thumb, :root[data-theme="dark"] .overlay-board {
+  background-color: var(--dark-surface);
+  background-image: linear-gradient(45deg, var(--dark-raised) 25%, transparent 25%), linear-gradient(-45deg, var(--dark-raised) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--dark-raised) 75%), linear-gradient(-45deg, transparent 75%, var(--dark-raised) 75%);
+  border-color: var(--dark-border);
+}
+:root[data-theme="dark"] .overlay-board { border-color: #3684c9; }
+:root[data-theme="dark"] .overlay-subzone { background: repeating-linear-gradient(135deg, rgb(105 185 255 / 16%) 0 8px, rgb(105 185 255 / 5%) 8px 16px); border-top-color: var(--dark-accent); }
+:root[data-theme="dark"] .overlay-subzone span { color: var(--dark-accent); }
+:root[data-theme="dark"] .overlay-badge { background: var(--dark-raised); border-color: var(--dark-accent); color: var(--dark-accent); }
+:root[data-theme="dark"] .overlay-item:focus-visible, :root[data-theme="dark"] .overlay-item.selected { box-shadow: 0 0 0 2px var(--dark-accent); }
+:root[data-theme="dark"] .overlay-handle { background: var(--dark-accent); border-color: var(--dark-surface); }
+:root[data-theme="dark"] .overlay-guide { background: #ff8fb3; }

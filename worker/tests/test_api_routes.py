@@ -116,6 +116,48 @@ class UploadTests(LiveApi):
         self.assertEqual((r.status_code, r.json(), self.calls, self.leftovers()), (403, {'error': 'API token required'}, [], []))
 
 
+class ManualTranslationRouteTests(UploadTests):
+    """The routes of manual translation: the flag on a new workflow, a file loaded into a run, and tool 7. The worker is faked."""
+    def test_the_manual_flag_reaches_the_worker_and_excludes_genius(self):
+        link = '{"url": "https://www.youtube.com/watch?v=abcdefghijk", "manual": true}'
+        self.assertEqual(self.post('/api/jobs', link, {'Content-Type': 'application/json'}).status_code, 201)
+        self.assertIs(self.calls[-1]['payload']['manual'], True)
+        for body in ('{"url": "https://www.youtube.com/watch?v=abcdefghijk", "manual": "yes"}', '{"url": "https://www.youtube.com/watch?v=abcdefghijk", "manual": true, "mode": "genius"}'):
+            self.assertEqual(self.post('/api/jobs', body, {'Content-Type': 'application/json'}).status_code, 400, body)
+        self.assertEqual(self.post('/api/jobs?name=clip.mp3&manual=1', b'abc', {'Content-Type': 'audio/mpeg'}).status_code, 201)
+        self.assertIs(self.calls[-1]['payload']['manual'], True)
+
+    def test_a_file_is_sent_to_the_worker_to_be_checked_and_the_copy_goes(self):
+        self.reply = {'status': 200, 'import_id': 'a' * 32, 'report': {'mode': 'numbered'}}
+        r = self.post('/api/jobs/job-1/import?step=MODERATION&name=vi.md', '[1] Xin chào'.encode(), {'Content-Type': 'text/markdown'})
+        self.assertEqual((r.status_code, r.json()['import_id']), (200, 'a' * 32))
+        call = self.calls[-1]
+        self.assertEqual({k: call['payload'].get(k) for k in ('action', 'id', 'step', 'input_name', 'mime')}, {'action': 'import', 'id': 'job-1', 'step': 'MODERATION', 'input_name': 'vi.md', 'mime': 'text/markdown'})
+        self.assertEqual((call['bytes'], self.leftovers()), ('[1] Xin chào'.encode(), []))
+
+    def test_a_file_for_a_stage_that_takes_none_or_with_a_bad_name_is_refused_before_the_worker(self):
+        for query in ('?step=VIDEO&name=a.md', '?step=MODERATION', '?step=MODERATION&name=a%2Fb.md', ''):
+            self.assertEqual(self.post(f'/api/jobs/job-1/import{query}', b'abc', {'Content-Type': 'text/plain'}).status_code, 400, query)
+        self.assertEqual((self.calls, self.leftovers()), ([], []))
+
+    def test_the_workers_refusal_of_a_loaded_file_passes_through(self):
+        self.reply = {'status': 409, 'error': 'Loading a file applies to workflows only'}
+        r = self.post('/api/jobs/job-1/import?step=TTS&name=a.txt', b'abc', {'Content-Type': 'text/plain'})
+        self.assertEqual((r.status_code, r.json()['error'], self.leftovers()), (409, 'Loading a file applies to workflows only', []))
+
+    def test_tool_7_takes_a_finished_run_or_a_file_with_its_settings(self):
+        self.reply = {'status': 200, 'job': {'id': 'tool-1'}}
+        body = '{"tool": "split", "source_job": "run-1", "split": {"max_chars": 2000, "prompt": true, "prompt_text": "Dịch"}}'
+        self.assertEqual(self.post('/api/tools', body, {'Content-Type': 'application/json'}).status_code, 201)
+        payload = self.calls[-1]['payload']
+        self.assertEqual((payload['action'], payload['tool'], payload['source_job'], payload['split']['max_chars']), ('create', 'split', 'run-1', 2000))
+        self.assertEqual(self.post('/api/tools', '{"tool": "split", "split": {}}', {'Content-Type': 'application/json'}).status_code, 400)
+        r = self.post('/api/tools?tool=split&name=zh.txt&max_chars=800&prompt=0', '你好'.encode(), {'Content-Type': 'text/plain'})
+        self.assertEqual(r.status_code, 201, r.text)
+        self.assertEqual((self.calls[-1]['payload']['split'], self.calls[-1]['bytes']), ({'max_chars': 800, 'prompt': False, 'prompt_text': ''}, '你好'.encode()))
+        self.assertEqual(self.post('/api/tools?tool=split&name=zh.txt&max_chars=many', b'x', {'Content-Type': 'text/plain'}).status_code, 400)
+
+
 class YoutubeUrlTests(unittest.TestCase):
     def test_accepted_and_refused_links(self):
         from audio_translate.api.jobs import valid_youtube_url

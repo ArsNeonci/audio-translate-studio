@@ -10,7 +10,7 @@ export default function WorkflowActions({job,onChanged,onNotice,canResume=true}:
   const [busy,setBusy]=useState(false);
   const pending=useRef(false);
   const stopped=['PAUSED','CANCELLED'].includes(job.status)||(job.status==='FAILED'&&job.steps?.TRANSLATION?.state==='FAILED');
-  const active=!['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','DELETING'].includes(job.status);
+  const active=!['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','AWAITING_TRANSLATION','DELETING'].includes(job.status);
   const locked=busy||!!job.delete_requested||job.status==='DELETING';
   async function action(kind:'pause'|'resume'|'abort'){
     if(pending.current)return;

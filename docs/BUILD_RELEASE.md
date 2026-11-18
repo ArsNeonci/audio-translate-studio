@@ -181,3 +181,19 @@ Trước đây chạy file exe thì không thấy gì cho tới khi hiện hộp
 - Hai biến chỉ dùng khi kiểm thử: `AUDIO_INSTALL_LOG=<tệp>` ghi từng bước dạng `phần trăm|chữ|chi tiết`, `AUDIO_INSTALL_NOWAIT=1` tự đóng cửa sổ khi xong.
 - Test: `packaging/test_install_flow.py` chạy thật chế độ có cửa sổ (cài mới, cài đè dừng được app giả và xóa file thừa, tiến độ không đi lùi và chạm 95% khi giải nén xong, lỗi thì thoát mã 1 và ghi `FAILED`).
 - Chưa kiểm chứng bằng mắt: hình dạng thật của cửa sổ trên màn hình (kiểm bằng nhật ký và test, không có ảnh chụp).
+
+## 12. Gói cập nhật app (`-app.zip`) và việc "có phải build lại không" (ghi 2026-11-18, theo bản 3.2.8)
+
+**Không có bước build riêng cho file zip.** `build_edition.py` / `build_installer.py` tạo cả hai file từ **cùng một lần dựng payload**: `write_app_package` chỉ nén lại phần payload trừ `runtime/` và `providers/` (khoảng 30 giây, vài chục MB). Nên "không build zip" nghĩa là *không phải làm thêm gì*, không phải tiết kiệm được thời gian build.
+
+Zip **không phải chỉ chứa "kiến trúc"**: nó là toàn bộ mã của app (worker, UI, lõi bảo mật, vỏ Tauri, `updater.exe`, cấu hình). Chỉ thiếu Python, ffmpeg, node và nhà cung cấp TTS (phần ít đổi). Bộ cài `.exe` chứa tất cả những thứ đó nên **cũng đủ để cập nhật** (cài thay thế tại chỗ, giữ dữ liệu và giấy phép).
+
+Cái giá của việc bỏ zip khi phát hành: app của khách luôn nhận **bộ cài đầy đủ (~600 MB)** thay vì gói app (~35 MB). Khách thấy lâu hơn, VPS tốn băng thông hơn khoảng 17 lần cho mỗi lần cập nhật.
+
+Hiện trạng công cụ (chưa đổi): `publish_update.py` **luôn** đăng gói app (đọc `release-*.json` rồi tải zip lên và ghi vào manifest); `--app-only` là chiều ngược lại (bỏ bộ cài, chỉ khi runtime không đổi). App phía khách đã chọn đúng: có gói app và runtime khớp thì dùng gói app, nếu không thì dùng bộ cài. Muốn **thật sự** phát hành chỉ bằng bộ cài thì phải thêm cờ `--installer-only` vào `publish_update.py` (chưa làm); đừng xóa file zip trong `dist` để "bỏ" nó, vì `publish_update.py` sẽ dừng với lỗi `... is missing or differs from the release record`.
+
+### Cập nhật qua VPS có bắt buộc phải build lại không?
+
+**Có, mỗi khi mã app đổi.** VPS chỉ là kho chứa và máy phát các gói **đã build** (`updates/<gói>/<phiên bản>/`) cùng manifest đã ký; nó không dựng gì cả. Muốn khách có thay đổi trong `worker`, `web`, `components`, `lib`, `desktop`, `security-core`... thì phải: tăng phiên bản, build (lần dựng này tạo luôn zip), rồi `publish_update.py`. Phát hành xong, mã của phiên bản đó bị khóa.
+
+Chỉ **không cần build lại** (và không cần khách cập nhật app) với: giá gói, giá dịch vụ, hạn mức nợ, nội dung trang thanh toán (admin → Payments), `billing-gateway` và `admin-system` (triển khai lại phía server), và việc đăng lại ghi chú/`--min-version`/quay lui về bản cũ đã có sẵn trên VPS (`--allow-downgrade`).

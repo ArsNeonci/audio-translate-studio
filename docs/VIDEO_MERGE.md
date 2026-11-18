@@ -46,6 +46,11 @@ Giọng Việt do app tạo được ghép vào video của người dùng. Vide
 - Tạo lại: **Phụ đề** (tick = tạo `.srt` rồi `BURN`, không ghép lại; không tick = chỉ `.srt`), **Ghép video** (có thể tick; ghép lại làm video phụ đề cũ thành `STALE`), **Gắn phụ đề vào video** (chạy lại riêng `BURN`).
 - Mã lỗi: H103 (không còn video đã ghép), cách xử lý: Tạo lại → Ghép video; H104 ghép video không thành công; H105 gắn phụ đề không thành công.
 
+## Logo và ảnh gắn lên video (từ 3.3.0)
+
+- Khung chọn video có ô **Logo và ảnh gắn lên video**: *Mặc định (tên mẫu)*, *Không gắn* hoặc một mẫu đã lưu ở trang **Logo & ảnh** (`docs/OVERLAYS.md`).
+- Có mẫu thì bước `VIDEO` **luôn mã hóa lại hình** (không copy được) nhưng vẫn chỉ mã hóa phần ngắn hơn giữa độ dài clip và độ dài giọng rồi lặp bằng copy. Workflow giữ bản chụp mẫu và bản sao ảnh trong `job.video.overlay` và `working/overlays/`. Lỗi thiếu ảnh: H106.
+
 ## Độ phân giải và chất lượng
 
 - **Độ phân giải:** Giữ nguyên gốc, 1080p, 720p, 480p. Không có mức cao hơn video lớn nhất, nên hình không bị phóng to.

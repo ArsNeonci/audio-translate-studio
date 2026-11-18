@@ -267,6 +267,9 @@ def build(product='audio-translate', customer=None):
         shutil.copy2(ROOT/'packaging'/'app_cleanup.py',payload/'app_cleanup.py')
         # The desktop shell (Tauri) is what the shortcut starts: a window around the local API, which it starts, watches and ends.
         shutil.copy2(shell_binary,payload/'AudioTranslate.exe')
+        loader = shell_binary.parent/'WebView2Loader.dll'
+        if loader.is_file():
+            shutil.copy2(loader,payload/loader.name)
         shutil.copy2(ROOT/'packaging'/'app-icon.ico',payload/'app.ico')  # the Start-menu shortcut's icon (installer.cs)
         # The uninstaller ships inside the installation (Windows "Installed apps" runs it); it is covered by the signed payload manifest below.
         compile_stub('uninstaller.cs',payload/'uninstall.exe',staging,product,version,edition)

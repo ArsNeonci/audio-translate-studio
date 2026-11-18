@@ -12,7 +12,7 @@ from audio_translate.core.errors import STEPS, effective_steps, initial_steps, r
 from audio_translate.core.control import now, cancel_run
 from audio_translate.workflow import results
 
-TOOLS = {'transcription': ['TRANSCRIPTION'], 'translation': ['TRANSLATION'], 'moderation': ['MODERATION'], 'tts': ['TTS'], 'video': ['VIDEO'], 'subtitle': ['SUBTITLE']}   # tool 5 = subtitle (.srt), tool 6 = video merge (+ BURN when ticked)
+TOOLS = {'transcription': ['TRANSCRIPTION'], 'translation': ['TRANSLATION'], 'moderation': ['MODERATION'], 'tts': ['TTS'], 'video': ['VIDEO'], 'subtitle': ['SUBTITLE'], 'split': ['SPLIT']}   # tool 5 = subtitle (.srt), tool 6 = video merge (+ BURN when ticked)
 
 def filename(number, original):
     if type(number) is not int or number < 1 or Path(original).name != original: raise ValueError('Invalid artifact name')
@@ -162,11 +162,29 @@ def voice_source(voice_job):
     return source
 
 
-def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=None, style=None, address=None, mode=None, video=None, voice_job=None, subtitle=None):
+def split_source(source_job):
+    """Tool 7 from a finished run: the Chinese text that run published (or still holds), never a file from outside the app."""
+    from audio_translate.video.merge import published_file
+    if not isinstance(source_job, str) or not results.ID.fullmatch(source_job): raise ValueError('Choose a run with Chinese text')
+    found = published_file(source_job, 'ZH_JSONL') or next((c for c in (results.workspace(source_job)/'transcript.zh.jsonl', results.workspace(source_job)/'transcript.jsonl') if c.is_file()), None)
+    if not found: raise ValueError('That run has no Chinese text')
+    return found, read_json(results.workspace(source_job)/'job.json')
+
+
+def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=None, style=None, address=None, mode=None, video=None, voice_job=None, subtitle=None,
+           manual=None, split=None, source_job=None):
     from audio_translate.core.license_gate import assert_allowed
     assert_allowed()
     scope = 'tools' if tool else 'workflows'
     if tool and tool not in TOOLS: raise ValueError('Unsupported tool')
+    if manual is not None and type(manual) is not bool: raise ValueError('Invalid translation mode')
+    if manual and (tool or mode): raise ValueError('Manual translation applies to workflows only')
+    if (split is not None or source_job) and tool != 'split': raise ValueError('Unsupported tool')
+    if tool == 'split':
+        from audio_translate.translation.manual_text import validate_split
+        split = validate_split(split)
+        if upload and source_job: raise ValueError('Use either a finished run or a file, not both')
+        if not upload and not source_job: raise ValueError('Choose a run with Chinese text')
     from audio_translate.video.merge import validate as validate_video
     # Videos are optional for a workflow and required for tool 5; every clip is checked now and again when the merge starts.
     video = validate_video(video) if video or tool == 'video' else None
@@ -183,7 +201,7 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
     chosen = select(voice, style)
     mode = translation_mode(mode, tool)
     # Genius handles forms of address itself; the local address layer is not offered.
-    address = None if mode else validate_profile(address)
+    address = None if mode or manual else validate_profile(address)
     job_id = str(uuid.uuid4())
     directory = DATA/('tool-tmp' if tool else 'tmp')/job_id
     directory.mkdir(parents=True)
@@ -195,19 +213,29 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
                'status':'QUEUED','progress':0,'duration_ms':0,'total_duration_ms':0,'created_at':now(),
                'error':None,'workflow_version':2,'selected_voice_id':chosen,'selected_voice_style':validate(style),'selected_address_profile':address,'steps':initial_steps({})}
         if mode: job['translation_mode'] = mode
+        if manual: job['manual_translation'] = True   # the run stops after the Chinese text and waits for the person's translation
         if video: job['video'] = video
+        if video:
+            from audio_translate.video.overlays import materialize
+            materialize(directory, video.get('overlay'))
         if subtitle is not None and tool is None: job['subtitle'] = subtitle
         if tool in ('video', 'subtitle'):
             # Tools 5 and 6 (subtitles, video): no upload, the voice stays where tool 4 or the workflow published it.
             job.update(tool_type=tool, input_file=None, tool_steps=[*TOOLS[tool], *(['BURN'] if burning else [])], **{('video_voice' if tool == 'video' else 'subtitle_voice'): {'job_id': voice_job}},
                        name=f"#{source.get('workflow_no', 0):06d} · {source.get('name') or source.get('input_file') or ''}".strip(' ·'))
             if tool == 'subtitle' or burning: job['subtitle'] = subtitle
+        elif tool == 'split' and source_job:
+            found, source = split_source(source_job)
+            shutil.copyfile(found, directory/'transcript.zh.jsonl')
+            job.update(tool_type=tool, input_file=None, tool_steps=TOOLS[tool], split=split,
+                       name=f"#{source.get('workflow_no', 0):06d} · {source.get('name') or source.get('input_file') or ''}".strip(' ·'))
         elif tool and url and not upload:
             # Tool 1 from a YouTube link: the same download step as a workflow, then stop after Transcription.
             if tool != 'transcription': raise ValueError('Only Chinese audio transcription accepts a link')
             job.update(tool_type=tool,input_file=None,tool_steps=['DOWNLOAD','TRANSCRIPTION'])
         elif tool:
             job.update(tool_type=tool,input_file=input_name,tool_steps=TOOLS[tool],upload_file=Path(upload).name)
+            if tool == 'split': job['split'] = split
             normalize_input(directory,job,upload,input_name,mime)
         elif upload:
             # Main workflow from a Chinese audio file: the file becomes the Download result,
@@ -244,7 +272,7 @@ def normalize_input(directory,job,upload,name,mime):
         return
     if ext not in {'.txt','.md','.jsonl'} or mime not in {'text/plain','text/markdown','application/json','application/jsonl','application/x-ndjson','application/octet-stream',''}: raise ValueError('Use UTF-8 TXT, MD or segment JSONL')
     tool = job['tool_type']
-    key,target = {'translation':('text','transcript.zh.jsonl'),'moderation':('text_vi','transcript.vi.jsonl'),'tts':('text_vi_moderated','transcript.vi.moderated.jsonl')}[tool]
+    key,target = {'split':('text','transcript.zh.jsonl'),'translation':('text','transcript.zh.jsonl'),'moderation':('text_vi','transcript.vi.jsonl'),'tts':('text_vi_moderated','transcript.vi.moderated.jsonl')}[tool]
     count = 0
     with path.open(encoding='utf-8-sig') as inp, (directory/target).open('w',encoding='utf-8') as out:
         # Bounded lines prevent a single huge text/JSONL row from consuming RAM.
@@ -266,12 +294,14 @@ def normalize_input(directory,job,upload,name,mime):
     from audio_translate.core.storage import count_rows
     if not count or count_rows(directory/target,key) != count: raise ValueError('Input contains no valid text')
 
-def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=None,subtitle=None,burn=None):
+def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=None,subtitle=None,burn=None,import_id=None):
     from audio_translate.core.license_gate import assert_allowed
     assert_allowed()
     if video is not None:
         from audio_translate.video.merge import validate as validate_video
-        video = validate_video(video)   # checked before the lock: probing many clips takes a moment
+        try: current_overlay = (read_json(results.workspace(job_id)/'job.json').get('video') or {}).get('overlay')
+        except (OSError, ValueError): current_overlay = None
+        video = validate_video(video, current_overlay)   # checked before the lock: probing many clips takes a moment
     if subtitle is not None:
         from audio_translate.video.subtitles import validate as validate_subtitle
         subtitle = validate_subtitle(subtitle)
@@ -279,10 +309,17 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
     from audio_translate.core.sealing import opened
     with file_lock(directory/'working'/'worker.lock'), opened(directory):
         job = read_json(directory/'job.json')
+        imported = None
+        if import_id is not None:
+            from audio_translate.workflow import imports
+            if job.get('tool_type') or step not in imports.PREVIOUS: raise ValueError('That stage takes no file')
+            imported = imports.load(import_id, job_id, step)
         if video is not None:
             # New or changed videos: a workflow without them gains the Video merge step; the earlier steps are kept.
             if step not in ('VIDEO', *effective_steps(job)) or (step != 'VIDEO' and job.get('tool_type')): raise ValueError('Unknown restart stage')
             job['video'] = video
+            from audio_translate.video.overlays import materialize
+            materialize(directory, video.get('overlay'))   # the run's own copy of the logo pictures
             if video.get('burn') and job.get('subtitle') is None: job['subtitle'] = subtitle if subtitle is not None else subtitles_defaults()
             if job.get('tool_type') == 'video': job['tool_steps'] = [*TOOLS['video'], *(['BURN'] if video.get('burn') else [])]
         elif step == 'VIDEO' and not job.get('video'): raise ValueError('Choose the videos to merge')
@@ -302,11 +339,13 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
         effective = effective_steps(job)
         if step not in effective: raise ValueError('Unknown restart stage')
         if (directory/'working'/'delete-request.json').exists(): raise ValueError('Workflow deletion is pending')
-        if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL']: raise ValueError('Pause or finish the current run first')
+        if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','AWAITING_TRANSLATION']: raise ValueError('Pause or finish the current run first')
         steps = initial_steps(job)
-        if any(steps[s]['state'] != 'COMPLETED' for s in effective[:effective.index(step)]): raise ValueError('Complete predecessor stages first')
+        # A loaded file stands in for the stage before this one, so the earlier stages need not be done (they count as skipped).
+        if not imported and any(steps[s]['state'] != 'COMPLETED' for s in effective[:effective.index(step)]): raise ValueError('Complete predecessor stages first')
         inputs = {'TRANSCRIPTION':None,'TRANSLATION':'transcript.zh.jsonl','MODERATION':'transcript.vi.jsonl','TTS':'transcript.vi.moderated.jsonl'}
-        if step == 'TRANSCRIPTION':
+        if imported: pass
+        elif step == 'TRANSCRIPTION':
             from audio_translate.transcription.pipeline import source_file
             if not source_file(directory): raise ValueError('Source audio is missing; restart from Download')
         elif inputs.get(step) and not (directory/inputs[step]).is_file(): raise ValueError('Predecessor output is missing; restart from an earlier stage')
@@ -341,14 +380,31 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
             config = directory/'working'/'adapters.json'
             if config.exists():
                 settings = read_json(config); settings['tts']['voice'] = job['selected_voice_id']; apply_style(settings,job); atomic_json(config,settings)
+        if imported:
+            from audio_translate.workflow import imports
+            imports.apply(directory, step, imported[0], imported[1], job)
+            source_step = imports.PREVIOUS[step]
+        else:
+            source_step = None
+            if step == 'TRANSLATION' and job.get('manual_translation'): job.pop('manual_translation')   # translating again from here without a file: the machine translates
         output = results.destination(job_id)
         manifest = read_json(output/'outputs.json')
         for item in manifest['files']:
-            if item['step'] in affected or (item['step'] == 'BURN' and 'VIDEO' in affected): item['status'] = 'STALE'
+            if item['step'] in affected or item['step'] == source_step or (item['step'] == 'BURN' and 'VIDEO' in affected): item['status'] = 'STALE'
         results.write_metadata(output,'outputs.json',manifest)
+        if imported:
+            from audio_translate.core.control import now
+            for s in effective[:effective.index(step)]:
+                if s == source_step:
+                    steps[s].update(state='COMPLETED',progress=100,origin='import',completed_at=now(),duration_ms=0,resume_duration_ms=0)
+                    steps[s].pop('error',None)
+                    (directory/'working'/f'{s.lower()}.done.json').unlink(missing_ok=True)
+                elif steps[s]['state'] != 'COMPLETED':
+                    steps[s].update(state='COMPLETED',progress=100,origin='skipped')
+                    steps[s].pop('error',None)
         for s in affected:
             steps[s].update(state='PENDING',progress=0,started_at=None,completed_at=None,duration_ms=0,resume_duration_ms=0)
-            steps[s].pop('error',None)
+            steps[s].pop('error',None); steps[s].pop('origin',None)
             (directory/'working'/f'{s.lower()}.done.json').unlink(missing_ok=True)
         checkpoint = directory/'working'/'postprocess.sqlite3'
         if checkpoint.exists():
@@ -379,18 +435,21 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
         job.update(progress=overall,reprocess_pending=True,steps=steps,stages=stages,status='QUEUED',retry_step=None,error=None,completed_at=None,active_stage=None)
         atomic_json(directory/'job.json',job)
         results.metadata(directory)
+        if imported:
+            from audio_translate.workflow import imports
+            imports.discard(import_id)
         return job
 
 def cancel(job_id, mode='cancel'):
     directory = results.workspace(job_id)
     job = read_json(directory/'job.json')
-    if job['status'] in ['COMPLETED','FAILED','CANCELLED','PAUSED']: raise ValueError('Run is already stopped')
+    if job['status'] in ['COMPLETED','FAILED','CANCELLED','PAUSED','AWAITING_TRANSLATION']: raise ValueError('Run is already stopped')
     if mode=='pause' and (directory/'working'/'delete-request.json').exists(): raise ValueError('Workflow deletion is pending')
     atomic_json(directory/'working'/'cancel.signal',{'requested_at':now(),'mode':mode})
     try:
         with file_lock(directory/'working'/'worker.lock'):
             job = read_json(directory/'job.json')
-            if job['status'] in ['COMPLETED','FAILED','CANCELLED','PAUSED']:
+            if job['status'] in ['COMPLETED','FAILED','CANCELLED','PAUSED','AWAITING_TRANSLATION']:
                 (directory/'working'/'cancel.signal').unlink(missing_ok=True)
                 return
             step = job.get('retry_step') or next(s for s in effective_steps(job) if initial_steps(job)[s]['state'] != 'COMPLETED')
@@ -440,7 +499,7 @@ def hard_delete(job_id,confirm,scope=None):
     if type(confirm) is not int or confirm != job.get('workflow_no'): raise ValueError('Confirmation number does not match')
     with file_lock(DATA/'management-locks'/f'{job_id}.lock'):
         with file_lock(directory/'working'/'worker.lock'):
-            if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','DELETING'] and not (directory/'working'/'delete-request.json').exists(): raise ValueError('Pause the active or queued run before deleting')
+            if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','AWAITING_TRANSLATION','DELETING'] and not (directory/'working'/'delete-request.json').exists(): raise ValueError('Pause the active or queued run before deleting')
             targets = [directory,results.destination(job_id),results.RESULTS/job_id,DATA/'jobs'/job_id,DATA/'tmp'/job_id,DATA/'tool-tmp'/job_id,results.RESULTS.parent/'.audio-results-staging'/job_id]
             if job.get('upload_file'):
                 upload = DATA/'uploads'/job['upload_file']
@@ -474,7 +533,7 @@ def abort(job_id,confirm,scope='workflows'):
     if type(confirm) is not int or confirm!=job.get('workflow_no') or scope!=job.get('storage_scope'):
         raise ValueError('Confirmation number or scope does not match')
     atomic_json(directory/'working'/'delete-request.json',{'confirm':confirm,'scope':scope,'requested_at':now()})
-    if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','DELETING']:
+    if job['status'] not in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','AWAITING_TRANSLATION','DELETING']:
         cancel(job_id,mode='abort')
     else:
         atomic_json(directory/'working'/'cancel.signal',{'mode':'abort','requested_at':now()})
@@ -485,7 +544,7 @@ def delete(job_id,confirm,scope=None):
     """Delete now when stopped; a queued or running tool first finishes its current
     mini task (pause drain), then the scheduler removes everything it created."""
     directory=results.workspace(job_id);job=read_json(directory/'job.json')
-    stopped=job['status'] in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','DELETING']
+    stopped=job['status'] in ['COMPLETED','FAILED','CANCELLED','PAUSED','PARTIAL','AWAITING_TRANSLATION','DELETING']
     if stopped or job.get('storage_scope')!='tools':
         hard_delete(job_id,confirm,scope);return {'deleted':True}
     if type(confirm) is not int or confirm!=job.get('workflow_no') or scope!=job.get('storage_scope'):
@@ -514,7 +573,7 @@ def history(scope):
         try:
             live = read_json(results.workspace(job['id'])/'job.json')
             if live.get('id') == job['id'] and live.get('storage_scope') == scope:
-                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','selected_address_profile','translation_mode','pause_reason','retry_step','source_ext','video','video_plan', 'burn_plan','video_voice','subtitle','subtitle_voice']:
+                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','selected_address_profile','translation_mode','pause_reason','retry_step','source_ext','video','video_plan', 'burn_plan','video_voice','subtitle','subtitle_voice','manual_translation','split']:
                     if key in live: job[key] = live[key]
                 job['steps'] = {step:{k:item.get(k) for k in ['state','progress','started_at','completed_at','duration_ms','attempt','retry_count','error']} for step,item in live.get('steps',{}).items()}
                 working=results.workspace(job['id'])/'working'
@@ -545,16 +604,21 @@ def main():
         elif action=='voices':
             from audio_translate.tts.voices import discover
             value=discover()
-        elif action=='create': value={'job':create(p.get('url',''),p.get('voice'),p.get('tool'),p.get('upload'),p.get('input_name'),p.get('mime',''),p.get('style'),p.get('address'),p.get('mode'),p.get('video'),p.get('voice_job'),p.get('subtitle'))}
+        elif action=='create': value={'job':create(p.get('url',''),p.get('voice'),p.get('tool'),p.get('upload'),p.get('input_name'),p.get('mime',''),p.get('style'),p.get('address'),p.get('mode'),p.get('video'),p.get('voice_job'),p.get('subtitle'),p.get('manual'),p.get('split'),p.get('source_job'))}
         elif action=='preflight':
             from audio_translate.workflow.workflow_admission import preflight
             value={'assessment':preflight()}
         elif action=='convert':
             from audio_translate.workflow.workflow_admission import convert
             if type(p.get('queue_only',False)) is not bool: raise ValueError('Invalid queue option')
-            response=convert(p.get('url',''),p.get('voice'),p.get('queue_only',False),p.get('style'),p.get('address'),p.get('mode'),p.get('upload'),p.get('input_name'),p.get('mime',''),p.get('video'),p.get('subtitle'))
+            response=convert(p.get('url',''),p.get('voice'),p.get('queue_only',False),p.get('style'),p.get('address'),p.get('mode'),p.get('upload'),p.get('input_name'),p.get('mime',''),p.get('video'),p.get('subtitle'),p.get('manual'))
             print(json.dumps(response,ensure_ascii=False)); return
-        elif action=='reprocess': value={'job':reprocess(p['id'],p['step'],p.get('voice'),p.get('style'),p.get('address'),p.get('mode'),p.get('video'),p.get('subtitle'),p.get('burn'))}
+        elif action=='reprocess': value={'job':reprocess(p['id'],p['step'],p.get('voice'),p.get('style'),p.get('address'),p.get('mode'),p.get('video'),p.get('subtitle'),p.get('burn'),p.get('import_id'))}
+        elif action=='import':
+            from audio_translate.core.license_gate import assert_allowed
+            from audio_translate.workflow import imports
+            assert_allowed()
+            value=imports.prepare(p['id'],p['step'],p.get('upload'),p.get('input_name'),p.get('mime',''))
         elif action=='cancel': cancel(p['id']); value={}
         elif action=='pause': cancel(p['id'],mode='pause'); value={}
         elif action=='abort': value=abort(p['id'],p.get('confirm'),scope)

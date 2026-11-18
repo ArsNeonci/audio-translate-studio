@@ -11,7 +11,7 @@ from audio_translate.core.providers import vieneu_source
 
 ASSETS = PUBLIC/'voice-previews'
 VERSION = 1
-TERMINAL = {'COMPLETED', 'FAILED', 'CANCELLED', 'PARTIAL', 'DELETING'}
+TERMINAL = {'COMPLETED', 'FAILED', 'CANCELLED', 'PARTIAL', 'AWAITING_TRANSLATION', 'DELETING'}
 
 
 def busy():

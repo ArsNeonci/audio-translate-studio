@@ -55,7 +55,7 @@
     "/api/jobs": {
       "get": {"summary": "Current workflows (also runs the scheduler)", "responses": {
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"type": "object", "required": ["jobs"], "properties": {"jobs": {"type": "array", "items": {"$ref": "#/components/schemas/Job"}}}}}}}}},
-      "post": {"summary": "Create a workflow from a YouTube link (JSON) or an uploaded audio file (raw body, ?name=...)", "x-licensed": true, "responses": {
+      "post": {"summary": "Create a workflow from a YouTube link (JSON) or an uploaded audio file (raw body, ?name=...); manual (JSON) or manual=1 (upload) makes it stop after the Chinese text (status AWAITING_TRANSLATION) and wait for the person's own translation", "x-licensed": true, "responses": {
         "201": {"x-no-store": true, "x-untested": "needs an ACTIVE licence", "content": {"application/json": {"schema": {"type": "object", "required": ["job"]}}}},
         "400": {"x-untested": "validation runs after the licence gate", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
         "403": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LicenseDenied"}}}},
@@ -116,7 +116,7 @@
         "404": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
     "/api/jobs/{id}/reprocess": {
-      "post": {"summary": "Run again from a step (body {step, voice?, style?, address?, mode?})", "x-licensed": true, "responses": {
+      "post": {"summary": "Run again from a step (body {step, voice?, style?, address?, mode?, video?, subtitle?, burn?, import_id?}); import_id (from /api/jobs/{id}/import) starts the run from the loaded file: the stage before the chosen one counts as done by import", "x-licensed": true, "responses": {
         "200": {"x-untested": "needs an ACTIVE licence", "content": {"application/json": {"schema": {"type": "object", "required": ["job"]}}}},
         "403": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LicenseDenied"}}}}}}
     },
@@ -249,7 +249,7 @@
         "415": {"description": "Not JSON", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
     "/api/video/estimate": {
-      "post": {"summary": "Size estimate and disk check (JSON {paths, resolution, quality, voice_job?, burn?}); without a voice the size is per hour; burn (the second video with the subtitles drawn into the picture, made by the BURN step after the plain merge) adds burn_plan with seconds_per_voice_second and its size, and counts both files in needed_bytes", "x-local": true, "responses": {
+      "post": {"summary": "Size estimate and disk check (JSON {paths, resolution, quality, voice_job?, burn?}); without a voice the size is per hour; burn (the second video with the subtitles drawn into the picture, made by the BURN step after the plain merge) adds burn_plan with seconds_per_voice_second and its size, and counts both files in needed_bytes; overlay (a logo template id, default or none) tells the estimate that the picture will be encoded", "x-local": true, "responses": {
         "200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VideoEstimate"}}}},
         "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
         "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
@@ -282,10 +282,18 @@
         "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
         "415": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}
     },
+    "/api/jobs/{id}/import": {"post": {"summary": "Reprocess: check and park the file a stage starts from (?step=TRANSCRIPTION|TRANSLATION|MODERATION|TTS&name=, raw body); returns {import_id, report}; import_id is null when the text cannot be used yet", "x-licensed": true, "responses": {"200": {"x-no-store": true, "x-untested": "needs an ACTIVE licence", "content": {"application/json": {"schema": {"type": "object", "required": ["import_id", "report"]}}}}, "400": {"x-untested": "validation runs after the licence gate", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "403": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LicenseDenied"}}}}, "409": {"x-untested": "needs an ACTIVE licence", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "413": {"x-untested": "needs a licence and a large upload", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
+    "/api/split/sources": {"get": {"summary": "Finished runs that hold Chinese text (workflows and tool 1): what tool 7 can cut into parts", "responses": {"200": {"x-no-store": true, "content": {"application/json": {"schema": {"type": "object", "required": ["sources"], "properties": {"sources": {"type": "array", "items": {"$ref": "#/components/schemas/SplitSource"}}}}}}}}}},
+    "/api/overlays": {"get": {"summary": "The picture library, the logo templates and each orientation's default", "responses": {"200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Overlays"}}}}}}},
+    "/api/overlays/assets": {"post": {"summary": "Add a picture to the library (raw body, ?name=file.png): PNG, JPG, WEBP, BMP, ICO or GIF, up to 10 MB; it is stored as a PNG with its transparency", "x-local": true, "responses": {"201": {"x-no-store": true, "content": {"application/json": {"schema": {"type": "object", "required": ["asset"], "properties": {"asset": {"$ref": "#/components/schemas/OverlayAsset"}}}}}}, "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "413": {"x-untested": "needs a 10 MB upload", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
+    "/api/overlays/assets/{id}": {"get": {"summary": "The picture (PNG)", "responses": {"200": {"content": {"image/png": {}}}, "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}, "delete": {"summary": "Remove a picture that no template uses", "x-local": true, "responses": {"200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Deleted"}}}}, "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "409": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
+    "/api/overlays/templates": {"post": {"summary": "Create a template ({name, orientation, items}) or replace one (the same body with its id); items are listed back to front and placed as fractions of the frame", "x-local": true, "responses": {"200": {"x-no-store": true, "content": {"application/json": {"schema": {"type": "object", "required": ["template"], "properties": {"template": {"$ref": "#/components/schemas/OverlayTemplate"}}}}}}, "201": {"x-no-store": true, "content": {"application/json": {"schema": {"type": "object", "required": ["template"], "properties": {"template": {"$ref": "#/components/schemas/OverlayTemplate"}}}}}}, "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "409": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "415": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
+    "/api/overlays/templates/{id}": {"delete": {"summary": "Delete a template (runs that already use it keep their own copy)", "x-local": true, "responses": {"200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Deleted"}}}}, "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
+    "/api/overlays/defaults": {"put": {"summary": "The template every new video of an orientation uses ({orientation, template}; null clears it)", "x-local": true, "responses": {"200": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OverlayDefaults"}}}}, "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}, "415": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}}}},
     "/api/tools": {
       "get": {"summary": "Tool runs, filtered and paged like History", "responses": {
         "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/HistoryPage"}}}}}},
-      "post": {"summary": "Start a tool: JSON {tool: transcription, url} or a raw upload with ?tool=&name=", "x-licensed": true, "responses": {
+      "post": {"summary": "Start a tool: JSON {tool: transcription, url}, {tool: subtitle|video, voice_job, ...} or {tool: split, source_job, split: {max_chars, prompt, prompt_text}}, or a raw upload with ?tool=&name= (tool 7 also takes max_chars, prompt, prompt_text)", "x-licensed": true, "responses": {
         "201": {"x-untested": "needs an ACTIVE licence", "content": {"application/json": {"schema": {"type": "object", "required": ["job"]}}}},
         "403": {"x-no-store": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LicenseDenied"}}}}}}
     },
@@ -321,8 +329,14 @@
       "LicenseDenied": {"type": "object", "required": ["error", "license_status"], "properties": {"error": {"type": "string"}, "license_status": {"type": "string", "pattern": "^[A-Z_]+$"}}},
       "Uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
       "Timestamp": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T"},
+      "OverlayAsset": {"type": "object", "required": ["id", "name", "width", "height", "size"], "properties": {"id": {"type": "string", "pattern": "^[0-9a-f]{32}$"}, "name": {"type": "string"}, "width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}, "size": {"type": "integer", "minimum": 1}, "created_at": {"type": "string"}}},
+      "OverlayItem": {"type": "object", "required": ["asset", "x", "y", "w", "opacity"], "properties": {"asset": {"type": "string", "pattern": "^[0-9a-f]{32}$"}, "x": {"type": "number"}, "y": {"type": "number"}, "w": {"type": "number"}, "opacity": {"type": "number"}}},
+      "OverlayTemplate": {"type": "object", "required": ["id", "name", "orientation", "items"], "properties": {"id": {"type": "string", "pattern": "^[0-9a-f]{12}$"}, "name": {"type": "string", "minLength": 1}, "orientation": {"enum": ["landscape", "portrait"]}, "items": {"type": "array", "items": {"$ref": "#/components/schemas/OverlayItem"}}}},
+      "OverlayDefaults": {"type": "object", "properties": {"landscape": {"type": "string"}, "portrait": {"type": "string"}}, "additionalProperties": false},
+      "Overlays": {"type": "object", "required": ["assets", "templates", "defaults"], "properties": {"assets": {"type": "array", "items": {"$ref": "#/components/schemas/OverlayAsset"}}, "templates": {"type": "array", "items": {"$ref": "#/components/schemas/OverlayTemplate"}}, "defaults": {"$ref": "#/components/schemas/OverlayDefaults"}}},
+      "SplitSource": {"type": "object", "required": ["job_id", "scope", "name"], "properties": {"job_id": {"type": "string"}, "scope": {"enum": ["workflows", "tools"]}, "workflow_no": {"type": ["integer", "null"]}, "name": {"type": "string"}, "created_at": {"type": "string"}, "chars": {"type": "integer", "minimum": 0}}},
       "JobStatus": {"type": "string", "pattern": "^[A-Z_]+$"},
-      "StepName": {"enum": ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS", "SUBTITLE", "VIDEO", "BURN"]},
+      "StepName": {"enum": ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS", "SUBTITLE", "VIDEO", "BURN", "SPLIT"]},
       "StepState": {"type": "object", "required": ["state"], "properties": {"state": {"type": "string", "pattern": "^[A-Z_]+$"}, "progress": {"type": ["integer", "number"]}, "retry_count": {"type": "integer"}, "attempt": {"type": "integer"}}},
       "Steps": {"type": "object", "required": ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS"], "additionalProperties": {"$ref": "#/components/schemas/StepState"}},
       "Artifacts": {"type": "object", "required": ["source", "zh", "vi", "moderated", "voice"], "additionalProperties": {"type": "boolean"}},
@@ -337,7 +351,7 @@
           "delete_requested": {"type": "boolean"}, "pause_requested": {"type": "boolean"},
           "transcription_steps": {"type": "array", "items": {"$ref": "#/components/schemas/StepState"}}}},
       "HistoryFile": {"type": "object", "required": ["id", "step", "type", "path", "size", "status", "created_at"],
-        "properties": {"id": {"type": "string", "pattern": "^[A-Z_]+$"}, "step": {"$ref": "#/components/schemas/StepName"}, "type": {"type": "string"},
+        "properties": {"id": {"type": "string", "pattern": "^[A-Z0-9_]+$"}, "origin": {"enum": ["import"]}, "step": {"$ref": "#/components/schemas/StepName"}, "type": {"type": "string"},
           "path": {"type": "string"}, "size": {"type": "integer", "minimum": 0}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "status": {"enum": ["AVAILABLE", "STALE", "PUBLISHING"]}, "created_at": {"$ref": "#/components/schemas/Timestamp"}}},
       "HistoryJob": {"type": "object",

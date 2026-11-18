@@ -1552,3 +1552,64 @@ button:disabled {
 .subtitle-options input { width: 130px; }
 .subtitle-options small { flex-basis: 100%; color: #66736a; font-size: 12px; }
 .video-burn { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #e1e6dc; padding-top: 10px; }
+
+/* Manual translation: the toggle in Studio, the file a stage starts from (Reprocess) and tool 7 (split text). */
+.manual-hint { display: block; max-width: 280px; margin-bottom: 4px; color: #66736a; font-size: 12px; }
+.import-panel { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; padding: 14px; border: 1px solid #e1e6dc; border-radius: 10px; background: #fff; max-width: 880px; }
+.import-panel small { color: #66736a; font-size: 12px; }
+.import-panel .source-options { margin: 0; }
+.import-ok { margin: 0; color: #1f5d37; font-weight: 600; }
+.import-notes { margin: 0; padding-left: 20px; font-size: 13px; color: #66736a; }
+.import-panel .alert ul { margin: 6px 0 0; padding-left: 20px; }
+.import-preview { width: 100%; border-collapse: collapse; font-size: 13px; }
+.import-preview caption { text-align: left; font-weight: 600; padding-bottom: 4px; }
+.import-preview td { border-top: 1px solid #e1e6dc; padding: 6px 8px 6px 0; vertical-align: top; }
+.import-preview td:first-child { width: 1%; white-space: nowrap; color: #66736a; }
+.split-tool .split-prompt { display: flex; flex-direction: column; gap: 6px; max-width: 880px; }
+.split-tool textarea { width: 100%; min-height: 110px; padding: 10px 12px; border: 1.5px solid #8ca48f; border-radius: 8px; background: #fff; font: inherit; font-size: 13px; line-height: 1.5; resize: vertical; }
+.split-options input { width: 130px; }
+.video-overlay-note { color: #66736a; font-size: 12px; }
+
+/* Logos and pictures on the video: the library, the saved templates and the frame they are placed on. */
+.overlay-page { display: flex; flex-direction: column; gap: 6px; }
+.overlay-block { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; max-width: 980px; }
+.overlay-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.overlay-head h2 { margin: 0 auto 0 0; font-size: 18px; }
+.overlay-block > small, .overlay-page small { color: #66736a; font-size: 12px; }
+.overlay-empty { margin: 0; color: #66736a; font-size: 14px; }
+.overlay-library { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.overlay-asset { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid #e1e6dc; border-radius: 10px; background: #fff; min-width: 0; }
+.overlay-asset strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overlay-asset-actions, .overlay-template-actions { display: flex; flex-wrap: wrap; gap: 6px 8px; }
+.overlay-asset-actions .text-button, .overlay-template-actions .text-button, .overlay-props-actions .text-button, .overlay-actions .text-button { padding: 6px 12px; font-size: 13px; }
+.overlay-editor input[type="text"], .overlay-editor input[type="number"], .overlay-editor select, .split-options input[type="number"] { padding: 8px 10px; border: 1.5px solid #8ca48f; border-radius: 8px; background: #fff; font: inherit; font-size: 14px; }
+.overlay-thumb, .overlay-board { background-color: #fff; background-image: linear-gradient(45deg, #e9ece6 25%, transparent 25%), linear-gradient(-45deg, #e9ece6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e9ece6 75%), linear-gradient(-45deg, transparent 75%, #e9ece6 75%); background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+.overlay-thumb { display: flex; align-items: center; justify-content: center; height: 90px; border: 1px solid #e1e6dc; border-radius: 6px; overflow: hidden; }
+.overlay-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.overlay-templates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.overlay-templates li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 14px; border: 1px solid #e1e6dc; border-radius: 10px; background: #fff; }
+.overlay-templates li.editing { border-color: #3c6145; background: #e4eee0; }
+.overlay-template-actions { margin-left: auto; }
+.overlay-badge { padding: 2px 8px; border-radius: 999px; background: #e4eee0; border: 1px solid #3c6145; color: #1f5d37; font-size: 12px; font-weight: 600; }
+.overlay-editor { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; padding: 16px; border: 1px solid #e1e6dc; border-radius: 12px; background: #fff; max-width: 980px; }
+.overlay-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.overlay-meta label, .overlay-props label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; min-width: 0; }
+.overlay-meta input[type="text"] { min-width: 240px; }
+.overlay-work { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.overlay-stage { display: flex; flex-direction: column; gap: 6px; flex: 1 1 360px; min-width: 0; }
+.overlay-board { position: relative; width: 100%; border: 2px solid #8ca48f; border-radius: 6px; overflow: hidden; touch-action: none; user-select: none; }
+.overlay-board.landscape { aspect-ratio: 16 / 9; max-width: 760px; }
+.overlay-board.portrait { aspect-ratio: 9 / 16; max-width: 340px; }
+.overlay-subzone { position: absolute; left: 0; right: 0; bottom: 0; height: 18%; display: flex; align-items: flex-end; justify-content: center; background: repeating-linear-gradient(135deg, rgba(40, 75, 55, 0.14) 0 8px, rgba(40, 75, 55, 0.04) 8px 16px); border-top: 1px dashed #3c6145; pointer-events: none; }
+.overlay-subzone span { margin-bottom: 4px; font-size: 11px; color: #284b37; }
+.overlay-item { position: absolute; cursor: move; outline: none; }
+.overlay-item img { display: block; width: 100%; height: auto; pointer-events: none; }
+.overlay-item:focus-visible, .overlay-item.selected { box-shadow: 0 0 0 2px #1d6fd6; }
+.overlay-handle { position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; border: 2px solid #fff; border-radius: 2px; background: #1d6fd6; cursor: nwse-resize; }
+.overlay-guide { position: absolute; background: #d6336c; pointer-events: none; }
+.overlay-guide.vertical { top: 0; bottom: 0; left: 50%; width: 1px; }
+.overlay-guide.horizontal { left: 0; right: 0; top: 50%; height: 1px; }
+.overlay-board-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 12px; text-align: center; font-size: 13px; color: #66736a; pointer-events: none; }
+.overlay-props { display: flex; flex-direction: column; gap: 10px; flex: 1 1 220px; min-width: 200px; max-width: 300px; }
+.overlay-props input[type="number"] { width: 100%; }
+.overlay-props-actions, .overlay-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }

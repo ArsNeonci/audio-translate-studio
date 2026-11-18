@@ -45,11 +45,17 @@ def source_audio(job_dir):
     return found[0] if found else None
 
 
+def split_files(job):
+    """Tool 7: the zip of the parts and each part (their count is known once the step has run)."""
+    parts = int((job.get('split') or {}).get('parts') or 0)
+    return {'SPLIT': [('SPLIT_ZIP', 'split/parts.zip', 'split/parts.zip'), *[(f'SPLIT_{i:03d}', f'split/part-{i:03d}.md', f'split/part-{i:03d}.md') for i in range(1, parts + 1)]]} if parts else {}
+
+
 def output_files(job):
-    files = FILES
+    files = {**FILES, **split_files(job)}
     ext = job.get('source_ext')
     if ext in AUDIO_EXTENSIONS and 'DOWNLOAD' in (job.get('tool_steps') or ['DOWNLOAD']):
-        files = {'DOWNLOAD': [('SOURCE_AUDIO', 'source/audio' + ext, 'download/source-audio' + ext)], **FILES}
+        files = {'DOWNLOAD': [('SOURCE_AUDIO', 'source/audio' + ext, 'download/source-audio' + ext)], **files}
     if not job.get("workflow_no"): return files
     from audio_translate.workflow.manage import filename
     return {step:[(kind,source,str(Path(relative).parent/filename(job["workflow_no"],Path(relative).name)).replace("\\","/")) for kind,source,relative in items] for step,items in files.items()}
@@ -119,10 +125,10 @@ def metadata(job_dir):
     job_id = job.get('id', '')
     if not ID.fullmatch(job_id): return  # Unit fixtures are not public jobs.
     directory = destination(job_id)
-    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'stages', 'tool_steps', 'source_ext', 'video', 'video_plan', 'burn_plan', 'video_voice', 'subtitle', 'subtitle_voice']}
+    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'stages', 'tool_steps', 'source_ext', 'video', 'video_plan', 'burn_plan', 'video_voice', 'subtitle', 'subtitle_voice', 'manual_translation', 'split']}
     # No adapter paths, raw errors, credentials or private worker metadata.
     summary['compute_device'] = job.get('compute_device')
-    summary['steps'] = {key: {k:value.get(k) for k in ['state','retry_count','attempt','progress','started_at','completed_at','duration_ms','error']}
+    summary['steps'] = {key: {k:value.get(k) for k in ['state','retry_count','attempt','progress','started_at','completed_at','duration_ms','error','origin']}
                         for key, value in job.get('steps', {}).items()}
     telemetry = Path(job_dir)/'working'/'transcription-progress.json'
     if telemetry.exists():
@@ -148,6 +154,7 @@ def publish_step(job_dir, step):
         directory = destination(job_id)
         manifest = read_json(directory/'outputs.json')
         entries = {item['type']: item for item in manifest['files']}
+        imported = job.get('steps', {}).get(step, {}).get('origin') == 'import'   # the person loaded this step's result (Reprocess): the file says so
         prepared = []
         try:
             for kind, source_name, relative in output_files(job)[step]:
@@ -189,7 +196,7 @@ def publish_step(job_dir, step):
             for temp, target, kind, relative, sha in prepared:
                 if temp: replace(temp, target)
                 entries[kind] = {'id': kind, 'step': step, 'type': kind, 'path': relative,
-                    'size': target.stat().st_size, 'sha256': sha, 'status': 'AVAILABLE',
+                    'size': target.stat().st_size, 'sha256': sha, 'status': 'AVAILABLE', **({'origin': 'import'} if imported else {}),
                     'created_at': entries.get(kind, {}).get('created_at') or datetime.now(timezone.utc).isoformat()}
             write_metadata(directory, 'outputs.json', {'job_id': job_id, 'files': list(entries.values())})
         finally:

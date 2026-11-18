@@ -22,7 +22,8 @@ management.after_start.append(scheduler.soon)   # reprocess and resume start wor
 VOICE_STYLES = ('default', 'drama', 'survival', 'rebirth')
 ADDRESS_PROFILES = ('neutral', 'drama', 'survival', 'rebirth')
 TRANSLATION_MODES = ('normal', 'genius')
-TOOLS = ('transcription', 'translation', 'moderation', 'tts')
+TOOLS = ('transcription', 'translation', 'moderation', 'tts', 'split')
+IMPORT_STEPS = ('TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS')
 VIDEO_LIMIT = 64 * 1024   # the video settings (up to 50 paths) inside a request
 
 
@@ -75,7 +76,8 @@ async def create(request: Request):
     try: data = json.loads(await request.body())
     except ValueError: return json_response({'error': 'JSON không hợp lệ.'}, 400)
     data = data if isinstance(data, dict) else {}
-    url, voice, style, address, queue_only, mode = (data.get(k) for k in ('url', 'voice', 'style', 'address', 'queue_only', 'mode'))
+    url, voice, style, address, queue_only, mode, manual = (data.get(k) for k in ('url', 'voice', 'style', 'address', 'queue_only', 'mode', 'manual'))
+    if 'manual' in data and (not isinstance(manual, bool) or (manual and mode)): return json_response({'error': 'Invalid translation mode'}, 400)
     video = video_settings(data.get('video'))
     if video is False: return json_response({'error': 'Invalid video settings'}, 400)
     subtitle = video_settings(data.get('subtitle'))
@@ -90,7 +92,7 @@ async def create(request: Request):
         await threaded(ensure_history)
         watch.mark('storage')
         result = await threaded(command, {'action': 'convert', 'url': url, 'voice': voice, 'style': style, 'address': None if mode == 'genius' else address,
-                                          'mode': mode, 'queue_only': queue_only or False, 'video': video, 'subtitle': subtitle})
+                                          'mode': mode, 'queue_only': queue_only or False, 'video': video, 'subtitle': subtitle, 'manual': manual})
     except Exception:
         watch.mark('failed')
         timing.log('create', watch, outcome='error')
@@ -114,6 +116,8 @@ async def create_from_upload(request: Request):
     if mode is not None and mode not in TRANSLATION_MODES: return json_response({'error': 'Invalid translation mode'}, 400)
     address = None if mode == 'genius' else params.get('address') or None
     if address is not None and address not in ADDRESS_PROFILES: return json_response({'error': 'Invalid address profile'}, 400)
+    manual = True if params.get('manual') == '1' else None
+    if manual and mode: return json_response({'error': 'Invalid translation mode'}, 400)
     if _length(request) > 2 * GIB: return json_response({'error': 'File quá lớn (tối đa 2 GB).'}, 413)
     video = video_settings(params.get('video'))
     if video is False: return json_response({'error': 'Invalid video settings'}, 400)
@@ -126,7 +130,7 @@ async def create_from_upload(request: Request):
         await threaded(ensure_history)
         result = await threaded(command, {'action': 'convert', 'url': '', 'upload': str(upload), 'input_name': name, 'mime': request.headers.get('content-type', ''),
                                           'voice': params.get('voice') or None, 'style': style, 'address': address, 'mode': mode,
-                                          'queue_only': params.get('queue_only') == '1', 'video': video, 'subtitle': subtitle})
+                                          'queue_only': params.get('queue_only') == '1', 'video': video, 'subtitle': subtitle, 'manual': manual})
         status = result.pop('status')
         if status == 200: scheduler.soon()
         return json_response(result, 201 if status == 200 else status, no_store=True)
@@ -155,6 +159,30 @@ async def job(job_id: str):
     await threaded(scheduler.schedule)
     found = await threaded(get_job, job_id)
     return json_response({'job': found}, no_store=True) if found else json_response({'error': 'Job không tồn tại.'}, 404)
+
+
+@router.post('/api/jobs/{job_id}/import')
+async def import_file(job_id: str, request: Request):
+    """Reprocess: the file a stage starts from (the person's translation, a Chinese text or an audio file). It is checked and parked; nothing of the
+    run changes until Reprocess is sent with the returned import_id."""
+    denied = await threaded(license_denial)
+    if denied: return denied
+    if not origin_allowed(request): return json_response({'error': 'Origin rejected'}, 403)
+    params = request.query_params
+    step, name = params.get('step'), params.get('name') or ''
+    if step not in IMPORT_STEPS or not name or len(name) > 255 or any(c in name for c in '\\/\x00'): return json_response({'error': 'Invalid tool or filename'}, 400)
+    limit = 2 * GIB if step == 'TRANSCRIPTION' else 64 * 1024 ** 2
+    if _length(request) > limit: return json_response({'error': 'Upload too large'}, 413)
+    upload = None
+    try:
+        upload, refusal = await receive_upload(request, limit)
+        if refusal: return json_response({'error': 'Upload too large'}, 413)
+        result = await threaded(command, {'action': 'import', 'id': job_id, 'step': step, 'upload': str(upload), 'input_name': name, 'mime': request.headers.get('content-type', '')})
+        status = result.pop('status')
+        return json_response(result, status, no_store=True)
+    except Exception: return json_response({'error': 'Cannot accept upload; check file and storage permissions.'}, 400)
+    finally:
+        if upload: upload.unlink(missing_ok=True)
 
 
 @router.post('/api/jobs/{job_id}/retry')
@@ -227,6 +255,14 @@ async def create_tool(request: Request):
             status = result.pop('status')
             if status == 200: scheduler.soon()
             return json_response(result, 201 if status == 200 else status)
+        if data.get('tool') == 'split':
+            # Tool 7: the Chinese text of a finished run cut into numbered parts. Nothing is uploaded.
+            split = video_settings(data.get('split'))
+            if split is False or not isinstance(data.get('source_job'), str): return json_response({'error': 'Choose a run with Chinese text'}, 400)
+            result = await threaded(command, {'action': 'create', 'tool': 'split', 'source_job': data['source_job'], 'split': split})
+            status = result.pop('status')
+            if status == 200: scheduler.soon()
+            return json_response(result, 201 if status == 200 else status)
         if data.get('tool') != 'transcription' or not isinstance(data.get('url'), str) or not valid_youtube_url(data['url']):
             return json_response({'error': 'Enter a valid YouTube link'}, 400)
         result = await threaded(command, {'action': 'create', 'tool': data['tool'], 'url': data['url']})
@@ -248,14 +284,40 @@ async def create_tool(request: Request):
     try:
         upload, refusal = await receive_upload(request, limit)
         if refusal: return json_response({'error': 'Upload too large'}, 413)
+        split = None
+        if tool == 'split':
+            try: split = {'max_chars': int(params.get('max_chars') or 3000), 'prompt': params.get('prompt') != '0', 'prompt_text': params.get('prompt_text') or ''}
+            except ValueError: return json_response({'error': 'Invalid part size'}, 400)
         result = await threaded(command, {'action': 'create', 'tool': tool, 'upload': str(upload), 'input_name': name, 'mime': request.headers.get('content-type', ''),
-                                          'voice': params.get('voice'), 'style': style, 'address': address, 'mode': mode})
+                                          'voice': params.get('voice'), 'style': style, 'address': address, 'mode': mode, 'split': split})
         status = result.pop('status')
         if status == 200: scheduler.soon()
         return json_response(result, 201 if status == 200 else status)
     except Exception: return json_response({'error': 'Cannot accept upload; check file and storage permissions.'}, 400)
     finally:
         if upload: upload.unlink(missing_ok=True)
+
+
+def zh_sources():
+    """Finished runs that hold Chinese text (workflows and tool 1), newest first: what tool 7 can cut into parts."""
+    ensure_history()
+    found = []
+    for scope in ('workflows', 'tools'):
+        result = worker_command('manage.py', {'action': 'history', 'scope': scope})
+        for job in result.get('jobs') or []:
+            if scope == 'tools' and job.get('tool_type') != 'transcription': continue
+            if not any(f.get('type') == 'ZH_JSONL' and f.get('status') == 'AVAILABLE' for f in job.get('files') or []): continue
+            # A Chinese character takes 3 bytes in the Markdown file: enough to tell how many parts a size gives, before the tool runs.
+            size = next((f.get('size') or 0 for f in job.get('files') or [] if f.get('type') == 'ZH_MD'), 0)
+            found.append({'job_id': job['id'], 'scope': scope, 'workflow_no': job.get('workflow_no'), 'name': job.get('name') or job.get('input_file') or '',
+                          'created_at': job.get('created_at') or '', 'chars': size // 3})
+    found.sort(key=lambda item: item['created_at'], reverse=True)
+    return found
+
+
+@router.get('/api/split/sources')
+async def split_sources():
+    return json_response({'sources': await threaded(zh_sources)}, no_store=True)
 
 
 # --- quit ----------------------------------------------------------------------------------------------------------------
