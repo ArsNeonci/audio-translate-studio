@@ -14,6 +14,9 @@ The voice is encoded to AAC 128 kbit/s. The result is an MP4 with the index at t
 Burning the Vietnamese subtitles into the picture is a separate step (BURN, `burn()` below, chosen by a tick) that runs after this merge, on
 the finished video: it cannot copy the picture, so it encodes the whole length of the voice (measured 16 to 36 times slower than the copy), with
 the .srt of video/subtitles.py drawn by libass. The plain video is always made first and kept; the subtitled one is a second file.
+
+Ultra fast (the tick under the workflow's video settings, `video.ultra`) trades a little quality per bit for speed: x264 ultrafast instead of veryfast. With the subtitles
+ticked as well it also folds BURN into this merge (no BURN step, one file: the subtitled video), see merge().
 """
 import json
 import math
@@ -37,6 +40,10 @@ BITRATES = {1080: {'high': 8000, 'medium': 5000, 'light': 3000},
 AUDIO_KBPS = 128
 # Measured on the development PC (4 threads, libx264 veryfast, 30 fps): wall seconds per second of voice when the subtitles are burned in.
 BURN_SECONDS_PER_SECOND = {1080: 0.3, 720: 0.13, 480: 0.07}
+# Ultra fast (the tick under a workflow's video settings): x264 ultrafast, and with the subtitles ticked one encoding instead of two (merge() below). Measured on the
+# development PC (8 threads, 1080p, 3 min of voice, logo + subtitles): 0.62 of the time of the same single encoding at veryfast (0.38 when a short clip is looped).
+ULTRA_PRESET, NORMAL_PRESET = 'ultrafast', 'veryfast'
+ULTRA_FACTOR = 0.6
 def subtitle_style(width, height):
     """libass sizes are on a 288-line frame that is stretched to the picture's height. 14 gives about 5% of the height on a landscape picture;
     on a portrait one the same text size is taken from the short side, a little smaller, so a line does not fill the narrow width."""
@@ -117,12 +124,14 @@ def validate(config, current_overlay=None):
     if resolution not in RESOLUTIONS: raise ValueError('Invalid video resolution')
     if quality not in QUALITIES: raise ValueError('Invalid video quality')
     burn = config.get('burn', False)
-    if not isinstance(burn, bool): raise ValueError('Invalid video settings')
+    ultra = config.get('ultra', False)
+    if not isinstance(burn, bool) or not isinstance(ultra, bool): raise ValueError('Invalid video settings')
     clips = [probe(p) for p in paths]
     allowed = resolutions(clips)
     if resolution not in allowed: raise ValueError('That resolution is higher than the videos')
     result = {'files': clips, 'resolution': resolution, 'quality': quality}
     if burn: result['burn'] = True   # the BURN step (subtitles drawn into a second video) follows this merge
+    if ultra: result['ultra'] = True   # Ultra fast: x264 ultrafast; with burn, this merge draws the subtitles itself and the run has no BURN step
     from audio_translate.video import overlays
     try: snapshot = overlays.resolve(config.get('overlay'), clips, current_overlay)
     except overlays.OverlayError as error: raise VideoError(error.code)
@@ -139,7 +148,7 @@ def resolutions(clips):
 def _even(value): return max(2, int(round(value / 2)) * 2)
 
 
-def plan(clips, resolution, quality, voice_ms, burn=False, overlay=False):
+def plan(clips, resolution, quality, voice_ms, burn=False, overlay=False, ultra=False):
     """How the merge will run and how big the file will be (estimate)."""
     first = clips[0]
     same = all(c['codec'] == first['codec'] and c['width'] == first['width'] and c['height'] == first['height'] and abs(c['fps'] - first['fps']) < 0.01
@@ -163,7 +172,7 @@ def plan(clips, resolution, quality, voice_ms, burn=False, overlay=False):
     return {'mode': 'copy' if copy else 'encode', 'width': width, 'height': height, 'fps': round(fps, 3), 'video_kbps': int(video_kbps),
             'clips_ms': clips_ms, 'voice_ms': voice_ms, 'repeats': math.ceil(voice_ms / clips_ms) if voice_ms and clips_ms else None,
             'size_bytes': size, 'bytes_per_hour': int((video_kbps + AUDIO_KBPS) * 1000 / 8 * 3600 * 1.02), 'burn': burn,
-            'seconds_per_voice_second': (BURN_SECONDS_PER_SECOND[row] if burn else None)}
+            'seconds_per_voice_second': (BURN_SECONDS_PER_SECOND[row] * (ULTRA_FACTOR if ultra else 1) if burn else None), 'ultra': bool(ultra)}
 
 
 def disk_free(path):
@@ -215,15 +224,17 @@ def published_file(job_id, kind):
     return path if path.is_file() and path.is_relative_to(directory.resolve()) else None
 
 
-def _filters(clips, width, height, fps, pictures=()):
+def _filters(clips, width, height, fps, pictures=(), subtitle=None):
     """The clips joined into one picture; `pictures` [(x, y, size, opacity)] are laid on it in order, the inputs following the clips."""
     parts = []
     for index, _ in enumerate(clips):
         parts.append(f'[{index}:v:0]scale={width}:{height}:force_original_aspect_ratio=decrease,'
                      f'pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={fps},format=yuv420p[v{index}]')
     joined = ''.join(f'[v{i}]' for i in range(len(clips)))
+    last = 'pre' if subtitle else 'out'     # `subtitle` (a libass filter) is drawn last, on the finished picture
     if not pictures:
-        parts.append(f'{joined}concat=n={len(clips)}:v=1:a=0[out]')
+        parts.append(f'{joined}concat=n={len(clips)}:v=1:a=0[{last}]')
+        if subtitle: parts.append(f'[pre]{subtitle}[out]')
         return ';'.join(parts)
     parts.append(f'{joined}concat=n={len(clips)}:v=1:a=0[cat]')
     previous = 'cat'
@@ -234,7 +245,8 @@ def _filters(clips, width, height, fps, pictures=()):
         parts.append(f'[{source}:v]scale={size}:-2,format=rgba{mix}[p{index}]')
         parts.append(f'[{previous}][p{index}]overlay={x}:{y}:format=auto[o{index}]')
         previous = f'o{index}'
-    parts.append(f'[{previous}]format=yuv420p[out]')
+    parts.append(f'[{previous}]format=yuv420p[{last}]')
+    if subtitle: parts.append(f'[pre]{subtitle}[out]')
     return ';'.join(parts)
 
 
@@ -268,12 +280,40 @@ def _ffmpeg(args, job_dir, total_ms, report, cwd=None, error_id='H104'):
         raise AppError(error_id, 'ffmpeg failed: ' + ' | '.join(errors[-3:]))
 
 
+def _x264(preset, kbps, fps, threads):
+    """The libx264 arguments of every picture encoding of the merge: the bit rate of the chosen quality, a key frame every 2 seconds."""
+    return ['-c:v', 'libx264', '-preset', preset, '-b:v', f'{kbps}k', '-maxrate', f'{int(kbps * 1.5)}k', '-bufsize', f'{kbps * 2}k',
+            '-g', str(int(round(fps * 2))), '-pix_fmt', 'yuv420p', '-threads', threads]
+
+
+def _subtitle_filter(subtitle_file, width, height):
+    # ffmpeg runs in the .srt's folder, so the filter names it without a drive letter (a colon would end the filter's argument).
+    return f"subtitles={subtitle_file.name}:force_style='{subtitle_style(width, height)}'"
+
+
+def _write_subtitles(job_dir, job):
+    """The .srt of this voice (its own run, or the run the tool points at), with the subtitle settings of this run, written for drawing."""
+    from audio_translate.video import subtitles
+    subtitle_file = Path(job_dir) / SUBTITLE_FILE
+    manifest, wav_dir, total = subtitles.voice_inputs(job_dir, job)
+    subtitles.write(subtitle_file, manifest, wav_dir, subtitles.validate(job.get('subtitle')), total)
+    return subtitle_file
+
+
 def merge(job_dir):
-    """The VIDEO stage of a run: the voice over the clips, picture copied whenever it can be (the BURN stage, if chosen, comes after)."""
+    """The VIDEO stage of a run: the voice over the clips, picture copied whenever it can be (the BURN stage, if chosen, comes after).
+
+    Ultra fast (job.video.ultra): every picture encoding here is x264 ultrafast. With the subtitles ticked as well, the run has no BURN stage: this stage
+    makes the subtitled video (video.vi.sub.mp4) by itself, encoding the whole length once instead of twice. When the clips are shorter than the voice, the
+    logo is drawn on the short clip once and ONE encoding then loops it, adds the voice and draws the subtitles (drawing the logo again on every loop is
+    slower); when they cover the voice, one ffmpeg command does the clips, the logo, the voice and the subtitles."""
     from audio_translate.core.storage import progress, read_json, update_job
-    job_dir = Path(job_dir)
+    job_dir = Path(job_dir).resolve()
     job = read_json(job_dir / 'job.json')
     config = job.get('video') or {}
+    ultra = bool(config.get('ultra'))
+    burning = ultra and bool(config.get('burn'))
+    preset = ULTRA_PRESET if ultra else NORMAL_PRESET
     voice = voice_path(job_dir, job)
     length = voice_ms(voice)
     if length <= 0: raise VideoError('VOICE_MISSING')
@@ -284,6 +324,8 @@ def merge(job_dir):
     if not clips: raise VideoError('VIDEO_MISSING')
     snapshot = config.get('overlay')
     estimate = plan(clips, config.get('resolution', 'keep'), config.get('quality', 'high'), length, overlay=bool(snapshot))
+    # The subtitled video is always encoded (never copied), at the bit rate of the chosen quality.
+    final = plan(clips, config.get('resolution', 'keep'), config.get('quality', 'high'), length, burn=True, overlay=bool(snapshot), ultra=True) if burning else estimate
     pictures, inputs_after = [], []
     if snapshot:
         from audio_translate.video import overlays
@@ -293,43 +335,63 @@ def merge(job_dir):
             pictures.append((x, y, size, opacity)); inputs_after += ['-i', str(found)]
     from audio_translate.workflow import results
     target_dir = results.destination(job['id'])
-    if disk_free(target_dir) < needed_bytes(estimate) or disk_free(job_dir) < needed_bytes(estimate):
-        raise OSError(28, f'No space left on device: the video needs about {needed_bytes(estimate) // 1024 ** 2} MB')
-    update_job(job_dir, video={**config, 'files': clips}, video_plan=estimate)
+    if disk_free(target_dir) < needed_bytes(final) or disk_free(job_dir) < needed_bytes(final):
+        raise OSError(28, f'No space left on device: the video needs about {needed_bytes(final) // 1024 ** 2} MB')
+    update_job(job_dir, video={**config, 'files': clips}, video_plan=final)
     share = 0.0
     def report(phase_from, phase_to):
         return lambda fraction: progress(job_dir, 'video', 'VIDEO_MERGING', round((phase_from + (phase_to - phase_from) * fraction) * 1000), 1000)
     progress(job_dir, 'video', 'VIDEO_MERGING', 0, 1000)
     threads = str(max(1, (os.cpu_count() or 2) // 2))          # leave half the processor to the rest of the PC and other runs
     base = job_dir / BASE
-    temp = job_dir / (OUTPUT + '.tmp')
+    out_name = BURN_OUTPUT if burning else OUTPUT
+    temp = job_dir / (out_name + '.tmp')
+    sound = ['-c:a', 'aac', '-b:a', f'{AUDIO_KBPS}k']
+    end = ['-t', f'{length / 1000:.3f}', '-movflags', '+faststart', '-f', 'mp4', str(temp)]
+    subtitle_file = None
     try:
-        if estimate['mode'] == 'copy' and len(clips) == 1:
-            source = clips[0]['path']
-        elif estimate['mode'] == 'copy':
-            # Identical clips: joined without re-encoding.
-            listing = job_dir / 'working' / 'video-list.txt.tmp'
-            listing.write_text(''.join("file '" + c['path'].replace("'", "'\\''") + "'\n" for c in clips), encoding='utf-8')
-            share = 0.1
-            _ffmpeg(['-f', 'concat', '-safe', '0', '-i', str(listing), '-map', '0:v:0', '-c:v', 'copy', '-an', '-f', 'mp4', str(base)],
-                    job_dir, estimate['clips_ms'], report(0, share))
-            source = str(base)
+        if burning: subtitle_file = _write_subtitles(job_dir, job)
+        if burning and estimate['mode'] == 'encode' and estimate['clips_ms'] >= length:
+            # The clips cover the whole voice, so there is nothing to loop: one encoding does everything. The voice is the input after the pictures.
+            graph = _filters(clips, estimate['width'], estimate['height'], estimate['fps'], pictures, _subtitle_filter(subtitle_file, estimate['width'], estimate['height']))
+            inputs = [arg for c in clips for arg in ('-i', c['path'])] + inputs_after + ['-i', str(voice)]
+            _ffmpeg([*inputs, '-filter_complex', graph, '-map', '[out]', '-map', f'{len(clips) + len(pictures)}:a:0', *_x264(preset, final['video_kbps'], final['fps'], threads), *sound, *end],
+                    job_dir, length, report(0, 1.0), cwd=str(subtitle_file.parent))
         else:
-            # Different clips, or another resolution or quality: encode them once, only as much as the voice needs.
-            share = min(0.8, max(0.3, estimate['clips_ms'] / (estimate['clips_ms'] + length / 8)))
-            kbps = estimate['video_kbps']
-            inputs = [arg for c in clips for arg in ('-i', c['path'])] + inputs_after
-            _ffmpeg([*inputs, '-filter_complex', _filters(clips, estimate['width'], estimate['height'], estimate['fps'], pictures), '-map', '[out]', '-an',
-                     '-t', f'{length / 1000:.3f}', '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', f'{kbps}k', '-maxrate', f'{int(kbps * 1.5)}k',
-                     '-bufsize', f'{kbps * 2}k', '-g', str(int(round(estimate['fps'] * 2))), '-pix_fmt', 'yuv420p', '-threads', threads, '-f', 'mp4', str(base)],
-                    job_dir, min(estimate['clips_ms'], length), report(0, share))
-            source = str(base)
-        _ffmpeg(['-stream_loop', '-1', '-i', source, '-i', str(voice), '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', f'{AUDIO_KBPS}k',
-                 '-t', f'{length / 1000:.3f}', '-movflags', '+faststart', '-f', 'mp4', str(temp)], job_dir, length, report(share, 1.0))
-        os.replace(temp, job_dir / OUTPUT)
+            if estimate['mode'] == 'copy' and len(clips) == 1:
+                source = clips[0]['path']
+                share = 0.02 if burning else 0.0
+            elif estimate['mode'] == 'copy':
+                # Identical clips: joined without re-encoding.
+                listing = job_dir / 'working' / 'video-list.txt.tmp'
+                listing.write_text(''.join("file '" + c['path'].replace("'", "'\\''") + "'\n" for c in clips), encoding='utf-8')
+                share = 0.1
+                _ffmpeg(['-f', 'concat', '-safe', '0', '-i', str(listing), '-map', '0:v:0', '-c:v', 'copy', '-an', '-f', 'mp4', str(base)],
+                        job_dir, estimate['clips_ms'], report(0, share))
+                source = str(base)
+            else:
+                # Different clips, or another resolution or quality: encode them once, only as much as the voice needs.
+                # With the subtitles ticked (ultra) the second encoding is the heavy one, so this one is a smaller part of the progress.
+                base_ms = min(estimate['clips_ms'], length)
+                share = base_ms / (base_ms + length) if burning else min(0.8, max(0.3, estimate['clips_ms'] / (estimate['clips_ms'] + length / 8)))
+                inputs = [arg for c in clips for arg in ('-i', c['path'])] + inputs_after
+                _ffmpeg([*inputs, '-filter_complex', _filters(clips, estimate['width'], estimate['height'], estimate['fps'], pictures), '-map', '[out]', '-an',
+                         '-t', f'{length / 1000:.3f}', *_x264(preset, estimate['video_kbps'], estimate['fps'], threads), '-f', 'mp4', str(base)],
+                        job_dir, base_ms, report(0, share))
+                source = str(base)
+            if burning:
+                # The one encoding of the whole length: the short picture looped, the voice, the subtitles.
+                _ffmpeg(['-stream_loop', '-1', '-i', source, '-i', str(voice), '-map', '0:v:0', '-map', '1:a:0',
+                         '-vf', _subtitle_filter(subtitle_file, final['width'], final['height']), *_x264(preset, final['video_kbps'], final['fps'], threads), *sound, *end],
+                        job_dir, length, report(share, 1.0), cwd=str(subtitle_file.parent))
+            else:
+                _ffmpeg(['-stream_loop', '-1', '-i', source, '-i', str(voice), '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', *sound, *end],
+                        job_dir, length, report(share, 1.0))
+        os.replace(temp, job_dir / out_name)
     finally:
         temp.unlink(missing_ok=True); base.unlink(missing_ok=True)
         (job_dir / 'working' / 'video-list.txt.tmp').unlink(missing_ok=True)
+        if subtitle_file: subtitle_file.unlink(missing_ok=True)
     progress(job_dir, 'video', 'VIDEO_MERGING', 1000, 1000)
 
 
@@ -343,17 +405,15 @@ def burn(job_dir):
     if not source: raise VideoError('VIDEO_RESULT_MISSING')
     clip = probe(source)
     length = clip['duration_ms']
-    estimate = plan([clip], 'keep', (job.get('video') or {}).get('quality', 'high'), length, True)
+    fast = bool(job.get('burn_ultra'))   # the Reprocess tick on this stage: the fastest encoder setting for this drawing
+    estimate = plan([clip], 'keep', (job.get('video') or {}).get('quality', 'high'), length, True, ultra=fast)
     from audio_translate.workflow import results
     target_dir = results.destination(job['id'])
     if disk_free(target_dir) < needed_bytes(estimate) or disk_free(job_dir) < needed_bytes(estimate):
         raise OSError(28, f'No space left on device: the subtitled video needs about {needed_bytes(estimate) // 1024 ** 2} MB')
     update_job(job_dir, burn_plan=estimate)
     # The .srt of this voice (its own run, or the run the tool points at), with the subtitle settings of this run.
-    from audio_translate.video import subtitles
-    subtitle_file = job_dir / SUBTITLE_FILE
-    manifest, wav_dir, total = subtitles.voice_inputs(job_dir, job)
-    subtitles.write(subtitle_file, manifest, wav_dir, subtitles.validate(job.get('subtitle')), total)
+    subtitle_file = _write_subtitles(job_dir, job)
     progress(job_dir, 'burn', 'VIDEO_BURNING', 0, 1000)
     threads = str(max(1, (os.cpu_count() or 2) // 2))
     kbps = estimate['video_kbps']
@@ -361,7 +421,7 @@ def burn(job_dir):
     try:
         # ffmpeg runs in the working folder, so the filter names the .srt without a drive letter (a colon would end the filter's argument).
         _ffmpeg(['-i', str(source), '-map', '0:v:0', '-map', '0:a:0', '-vf', f"subtitles={subtitle_file.name}:force_style='{subtitle_style(estimate['width'], estimate['height'])}'",
-                 '-c:v', 'libx264', '-preset', 'veryfast', '-b:v', f'{kbps}k', '-maxrate', f'{int(kbps * 1.5)}k', '-bufsize', f'{kbps * 2}k',
+                 '-c:v', 'libx264', '-preset', ULTRA_PRESET if fast else NORMAL_PRESET, '-b:v', f'{kbps}k', '-maxrate', f'{int(kbps * 1.5)}k', '-bufsize', f'{kbps * 2}k',
                  '-g', str(int(round(estimate['fps'] * 2))), '-pix_fmt', 'yuv420p', '-threads', threads, '-c:a', 'copy', '-movflags', '+faststart', '-f', 'mp4', str(temp)],
                 job_dir, length, lambda fraction: progress(job_dir, 'burn', 'VIDEO_BURNING', round(fraction * 1000), 1000), cwd=str(subtitle_file.parent), error_id='H105')
         os.replace(temp, job_dir / BURN_OUTPUT)
@@ -369,6 +429,84 @@ def burn(job_dir):
         temp.unlink(missing_ok=True)
         subtitle_file.unlink(missing_ok=True)
     progress(job_dir, 'burn', 'VIDEO_BURNING', 1000, 1000)
+
+
+RENDER_OUTPUT = 'video.render.mp4'
+RENDER_SUBTITLE = 'working/render.srt'
+MP4_AUDIO = {'aac', 'mp3', 'ac3', 'eac3', 'alac', 'mp2'}     # sound that can be copied into an MP4; anything else is encoded to AAC
+
+
+def audio_codec(path):
+    """The codec of the first sound stream of a file, or None when it has no sound."""
+    result = _run(['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', str(path)], timeout=60)
+    return (result.stdout or '').strip().splitlines()[0] if result.returncode == 0 and (result.stdout or '').strip() else None
+
+
+def render_plan(clip, resolution, quality, subtitle, overlay):
+    """What tools 8 (subtitles) and 9 (logo) will do to one video and what it costs: the whole picture is encoded once, so the time follows the
+    length of the video (the figures are the ones measured for the BURN step)."""
+    plan_ = plan([clip], resolution, quality, clip['duration_ms'], burn=bool(subtitle), overlay=bool(overlay))
+    row = min(BURN_SECONDS_PER_SECOND, key=lambda h: abs(h - min(plan_['width'], plan_['height'])))
+    plan_['seconds_per_second'] = BURN_SECONDS_PER_SECOND[row]
+    plan_['seconds'] = round(clip['duration_ms'] / 1000 * BURN_SECONDS_PER_SECOND[row])
+    return plan_
+
+
+def render(job_dir):
+    """The RENDER stage of tools 8 (the person's subtitle file drawn into the picture) and 9 (the logo template laid on it), in one encoding pass.
+    The video is read where it is; its own sound is kept (copied when an MP4 can hold it)."""
+    from audio_translate.core.storage import progress, read_json, update_job
+    job_dir = Path(job_dir)
+    job = read_json(job_dir / 'job.json')
+    config = job.get('render') or {}
+    clip = probe((config.get('video') or {}).get('path', ''))
+    length = clip['duration_ms']
+    subtitle = job_dir / RENDER_SUBTITLE
+    wants_subtitle = bool(config.get('subtitle'))
+    if wants_subtitle and not subtitle.is_file(): raise VideoError('SUBTITLE_FILE_MISSING')
+    snapshot = config.get('overlay')
+    if not wants_subtitle and not snapshot: raise VideoError('RENDER_NOTHING')
+    estimate = render_plan(clip, config.get('resolution', 'keep'), config.get('quality', 'high'), wants_subtitle, snapshot)
+    from audio_translate.workflow import results
+    target_dir = results.destination(job['id'])
+    if disk_free(target_dir) < needed_bytes(estimate) or disk_free(job_dir) < needed_bytes(estimate):
+        raise OSError(28, f'No space left on device: the video needs about {needed_bytes(estimate) // 1024 ** 2} MB')
+    update_job(job_dir, render={**config, 'video': clip}, video_plan=estimate)
+    width, height = estimate['width'], estimate['height']
+    pictures, inputs_after = [], []
+    if snapshot:
+        from audio_translate.video import overlays
+        for asset, x, y, size, opacity in overlays.pixel_items(snapshot, width, height):
+            found = overlays.picture(job_dir, asset)
+            if not found: raise VideoError('OVERLAY_MISSING')
+            pictures.append((x, y, size, opacity)); inputs_after += ['-i', str(found)]
+    parts = [f'[0:v:0]scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p[b0]']
+    previous = 'b0'
+    for index, (x, y, size, opacity) in enumerate(pictures):
+        mix = f',colorchannelmixer=aa={opacity:.3f}' if opacity < 1 else ''
+        parts.append(f'[{1 + index}:v]scale={size}:-2,format=rgba{mix}[p{index}]')
+        parts.append(f'[{previous}][p{index}]overlay={x}:{y}:format=auto[b{index + 1}]')
+        previous = f'b{index + 1}'
+    if wants_subtitle:
+        # ffmpeg runs in the working folder, so the filter names the .srt without a drive letter (a colon would end the filter's argument).
+        parts.append(f"[{previous}]subtitles={subtitle.name}:force_style='{subtitle_style(width, height)}'[out]")
+    else:
+        parts.append(f'[{previous}]null[out]')
+    codec = audio_codec(clip['path'])
+    sound = [] if codec is None else ['-map', '0:a:0', '-c:a', 'copy'] if codec in MP4_AUDIO else ['-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k']
+    threads = str(max(1, (os.cpu_count() or 2) // 2))
+    kbps = estimate['video_kbps']
+    temp = job_dir / (RENDER_OUTPUT + '.tmp')
+    progress(job_dir, 'render', 'VIDEO_RENDERING', 0, 1000)
+    try:
+        _ffmpeg(['-i', clip['path'], *inputs_after, '-filter_complex', ';'.join(parts), '-map', '[out]', *sound, '-c:v', 'libx264', '-preset', 'veryfast',
+                 '-b:v', f'{kbps}k', '-maxrate', f'{int(kbps * 1.5)}k', '-bufsize', f'{kbps * 2}k', '-g', str(int(round(estimate['fps'] * 2))), '-pix_fmt', 'yuv420p',
+                 '-threads', threads, '-movflags', '+faststart', '-f', 'mp4', str(temp)],
+                job_dir, length, lambda fraction: progress(job_dir, 'render', 'VIDEO_RENDERING', round(fraction * 1000), 1000), cwd=str(subtitle.parent), error_id='H108')
+        os.replace(temp, job_dir / RENDER_OUTPUT)
+    finally:
+        temp.unlink(missing_ok=True)
+    progress(job_dir, 'render', 'VIDEO_RENDERING', 1000, 1000)
 
 
 def main():

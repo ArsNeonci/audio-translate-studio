@@ -21,7 +21,7 @@ from audio_translate.api.runtime import spawn_security_core, worker_command
 from audio_translate.core.storage import DATA
 from audio_translate.workflow.results import RESULTS
 
-STEPS = ('DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS', 'SUBTITLE', 'VIDEO', 'BURN', 'SPLIT')
+STEPS = ('DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS', 'SUBTITLE', 'VIDEO', 'BURN', 'SPLIT', 'RENDER')
 TERMINAL = ('COMPLETED', 'FAILED', 'CANCELLED', 'PAUSED', 'PARTIAL', 'AWAITING_TRANSLATION', 'DELETING')
 # Working-folder files merged into a job when it is read; never written back into job.json.
 TELEMETRY = {'asr-runtime.json': 'asr_runtime', 'lane.json': 'lane', 'translation-runtime.json': 'translation_runtime',

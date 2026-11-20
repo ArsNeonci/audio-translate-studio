@@ -48,7 +48,9 @@ def main():
             page.on('console', lambda m: problems.append(f'console.{m.type}: {m.text[:160]}') if m.type in ('error', 'warning') else None)
             page.on('pageerror', lambda e: problems.append(f'pageerror: {str(e)[:160]}'))
             page.on('response', lambda r: problems.append(f'HTTP {r.status} {r.request.method} {r.url.replace(base, "")}') if r.status >= 400 else None)
-            settle = lambda: page.wait_for_load_state('networkidle')
+            def settle():
+                try: page.wait_for_load_state('networkidle', timeout=20000)
+                except Exception: page.wait_for_timeout(1500)   # a busy machine can keep the page's polling from ever looking idle; the next check waits for what it needs itself
 
             # Signing in
             response = page.goto(base + '/')
@@ -156,7 +158,21 @@ def main():
             page.route('**/api/video/estimate', lambda route, request: route.fulfill(status=200, content_type='application/json',
                        body=json.dumps({**estimate, 'files': [clips[i] for i in ([1, 0] if json.loads(request.post_data)['paths'][0].endswith('b.mov') else [0, 1])]})))
             page.goto(base + '/'); settle()
-            page.get_by_text('Video merge (optional)').click()
+            # Form kit: every feature is a card; nothing hides behind a toggle; three sizes of text; equal gaps; big controls
+            check('Studio: no feature hides behind a toggle', page.locator('.hero details').count() == 0 and page.locator('.fsec').count() >= 5)
+            gaps = page.evaluate('''() => { const cards = [...document.querySelectorAll(".fk-stack > .fsec")]; return cards.slice(1).map((card, index) => Math.round(card.getBoundingClientRect().top - cards[index].getBoundingClientRect().bottom)); }''')
+            check('Studio: the cards are the same distance apart, and far enough to tell them apart', len(set(gaps)) == 1 and gaps[0] >= 28, str(gaps))
+            sizes = page.evaluate('''() => ({ title: getComputedStyle(document.querySelector(".fsec-title")).fontSize, desc: getComputedStyle(document.querySelector(".fsec-desc")).fontSize,
+                label: getComputedStyle(document.querySelector(".fsec .voice-style-select > span")).fontSize, input: getComputedStyle(document.querySelector(".subtitle-options input")).fontSize,
+                small: [...document.querySelectorAll(".fsec small")].map(e => getComputedStyle(e).fontSize) })''')
+            check('Studio: three text sizes (name 20, setting 16, description 14)', sizes['title'] == '20px' and sizes['label'] == '16px' and sizes['input'] == '16px' and sizes['desc'] == '14px' and set(sizes['small']) <= {'14px'}, str(sizes))
+            boxes = page.evaluate('''() => [...document.querySelectorAll(".fsec input[type=number], .fsec select, .fsec .voice-style-option, .fsec .auto-tts-toggle")].map(e => Math.round(e.getBoundingClientRect().height))''')
+            check('Studio: every field, chip and checkbox card is at least 48 px tall', boxes and min(boxes) >= 48, str(boxes))
+            check('Studio: the checkbox is big', page.locator('.auto-tts-toggle input').first.evaluate('e => e.getBoundingClientRect().width') >= 26)
+            for theme in ('light', 'dark'):
+                page.evaluate(f'document.documentElement.dataset.theme = "{theme}"'); page.wait_for_timeout(600)   # buttons fade between the themes
+                page.screenshot(path=str(Path(tempfile.gettempdir()) / f'studio-{theme}.png'), full_page=True)
+            page.evaluate('document.documentElement.dataset.theme = "light"')
             page.get_by_role('button', name='Choose videos…').click()
             page.wait_for_selector('.video-list li >> nth=1', timeout=10000)
             check('Studio: the chosen videos are listed in order', page.locator('.video-name').all_inner_texts() == ['a.mp4', 'b.mov'], str(page.locator('.video-name').all_inner_texts()))
@@ -165,21 +181,46 @@ def main():
             page.wait_for_function('document.body.innerText.includes("per hour of voice")', timeout=10000)
             check('Studio: the size per hour of voice and the free disk are shown', 'free disk space 50.0 GB' in page.inner_text('body'))
             check('Studio: resolution, quality and the logo template can be chosen', page.locator('.video-options select').count() == 3)
-            tick = page.get_by_label('Put the subtitles into the video (optional, much slower)')
-            check('Studio: the subtitled-video tick is offered, off by default', tick.is_checked() is False)
-            tick.check()
+            tick = page.locator('.video-burn input[type=checkbox]').first   # the subtitles tick: the label text is free to change
+            check('Studio: the subtitled-video tick is offered and ticked by default (it can be unticked)', tick.is_checked() is True)
             page.wait_for_selector('.video-burn .alert', timeout=5000)
-            check('Studio: ticking shows the time warning, and the tick is the only confirmation', 're-encodes the whole video' in page.inner_text('.video-burn') and page.get_by_label('I understand it takes longer').count() == 0)
+            ultra = page.locator('.video-burn input[type=checkbox]').nth(1)   # the second tick of the block: Ultra fast (the first is the subtitles)
+            check('Studio: Ultra fast is ticked by default and can be turned off', ultra.is_checked() is True)
+            check('Studio: with Ultra fast the warning is the one-pass one, and the tick is the only confirmation', 'Ultra fast, one pass' in page.inner_text('.video-burn') or 'about 18 seconds per minute' in page.inner_text('.video-burn') or 'Ultra fast: about' in page.inner_text('.video-burn'), page.inner_text('.video-burn')[-200:])
+            ultra.uncheck()
+            check('Studio: without Ultra fast the warning is the second-step one', 're-encodes the whole video' in page.inner_text('.video-burn') and page.get_by_label('I understand it takes longer').count() == 0)
             check('Studio: the .srt settings stay in their own box with the defaults 84 / 1', page.locator('.subtitle-options input[type=number]').evaluate_all('els => els.map(e => e.value)') == ['84', '1'])
             page.evaluate('document.documentElement.dataset.theme = "dark"')
-            check('Studio: the video box follows the dark theme', page.evaluate('getComputedStyle(document.querySelector(".video-picker")).backgroundColor') != 'rgb(255, 255, 255)')
+            check('Studio: the video box follows the dark theme', page.evaluate('getComputedStyle(document.querySelector(".video-picker").closest(".fsec")).backgroundColor') != 'rgb(255, 255, 255)')
             page.evaluate('document.documentElement.dataset.theme = "light"')
+            # The last choices are remembered (how to work, not the clips): they come back after a reload, and an empty storage gives the defaults
+            page.locator('.subtitle-options input[type=number]').first.fill('60'); page.wait_for_timeout(300)
+            page.reload(); settle()
+            check('Studio: the clips are not remembered (no video is listed after a reload)', page.locator('.video-name').count() == 0)
+            check('Studio: the subtitle settings come back after a reload', page.locator('.subtitle-options input[type=number]').evaluate_all('els => els.map(e => e.value)')[0] == '60')
+            page.get_by_role('button', name='Choose videos…').click()
+            page.wait_for_selector('.video-burn input[type=checkbox]', timeout=10000)
+            ticks = page.locator('.video-burn input[type=checkbox]')
+            page.wait_for_function('document.querySelectorAll(".video-burn input[type=checkbox]")[1] && !document.querySelectorAll(".video-burn input[type=checkbox]")[1].checked', timeout=10000)
+            check('Studio: the last choices come back after a reload (Ultra fast stays unticked)', ticks.nth(0).is_checked() is True and ticks.nth(1).is_checked() is False)
+            page.evaluate('localStorage.removeItem("audio-studio-settings-v1")'); page.reload(); settle()
+            page.get_by_role('button', name='Choose videos…').click()
+            page.wait_for_selector('.video-burn input[type=checkbox]', timeout=10000)
+            check('Studio: without a memory the subtitle settings are the defaults again', page.locator('.subtitle-options input[type=number]').evaluate_all('els => els.map(e => e.value)') == ['84', '1'])
+            check('Studio: without a memory the defaults are back (subtitles and Ultra fast ticked)', page.locator('.video-burn input[type=checkbox]').nth(0).is_checked() is True and page.locator('.video-burn input[type=checkbox]').nth(1).is_checked() is True)
+            page.evaluate('localStorage.setItem("audio-studio-settings-v1", "{ not json")'); page.reload(); settle()
+            check('Studio: a damaged memory is ignored (the page still opens)', page.locator('.fsec').count() >= 5)
+            page.evaluate('localStorage.removeItem("audio-studio-settings-v1")')
             page.goto(base + '/tools'); settle()
             page.get_by_role('button', name='6. Vietnamese voice + Video → Video').click()
+            for theme in ('light', 'dark'):
+                page.evaluate(f'document.documentElement.dataset.theme = "{theme}"'); page.wait_for_timeout(600)   # buttons fade between the themes
+                page.screenshot(path=str(Path(tempfile.gettempdir()) / f'tools-{theme}.png'), full_page=True)
+            page.evaluate('document.documentElement.dataset.theme = "light"')
             check('Tools: tool 6 (video) asks for a voice made by the app', 'Voice (made by this app)' in page.inner_text('body'))
             page.get_by_role('button', name='5. Vietnamese voice → Subtitles (.srt)').click()
-            check('Tools: tool 5 (subtitles) asks for a voice and offers the cue settings', 'Subtitle settings' in page.inner_text('body') and page.get_by_role('button', name='Make subtitles').is_disabled())
-            check('Tools: the subtitles come before the video, following the flow', [t[:2] for t in page.locator('.tool-card').all_inner_texts()] == ['1.', '2.', '3.', '4.', '5.', '6.', '7.'] and page.locator('.tool-card').all_inner_texts()[4].startswith('5. Vietnamese voice → Subtitles') and page.locator('.tool-card').all_inner_texts()[5].startswith('6. Vietnamese voice + Video'))
+            check('Tools: tool 5 (subtitles) asks for a voice and offers the cue settings', page.locator('.subtitle-options input[type=number]').count() == 2 and page.get_by_role('button', name='Make subtitles').is_disabled())
+            check('Tools: the subtitles come before the video, following the flow', [t[:2] for t in page.locator('.tool-card').all_inner_texts()] == ['1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.'] and page.locator('.tool-card').all_inner_texts()[4].startswith('5. Vietnamese voice → Subtitles') and page.locator('.tool-card').all_inner_texts()[5].startswith('6. Vietnamese voice + Video'))
             # A single tool refuses a file of the wrong type or size when it is chosen, not when the work starts
             page.get_by_role('button', name='2. Chinese Text → Vietnamese Text').click()
             page.set_input_files('input[type=file]', {'name': 'a.png', 'mimeType': 'image/png', 'buffer': b'x'})
@@ -226,15 +267,42 @@ def main():
             check('Studio: translating by hand sits between the voice and the translation mode, off by default', toggle.is_checked() is False and order)
             toggle.check()
             check('Studio: translating by hand hides the translation mode', page.locator('.mode-select').count() == 0)
+            page.wait_for_selector('.manual-split-note', timeout=5000)
+            check('Studio: translating by hand says the Chinese text is cut with tool 7\'s part size', '3,000 characters' in page.inner_text('.manual-split-note'))
             toggle.uncheck()
+            check('Studio: Drama is the default forms of address', page.locator('.address-select [aria-checked=true]').inner_text() == 'Drama')
             page.goto(base + '/tools'); settle()
             page.get_by_role('button', name='7. Split text').click()
             check('Tools: tool 7 offers the part size and the instruction for the chatbot', 'Most characters per part' in page.inner_text('main') and 'Keep the number [n]' in page.locator('.split-prompt textarea').input_value())
-            page.fill('.split-options input[type=number]', '100')
-            check('Tools: a part size outside 500 to 20,000 is refused at once', 'not valid' in page.inner_text('.split-options') and page.get_by_role('button', name='Split the text').is_disabled())
+            page.fill('.split-tool input[type=number]', '100')
+            check('Tools: a part size outside 500 to 20,000 is refused at once', 'not valid' in page.inner_text('.split-tool') and page.get_by_role('button', name='Split the text').is_disabled())
             page.goto(f'{base}/reprocess?id={ids["completed"]}&step=MODERATION'); settle()
+            for theme in ('light', 'dark'):
+                page.evaluate(f'document.documentElement.dataset.theme = "{theme}"'); page.wait_for_timeout(600)   # buttons fade between the themes
+                page.screenshot(path=str(Path(tempfile.gettempdir()) / f'reprocess-{theme}.png'), full_page=True)
+            page.evaluate('document.documentElement.dataset.theme = "light"')
             check('Reprocess: from the Studio link the stage is chosen and the file loader is open',
-                  page.locator('.import-panel').count() == 1 and page.locator('.import-panel [aria-checked=true]').inner_text() == 'Load a file' and page.locator('.import-panel input[type=file]').count() == 1)
+                  page.locator('.import-panel').count() == 1 and page.locator('.import-panel [aria-checked=true]').inner_text() == 'Load files' and page.locator('.import-panel input[type=file]').count() == 1)
+            # Several translated parts: chosen at once, sorted by name, each with its own line of the report, and moved with ↑ ↓ (the draft answers are given by the test)
+            parts_report = {'mode': 'numbered', 'found': 2, 'rows': 4, 'blocked': [], 'preview': [], 'missing': [], 'duplicate': [], 'unknown': [], 'empty': [],
+                            'parts': [{'id': 1, 'name': 'part-001.md', 'first': 1, 'last': 1, 'count': 1, 'dropped_lines': 1, 'han': False, 'empty': False, 'repeats': [], 'repeats_of': []},
+                                      {'id': 2, 'name': 'part-002.md', 'first': 2, 'last': 2, 'count': 1, 'dropped_lines': 0, 'han': False, 'empty': False, 'repeats': [], 'repeats_of': []}]}
+            orders = []
+            page.route('**/import?*', lambda route, request: route.fulfill(status=200, content_type='application/json', body=json.dumps({'import_id': 'a' * 32, 'ready': True, 'report': {**parts_report, 'parts': parts_report['parts'][:1]}})))
+            page.route('**/import/*/parts?*', lambda route, request: route.fulfill(status=200, content_type='application/json', body=json.dumps({'import_id': 'a' * 32, 'part': {'id': 2, 'name': 'part-002.md', 'size': 5}})))
+            page.route('**/import/*/check', lambda route, request: (orders.append(json.loads(request.post_data)['order']), route.fulfill(status=200, content_type='application/json', body=json.dumps({'import_id': 'a' * 32, 'ready': True, 'report': parts_report})))[1])
+            page.set_input_files('.import-panel input[type=file]', [{'name': 'part-002.md', 'mimeType': 'text/markdown', 'buffer': '[2] Hai'.encode()}, {'name': 'part-001.md', 'mimeType': 'text/markdown', 'buffer': '[1] Một'.encode()}])
+            page.wait_for_function('document.querySelectorAll(".import-panel .video-list li").length === 2 && document.body.innerText.includes("paragraphs [2]–[2]")', timeout=10000)
+            check('Reprocess: several files are taken at once, sorted by name, and each shows what it holds', page.locator('.import-panel .video-name').all_inner_texts() == ['part-001.md', 'part-002.md']
+                  and 'Dropped 1 lines' in page.locator('.import-panel .video-list li').first.inner_text())
+            page.locator('.import-panel .video-list li').first.get_by_role('button', name='Move down').click()
+            page.wait_for_function('document.querySelector(".import-panel .video-name").innerText === "part-002.md"', timeout=5000)
+            page.wait_for_timeout(800)
+            check('Reprocess: moving a file sends the new order to be checked', orders[-1:] == [[2, 1]], str(orders))
+            page.evaluate('document.documentElement.dataset.theme = "dark"')
+            check('Reprocess: the file list follows the dark theme', page.evaluate('getComputedStyle(document.querySelector(".import-panel")).backgroundColor') != 'rgb(255, 255, 255)')
+            page.evaluate('document.documentElement.dataset.theme = "light"')
+            page.unroute('**/import?*'); page.unroute('**/import/*/parts?*'); page.unroute('**/import/*/check')
             page.get_by_role('radio', name='Use the existing result').click()
             check('Reprocess: the loader closes when the existing result is used', page.locator('.import-panel input[type=file]').count() == 0)
 
@@ -285,7 +353,6 @@ def main():
                 {'files': [clip], 'resolutions': ['keep'], 'resolution': 'keep', 'quality': 'high', 'free_bytes': 50_000_000_000, 'needed_bytes': None, 'enough': None,
                  'plan': {'mode': 'encode', 'repeats': None, 'size_bytes': None, 'bytes_per_hour': 3_700_000_000}})))
             page.goto(base + '/'); settle()
-            page.get_by_text('Video merge (optional)').click()
             page.get_by_role('button', name='Choose videos…').click()
             page.wait_for_selector('.video-list li', timeout=10000)
             check('Studio: the video box offers the default logo template, and links to the page that manages them', 'Default (Kênh A)' in page.locator('.video-options').inner_text() and page.get_by_role('link', name='Manage templates →').count() == 1)
@@ -305,6 +372,34 @@ def main():
             page.wait_for_function('document.body.innerText.includes("No images yet")', timeout=10000)
             check('Logos: the template and then the picture can be deleted', True)
             page.goto(base + '/'); settle()
+
+            # Tools 8 (subtitle file on a video) and 9 (logo on a video): one video, estimate, the file picked at once, both themes
+            shown_clip = {'path': 'C:\\clips\\a.mp4', 'name': 'a.mp4', 'duration_ms': 600000, 'width': 1920, 'height': 1080, 'fps': 30, 'codec': 'h264', 'size': 1000}
+            page.route('**/api/video/pick', lambda route, request: route.fulfill(status=200, content_type='application/json', body=json.dumps({'files': [shown_clip, {**shown_clip, 'name': 'b.mp4'}]})))
+            page.route('**/api/video/render-estimate', lambda route, request: route.fulfill(status=200, content_type='application/json', body=json.dumps(
+                {'files': [shown_clip], 'resolutions': ['keep', '1080', '720', '480'], 'resolution': 'keep', 'quality': 'high', 'free_bytes': 50_000_000_000, 'needed_bytes': 1_000_000_000, 'enough': True,
+                 'plan': {'mode': 'encode', 'seconds': 180, 'size_bytes': 600_000_000}})))
+            page.goto(base + '/tools'); settle()
+            page.get_by_role('button', name='8. Video + Subtitle file → Subtitled video').click()
+            check('Tools: tool 8 asks for one video and a subtitle file, and cannot run yet', page.get_by_role('button', name='Add the subtitles').is_disabled() and page.locator('.render-tool input[type=file]').count() == 1)
+            page.get_by_role('button', name='Choose videos…').click()
+            page.wait_for_selector('.render-clip', timeout=10000)
+            check('Tools: tool 8 uses the first video when several are chosen, and says so', 'a.mp4' in page.inner_text('.render-clip') and 'first one you chose' in page.inner_text('.render-tool'))
+            page.wait_for_function('document.body.innerText.includes("Takes about 3 min")', timeout=10000)
+            check('Tools: the time and size of the render are shown', 'about 3 min' in page.inner_text('.video-estimate') and '572 MB' in page.inner_text('.video-estimate'))
+            page.set_input_files('.render-tool input[type=file]', {'name': 'sub.txt', 'mimeType': 'text/plain', 'buffer': b'x'})
+            check('Tools: a file that is not .srt or .vtt is refused at once', 'cannot be used here' in page.inner_text('.render-tool') and page.get_by_role('button', name='Add the subtitles').is_disabled())
+            page.set_input_files('.render-tool input[type=file]', {'name': 'sub.srt', 'mimeType': 'application/x-subrip', 'buffer': b'1\n00:00:00,000 --> 00:00:01,000\nxin chao\n'})
+            check('Tools: with a video and a subtitle file the button is ready (a licence is the only thing missing)', 'sub.srt' in page.inner_text('.render-tool .file-picker'))
+            check('Tools: tool 8 offers no logo by default', page.locator('.render-tool select').first.input_value() == 'none')
+            page.evaluate('document.documentElement.dataset.theme = "dark"')
+            check('Tools: the render box follows the dark theme', page.evaluate('getComputedStyle(document.querySelector(".render-tool .fsec")).backgroundColor') != 'rgb(255, 255, 255)')
+            page.evaluate('document.documentElement.dataset.theme = "light"')
+            page.get_by_role('button', name='9. Video → Video with logo').click()
+            page.wait_for_function('document.body.innerText.includes("no logo template yet")', timeout=10000)
+            check('Tools: tool 9 needs a logo template and points to the page that makes them', 'no logo template yet' in page.inner_text('.render-tool') and page.get_by_role('link', name='Manage templates →').count() == 1)
+            check('Tools: tool 9 takes no subtitle file', page.locator('.render-tool input[type=file]').count() == 0)
+            page.unroute('**/api/video/pick'); page.unroute('**/api/video/render-estimate')
 
             # A perpetual licence and a lease that lapsed offline (the licence answers are given by the test)
             def licence(body):

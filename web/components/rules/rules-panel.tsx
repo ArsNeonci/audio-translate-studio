@@ -49,6 +49,14 @@ export default function RulesPanel({ moderating }: { moderating: boolean }) {
     <p className="section-description">{tr("Thay từ và cụm từ trong bản dịch trước khi tạo giọng đọc. Mỗi job giữ danh sách rules tại thời điểm bắt đầu moderation.")}</p>
     {(locked || moderating) && <p className="lock-notice" role="status">{tr("Replacement rules are locked while moderation is running.")}</p>}
     {error && <p className="alert" role="alert">{error}</p>}
+    {editing && <form className="rule-form" onSubmit={e => { e.preventDefault(); void mutate(editing === "new" ? "POST" : "PUT", editing === "new" ? undefined : editing); }}>
+      <fieldset disabled={disabled}><legend>{editing === "new" ? tr("Add Rule") : tr("Edit Rule")}</legend>
+        <label>{tr("Original")}<input required maxLength={1000} value={source} onChange={e => setSource(e.target.value)} /></label>
+        <label>{tr("Replacement")}<input maxLength={10000} value={replacement} onChange={e => setReplacement(e.target.value)} /></label>
+        <div className="form-actions"><button className="action-button" type="submit">{busy ? tr("Saving…") : tr("Save")}</button>
+          <button type="button" className="text-button" onClick={() => setEditing(null)}>{tr("Cancel")}</button></div>
+      </fieldset>
+    </form>}
     <div className="table-wrap"><table className="rules-table"><thead><tr><th>{tr("Original")}</th><th>{tr("Replacement")}</th><th>{tr("Actions")}</th></tr></thead><tbody>
       {rules.map(rule => <tr key={rule.id}><td>{rule.source}</td><td>{rule.replacement || <em>{tr("Để trống")}</em>}</td><td className="rule-actions">
         <div className="rule-action-group">
@@ -61,13 +69,5 @@ export default function RulesPanel({ moderating }: { moderating: boolean }) {
         </div>
       </td></tr>)}
     </tbody></table>{!rules.length && <div className="rules-empty">{loaded ? tr("Chưa có rule. Bản dịch sẽ được giữ nguyên, chỉ chuẩn hóa Unicode.") : tr("Đang tải rules…")}</div>}</div>
-    {editing && <form className="rule-form" onSubmit={e => { e.preventDefault(); void mutate(editing === "new" ? "POST" : "PUT", editing === "new" ? undefined : editing); }}>
-      <fieldset disabled={disabled}><legend>{editing === "new" ? tr("Add Rule") : tr("Edit Rule")}</legend>
-        <label>{tr("Original")}<input required maxLength={1000} value={source} onChange={e => setSource(e.target.value)} /></label>
-        <label>{tr("Replacement")}<input maxLength={10000} value={replacement} onChange={e => setReplacement(e.target.value)} /></label>
-        <div className="form-actions"><button className="action-button" type="submit">{busy ? tr("Saving…") : tr("Save")}</button>
-          <button type="button" className="text-button" onClick={() => setEditing(null)}>{tr("Cancel")}</button></div>
-      </fieldset>
-    </form>}
   </section>;
 }

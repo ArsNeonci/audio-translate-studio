@@ -15,7 +15,11 @@
 | [BUILD_RELEASE.md](BUILD_RELEASE.md) | Tự build bộ cài Plus bằng một lệnh (`packaging/build_edition.py`), quy tắc tăng phiên bản, lỗi thường gặp, bản phát hành cứng |
 | [TOOLS.md](TOOLS.md) | Bảy tool đơn lẻ: link YouTube, xưng hô, xóa khi đang chạy, chạy song song |
 | [MANUAL_TRANSLATION.md](MANUAL_TRANSLATION.md) | Dịch thủ công: workflow chờ bản dịch, Công cụ 7 tách văn bản, nạp tệp vào một bước ở Tạo lại, đoạn có mã số |
+| [REPROCESS_FORM.md](REPROCESS_FORM.md) | Trang Tạo lại: thẻ nào hiện ở từng "Bắt đầu lại từ", gửi gì lên API, các tùy chọn manual / drop_video / ultra của reprocess |
+| [RENDER_SPEED.md](RENDER_SPEED.md) | Đo tốc độ render logo/phụ đề (1 lượt hay 2 lượt, x264/AMF/NVENC) và tùy chọn Siêu nhanh (Ultra fast) của workflow/Tạo lại |
+| [RENDER_TOOLS.md](RENDER_TOOLS.md) | Công cụ 8 (gắn phụ đề từ tệp .srt/.vtt) và 9 (gắn logo) lên video của người dùng: một lượt ffmpeg, tiếng gốc giữ nguyên |
 | [OVERLAYS.md](OVERLAYS.md) | Logo và ảnh gắn lên video: thư viện ảnh, mẫu theo khung 16:9/9:16, mặc định, cách vẽ khi ghép video |
+| [FORM_DESIGN.md](FORM_DESIGN.md) | Bộ khung biểu mẫu Studio/Công cụ/Tạo lại: thẻ chức năng, ba cỡ chữ, khoảng cách đều, ô tick và ô nhập lớn, `forms.css` |
 | [WORKFLOW_LIFECYCLE.md](WORKFLOW_LIFECYCLE.md) | Vòng đời, tạm dừng và tiếp tục workflow |
 | [MULTI_WORKFLOW_SCHEDULER.md](MULTI_WORKFLOW_SCHEDULER.md) | Chạy nhiều workflow cùng lúc, chia luồng theo tài nguyên (đã triển khai) |
 | [CALIBRATION_REVIEW.md](CALIBRATION_REVIEW.md) | Đánh giá hiệu chuẩn ASR, Translation, TTS và đề xuất cải tiến |

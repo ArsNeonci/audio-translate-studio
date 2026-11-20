@@ -96,6 +96,10 @@ Video cũng được gửi kèm khi tạo việc:
 - `POST /api/tools`: `{tool: "video", voice_job, video}`.
 - `POST /api/jobs/<id>/reprocess`: `{step: "VIDEO", video}`.
 
+## Siêu nhanh (Ultra fast)
+
+Ô tick trong khung video của workflow và Tạo lại (không có ở công cụ đơn): x264 `ultrafast`, và khi có tick phụ đề thì bước `VIDEO` tự vẽ luôn phụ đề trong một lượt mã hóa (run không có bước `BURN`, chỉ ra một video có phụ đề). Cách làm, số đo và giới hạn: [RENDER_SPEED.md](RENDER_SPEED.md).
+
 ## Test
 
 - `worker/tests/test_video_merge.py`: dùng clip thật tạo bằng ffmpeg. Kiểm tra lặp, cắt, ghép không mã hóa lại, viền đen, độ phân giải, lỗi file và tách đường dẫn từ hộp thoại.

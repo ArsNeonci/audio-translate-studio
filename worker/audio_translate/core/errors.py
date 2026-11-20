@@ -12,13 +12,16 @@ STEPS = ['DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS']
 # Three optional steps follow Voice generation. SUBTITLE (the .srt of the voice) is part of every workflow created from 3.1.0 on (its settings are
 # stored in job['subtitle']), of tool 5, and of an older workflow once Reprocess asks for it. VIDEO (video merge) only exists for runs that have
 # videos (a workflow with videos chosen, or tool 6). BURN (the subtitles drawn into a second video) exists only when it was ticked
-# (job['video']['burn']) and always follows VIDEO. A run without the key never shows the step.
+# (job['video']['burn']) and always follows VIDEO. A run without the key never shows the step. With Ultra fast (job['video']['ultra']) the VIDEO step draws the
+# subtitles itself (one encoding instead of two), so such a run has no BURN step.
 SUBTITLE = 'SUBTITLE'
 VIDEO = 'VIDEO'
 BURN = 'BURN'
 # SPLIT is the one step of tool 7 (the Chinese text cut into numbered parts for a chatbot); no workflow has it.
 SPLIT = 'SPLIT'
-OPTIONAL = (SUBTITLE, VIDEO, BURN, SPLIT)
+# RENDER is the one step of tools 8 and 9 (a video of the person's with their subtitle file and/or a logo template drawn on it); no workflow has it.
+RENDER = 'RENDER'
+OPTIONAL = (SUBTITLE, VIDEO, BURN, SPLIT, RENDER)
 ALL_STEPS = [*STEPS, *OPTIONAL]
 
 
@@ -26,7 +29,9 @@ def effective_steps(job):
     """The steps this run goes through, in order."""
     if job.get('tool_steps'): return list(job['tool_steps'])
     video = job.get('video')
-    return [*STEPS, *(SUBTITLE,) * (job.get('subtitle') is not None), *(VIDEO,) * bool(video), *(BURN,) * bool(video and video.get('burn'))]
+    # A workflow translated by hand cuts its Chinese text into parts for the person's chatbot right after Transcription.
+    base = [*STEPS[:2], SPLIT, *STEPS[2:]] if job.get('manual_translation') else STEPS
+    return [*base, *(SUBTITLE,) * (job.get('subtitle') is not None), *(VIDEO,) * bool(video), *(BURN,) * bool(video and video.get('burn') and not video.get('ultra'))]
 # One entry per code the program knows: what happened, what to do (from error_ids.py; no paths, commands or settings names).
 from audio_translate.core import error_ids
 GUIDES = {code: (error_ids.ERRORS[eid][0], '', [error_ids.ERRORS[eid][1]], []) for code, eid in error_ids.CODE_IDS.items() if eid in error_ids.ERRORS}

@@ -3,6 +3,7 @@ import "@audio/ui/styles/base.css";
 import "./globals.css";
 import "@audio/ui/styles/dark-tokens.css";
 import "./dark.css";
+import "./forms.css";
 import { LanguageProvider } from "@/lib/i18n/language-context";
 import { ThemeProvider, themeBootstrap } from "@audio/ui";
 

@@ -267,3 +267,5 @@
 :root[data-theme="dark"] .overlay-item:focus-visible, :root[data-theme="dark"] .overlay-item.selected { box-shadow: 0 0 0 2px var(--dark-accent); }
 :root[data-theme="dark"] .overlay-handle { background: var(--dark-accent); border-color: var(--dark-surface); }
 :root[data-theme="dark"] .overlay-guide { background: #ff8fb3; }
+:root[data-theme="dark"] .import-drop { border-color: var(--dark-border); }
+:root[data-theme="dark"] .import-drop.dragging { border-color: var(--dark-accent); background: var(--dark-raised); }

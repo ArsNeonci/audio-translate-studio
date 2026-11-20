@@ -15,7 +15,7 @@ def reset(job_dir, step):
         'TRANSLATION':['transcript.vi.jsonl*','transcript.vi.md*','transcript.vi.partial.*','working/translation.done.json','working/translation-runtime.json','working/translation-server.log','working/translation-errors.json','working/translation-progress.json','working/translation-continue.json','working/genius-state.json'],
         'MODERATION':['transcript.vi.moderated.*','moderation-result*','working/moderation.done.json','working/replacement-rules.snapshot.json'],
         'SUBTITLE':['voice.vi.srt*'],
-        'VIDEO':['video.vi.mp4*','working/video-*','working/video-open.pending'],
+        'VIDEO':['video.vi.mp4*','video.vi.sub.mp4.tmp','working/video-*','working/burn-*','working/video-open.pending'],
         'BURN':['video.vi.sub.mp4*','working/burn-*'],
         'TTS':['voice/*','voice.vi.wav*','working/voice-checkpoints/*','working/tts.done.json','working/tts-runtime.json','working/tts-worker-*.log','working/tts-calibration/*'],
     }

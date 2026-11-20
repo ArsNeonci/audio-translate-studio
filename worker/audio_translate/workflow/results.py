@@ -29,6 +29,10 @@ FILES = {
  'VIDEO': [('VIDEO_MP4', 'video.vi.mp4', 'video/video.vi.mp4')],
  'BURN': [('VIDEO_SUB_MP4', 'video.vi.sub.mp4', 'video/video.vi.sub.mp4')],
 }
+# Tools 8 and 9 publish their one video as a VIDEO_MP4 too (so the history, the Open button and the auto-open work unchanged); it is kept apart from
+# FILES because a workflow's VIDEO step has a VIDEO_MP4 of its own at another path.
+RENDER_TOOLS = ('subtitle_burn', 'overlay')
+RENDER_FILES = [('VIDEO_MP4', 'video.render.mp4', 'video/video.mp4')]
 # Files too large to copy: moved from the workspace into the results instead (the workspace copy is not kept).
 MOVED = {'VIDEO_MP4', 'VIDEO_SUB_MP4'}
 
@@ -52,7 +56,11 @@ def split_files(job):
 
 
 def output_files(job):
-    files = {**FILES, **split_files(job)}
+    files = {'RENDER': RENDER_FILES} if job.get('tool_type') in RENDER_TOOLS else {**FILES, **split_files(job)}
+    video = job.get('video') or {}
+    if video.get('ultra') and video.get('burn') and not job.get('tool_type'):
+        # Ultra fast: the VIDEO step makes the subtitled video by itself (there is no BURN step and no plain video).
+        files = {**{step: items for step, items in files.items() if step != 'BURN'}, 'VIDEO': FILES['BURN']}
     ext = job.get('source_ext')
     if ext in AUDIO_EXTENSIONS and 'DOWNLOAD' in (job.get('tool_steps') or ['DOWNLOAD']):
         files = {'DOWNLOAD': [('SOURCE_AUDIO', 'source/audio' + ext, 'download/source-audio' + ext)], **files}
@@ -125,7 +133,7 @@ def metadata(job_dir):
     job_id = job.get('id', '')
     if not ID.fullmatch(job_id): return  # Unit fixtures are not public jobs.
     directory = destination(job_id)
-    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'stages', 'tool_steps', 'source_ext', 'video', 'video_plan', 'burn_plan', 'video_voice', 'subtitle', 'subtitle_voice', 'manual_translation', 'split']}
+    summary = {key: job.get(key) for key in ['id', 'workflow_no', 'storage_scope', 'tool_type', 'input_file', 'name', 'url', 'created_at', 'status', 'progress', 'duration_ms', 'workflow_version', 'started_at', 'completed_at', 'total_duration_ms', 'run_started_at', 'selected_voice_id', 'selected_voice_style', 'selected_address_profile', 'translation_mode', 'pause_reason', 'stages', 'tool_steps', 'source_ext', 'video', 'video_plan', 'burn_plan', 'burn_ultra', 'video_voice', 'subtitle', 'subtitle_voice', 'manual_translation', 'split', 'render']}
     # No adapter paths, raw errors, credentials or private worker metadata.
     summary['compute_device'] = job.get('compute_device')
     summary['steps'] = {key: {k:value.get(k) for k in ['state','retry_count','attempt','progress','started_at','completed_at','duration_ms','error','origin']}

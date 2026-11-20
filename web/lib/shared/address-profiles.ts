@@ -7,8 +7,9 @@ export const addressProfiles = [
 ] as const;
 export type AddressProfile = typeof addressProfiles[number]["id"];
 export const isAddressProfile = (value: unknown): value is AddressProfile => addressProfiles.some(item => item.id === value);
-// Each voice style suggests the profile of the same genre.
-export const addressForStyle = (style: string): AddressProfile => isAddressProfile(style) ? style : "neutral";
+// Each genre style suggests the profile of the same genre; any other style (Default) starts from Drama, the default forms of address.
+export const DEFAULT_ADDRESS: AddressProfile = "drama";
+export const addressForStyle = (style: string): AddressProfile => isAddressProfile(style) ? style : DEFAULT_ADDRESS;
 
 export const characterRoles = ["narrator", "family", "lover", "friend", "antagonist", "other"] as const;
 export const characterRanks = ["elder", "senior", "peer", "junior"] as const;

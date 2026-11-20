@@ -12,7 +12,7 @@ from audio_translate.core.errors import STEPS, effective_steps, initial_steps, r
 from audio_translate.core.control import now, cancel_run
 from audio_translate.workflow import results
 
-TOOLS = {'transcription': ['TRANSCRIPTION'], 'translation': ['TRANSLATION'], 'moderation': ['MODERATION'], 'tts': ['TTS'], 'video': ['VIDEO'], 'subtitle': ['SUBTITLE'], 'split': ['SPLIT']}   # tool 5 = subtitle (.srt), tool 6 = video merge (+ BURN when ticked)
+TOOLS = {'transcription': ['TRANSCRIPTION'], 'translation': ['TRANSLATION'], 'moderation': ['MODERATION'], 'tts': ['TTS'], 'video': ['VIDEO'], 'subtitle': ['SUBTITLE'], 'split': ['SPLIT'], 'subtitle_burn': ['RENDER'], 'overlay': ['RENDER']}   # tool 8 = a video + the person's subtitle file, tool 9 = a video + a logo template (both RENDER); tool 5 = subtitle (.srt), tool 6 = video merge (+ BURN when ticked)
 
 def filename(number, original):
     if type(number) is not int or number < 1 or Path(original).name != original: raise ValueError('Invalid artifact name')
@@ -181,14 +181,22 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
     if manual and (tool or mode): raise ValueError('Manual translation applies to workflows only')
     if (split is not None or source_job) and tool != 'split': raise ValueError('Unsupported tool')
     if tool == 'split':
-        from audio_translate.translation.manual_text import validate_split
+        from audio_translate.translation.manual_text import save_split, validate_split
         split = validate_split(split)
+        save_split(split)   # the next workflow translated by hand cuts its text the same way
         if upload and source_job: raise ValueError('Use either a finished run or a file, not both')
         if not upload and not source_job: raise ValueError('Choose a run with Chinese text')
     from audio_translate.video.merge import validate as validate_video
     # Videos are optional for a workflow and required for tool 5; every clip is checked now and again when the merge starts.
+    render_tool = tool in ('subtitle_burn', 'overlay')   # tools 8 and 9: one video of the person's, rendered with their subtitle file and/or a logo template
+    if render_tool:
+        if not isinstance(video, dict) or len(video.get('files') or []) != 1: raise ValueError('Choose one video')
+        # Tool 8 has no logo unless one is chosen; tool 9 starts from the default template of the video's orientation.
+        video = {**video, 'overlay': video.get('overlay', 'none' if tool == 'subtitle_burn' else 'default')}
+    if manual: video = None   # a workflow translated by hand ends at the Chinese text: videos and subtitles are chosen when the translation is loaded (Reprocess)
     video = validate_video(video) if video or tool == 'video' else None
-    if video and tool not in (None, 'video'): raise ValueError('Videos are merged by a workflow or tool 6 only')
+    if video and tool: video = {key: value for key, value in video.items() if key != 'ultra'}   # Ultra fast belongs to workflows and Reprocess, not to the single-purpose tools
+    if video and tool not in (None, 'video') and not render_tool: raise ValueError('Videos are merged by a workflow or tool 6 only')
     source = voice_source(voice_job) if tool in ('video', 'subtitle') else None
     from audio_translate.video.subtitles import validate as validate_subtitle
     # Subtitles (.srt) are part of every workflow and of tool 5; the two numbers can be set when it is created. Tool 6 keeps them only for the
@@ -213,9 +221,12 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
                'status':'QUEUED','progress':0,'duration_ms':0,'total_duration_ms':0,'created_at':now(),
                'error':None,'workflow_version':2,'selected_voice_id':chosen,'selected_voice_style':validate(style),'selected_address_profile':address,'steps':initial_steps({})}
         if mode: job['translation_mode'] = mode
-        if manual: job['manual_translation'] = True   # the run stops after the Chinese text and waits for the person's translation
-        if video: job['video'] = video
-        if video:
+        if manual:
+            # The run cuts the Chinese text into numbered parts (SPLIT, with tool 7's last settings), then stops and waits for the person's translation.
+            from audio_translate.translation.manual_text import saved_split
+            job.update(manual_translation=True, split=saved_split())
+        if video and not render_tool: job['video'] = video
+        if video and not render_tool:
             from audio_translate.video.overlays import materialize
             materialize(directory, video.get('overlay'))
         if subtitle is not None and tool is None: job['subtitle'] = subtitle
@@ -224,6 +235,19 @@ def create(url='', voice=None, tool=None, upload=None, input_name=None, mime=Non
             job.update(tool_type=tool, input_file=None, tool_steps=[*TOOLS[tool], *(['BURN'] if burning else [])], **{('video_voice' if tool == 'video' else 'subtitle_voice'): {'job_id': voice_job}},
                        name=f"#{source.get('workflow_no', 0):06d} · {source.get('name') or source.get('input_file') or ''}".strip(' ·'))
             if tool == 'subtitle' or burning: job['subtitle'] = subtitle
+        elif render_tool:
+            clip, snapshot, report = video['files'][0], video.get('overlay'), None
+            if tool == 'overlay' and not snapshot: raise ValueError('Choose a logo template')
+            if tool == 'subtitle_burn':
+                if not upload: raise ValueError('Choose a subtitle file')
+                from audio_translate.video import subtitle_import
+                try: report = subtitle_import.prepare(upload, input_name, directory/'working'/'render.srt', clip['duration_ms'])
+                except subtitle_import.SubtitleFileError as error: raise ValueError(str(error))
+            elif upload: raise ValueError('Tool 9 takes no file')
+            from audio_translate.video import overlays
+            overlays.materialize(directory, snapshot)
+            job.update(tool_type=tool, input_file=input_name, tool_steps=TOOLS[tool], name=clip['name'], upload_file=Path(upload).name if upload else None,
+                       render={'video': clip, 'resolution': video['resolution'], 'quality': video['quality'], 'overlay': snapshot, 'subtitle': tool == 'subtitle_burn', 'subtitle_report': report})
         elif tool == 'split' and source_job:
             found, source = split_source(source_job)
             shutil.copyfile(found, directory/'transcript.zh.jsonl')
@@ -294,7 +318,13 @@ def normalize_input(directory,job,upload,name,mime):
     from audio_translate.core.storage import count_rows
     if not count or count_rows(directory/target,key) != count: raise ValueError('Input contains no valid text')
 
-def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=None,subtitle=None,burn=None,import_id=None):
+def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=None,subtitle=None,burn=None,import_id=None,manual=None,drop_video=None,ultra=None):
+    """Run a workflow again from `step`. Besides the settings of the stages that run again: manual (translate by hand from here on, or not; Download to
+    Translation only), drop_video (the run loses its Video merge, whose files become STALE; not with the VIDEO or BURN stage), ultra (BURN only: that
+    subtitle drawing uses x264 ultrafast; the plain video is kept)."""
+    for flag in (manual, drop_video, ultra):
+        if flag is not None and not isinstance(flag, bool): raise ValueError('Invalid settings')
+    if drop_video and video is not None: raise ValueError('Invalid video settings')
     from audio_translate.core.license_gate import assert_allowed
     assert_allowed()
     if video is not None:
@@ -309,6 +339,27 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
     from audio_translate.core.sealing import opened
     with file_lock(directory/'working'/'worker.lock'), opened(directory):
         job = read_json(directory/'job.json')
+        if video is not None and job.get('tool_type'): video = {key: value for key, value in video.items() if key != 'ultra'}
+        if manual is not None:
+            if job.get('tool_type') or step not in ('DOWNLOAD', 'TRANSCRIPTION', 'TRANSLATION'): raise ValueError('Manual translation starts from Translation or earlier')
+            if manual:
+                # As when the workflow is created by hand: the Chinese text is cut into parts (tool 7's last settings), then the run waits for the translation.
+                from audio_translate.translation.manual_text import saved_split
+                job.update(manual_translation=True, split=saved_split(), selected_address_profile=None)
+                job.pop('translation_mode', None); mode = None; address = None
+                if step == 'TRANSLATION' and import_id is None: step = 'SPLIT'   # the parts are made first
+            else: job.pop('manual_translation', None)
+        if drop_video:
+            if job.get('tool_type') or step in ('VIDEO', 'BURN') or not job.get('video'): raise ValueError('Invalid video settings')
+            job.pop('video')
+        if ultra is not None:
+            if step != 'BURN' or job.get('tool_type') or (job.get('video') or {}).get('ultra'): raise ValueError('Invalid video settings')
+            job['burn_ultra'] = ultra
+        if step == 'BURN' and video is None and not job.get('tool_type') and (job.get('video') or {}).get('ultra'):
+            # Ultra fast has no BURN stage: the Video merge stage makes the subtitled video again.
+            step = 'VIDEO'
+            job['video'] = {**job['video'], 'burn': True}
+            if job.get('subtitle') is None: job['subtitle'] = subtitle if subtitle is not None else subtitles_defaults()
         imported = None
         if import_id is not None:
             from audio_translate.workflow import imports
@@ -351,7 +402,9 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
         elif inputs.get(step) and not (directory/inputs[step]).is_file(): raise ValueError('Predecessor output is missing; restart from an earlier stage')
         affected = effective[effective.index(step):]
         # The video merge does not depend on the .srt: a new .srt restarts only itself and, when ticked, the subtitled video.
-        if step == 'SUBTITLE': affected = [s for s in affected if s == 'SUBTITLE' or (s == 'BURN' and burn is True)]
+        # With Ultra fast the subtitled video is made by the VIDEO step, so that is what runs again.
+        if step == 'SUBTITLE': affected = [s for s in affected if s == 'SUBTITLE' or (s == 'BURN' and burn is True) or (s == 'VIDEO' and burn is True and job['video'].get('ultra'))]
+        if manual is True and 'SPLIT' in effective and 'SPLIT' not in affected: affected = ['SPLIT', *affected]   # new text, new parts
         if mode is not None:
             chosen_mode = translation_mode(mode, job.get('tool_type'))
             if chosen_mode != job.get('translation_mode') and 'TRANSLATION' not in affected:
@@ -384,13 +437,16 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
             from audio_translate.workflow import imports
             imports.apply(directory, step, imported[0], imported[1], job)
             source_step = imports.PREVIOUS[step]
+            # A loaded translation makes the run one translated by hand, which has a SPLIT step before Translation: it counts as skipped below.
+            effective = effective_steps(job)
+            for name, item in initial_steps(job).items(): steps.setdefault(name, item)
         else:
             source_step = None
-            if step == 'TRANSLATION' and job.get('manual_translation'): job.pop('manual_translation')   # translating again from here without a file: the machine translates
+            if step == 'TRANSLATION' and job.get('manual_translation') and manual is not True: job.pop('manual_translation')   # translating again from here without a file: the machine translates
         output = results.destination(job_id)
         manifest = read_json(output/'outputs.json')
         for item in manifest['files']:
-            if item['step'] in affected or item['step'] == source_step or (item['step'] == 'BURN' and 'VIDEO' in affected): item['status'] = 'STALE'
+            if item['step'] in affected or item['step'] == source_step or (item['step'] == 'BURN' and 'VIDEO' in affected) or (drop_video and item['step'] in ('VIDEO', 'BURN')): item['status'] = 'STALE'
         results.write_metadata(output,'outputs.json',manifest)
         if imported:
             from audio_translate.core.control import now
@@ -402,6 +458,8 @@ def reprocess(job_id,step,voice=None,style=None,address=None,mode=None,video=Non
                 elif steps[s]['state'] != 'COMPLETED':
                     steps[s].update(state='COMPLETED',progress=100,origin='skipped')
                     steps[s].pop('error',None)
+        if drop_video:
+            for s in ('VIDEO', 'BURN'): steps.pop(s, None)
         for s in affected:
             steps[s].update(state='PENDING',progress=0,started_at=None,completed_at=None,duration_ms=0,resume_duration_ms=0)
             steps[s].pop('error',None); steps[s].pop('origin',None)
@@ -573,7 +631,7 @@ def history(scope):
         try:
             live = read_json(results.workspace(job['id'])/'job.json')
             if live.get('id') == job['id'] and live.get('storage_scope') == scope:
-                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','selected_address_profile','translation_mode','pause_reason','retry_step','source_ext','video','video_plan', 'burn_plan','video_voice','subtitle','subtitle_voice','manual_translation','split']:
+                for key in ['name','status','progress','stages','started_at','completed_at','run_started_at','total_duration_ms','selected_voice_id','selected_voice_style','selected_address_profile','translation_mode','pause_reason','retry_step','source_ext','video','video_plan', 'burn_plan','burn_ultra','video_voice','subtitle','subtitle_voice','manual_translation','split','render']:
                     if key in live: job[key] = live[key]
                 job['steps'] = {step:{k:item.get(k) for k in ['state','progress','started_at','completed_at','duration_ms','attempt','retry_count','error']} for step,item in live.get('steps',{}).items()}
                 working=results.workspace(job['id'])/'working'
@@ -613,12 +671,20 @@ def main():
             if type(p.get('queue_only',False)) is not bool: raise ValueError('Invalid queue option')
             response=convert(p.get('url',''),p.get('voice'),p.get('queue_only',False),p.get('style'),p.get('address'),p.get('mode'),p.get('upload'),p.get('input_name'),p.get('mime',''),p.get('video'),p.get('subtitle'),p.get('manual'))
             print(json.dumps(response,ensure_ascii=False)); return
-        elif action=='reprocess': value={'job':reprocess(p['id'],p['step'],p.get('voice'),p.get('style'),p.get('address'),p.get('mode'),p.get('video'),p.get('subtitle'),p.get('burn'),p.get('import_id'))}
+        elif action=='reprocess': value={'job':reprocess(p['id'],p['step'],p.get('voice'),p.get('style'),p.get('address'),p.get('mode'),p.get('video'),p.get('subtitle'),p.get('burn'),p.get('import_id'),p.get('manual'),p.get('drop_video'),p.get('ultra'))}
         elif action=='import':
             from audio_translate.core.license_gate import assert_allowed
             from audio_translate.workflow import imports
             assert_allowed()
             value=imports.prepare(p['id'],p['step'],p.get('upload'),p.get('input_name'),p.get('mime',''))
+        elif action=='import_part':
+            from audio_translate.core.license_gate import assert_allowed
+            from audio_translate.workflow import imports
+            assert_allowed()
+            value=imports.add_part(p['id'],p.get('import_id'),p.get('upload'),p.get('input_name'))
+        elif action=='import_check':
+            from audio_translate.workflow import imports
+            value=imports.check(p['id'],p.get('import_id'),p.get('order'))
         elif action=='cancel': cancel(p['id']); value={}
         elif action=='pause': cancel(p['id'],mode='pause'); value={}
         elif action=='abort': value=abort(p['id'],p.get('confirm'),scope)

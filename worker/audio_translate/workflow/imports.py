@@ -22,6 +22,11 @@ PREVIOUS = {'TRANSCRIPTION': 'DOWNLOAD', 'TRANSLATION': 'TRANSCRIPTION', 'MODERA
 ID = re.compile(r'[0-9a-f]{32}')
 KEEP_HOURS = 24
 TEXT_EXTENSIONS = {'.txt', '.md', '.jsonl'}
+# The stages whose file may come in several parts (the translation of each part of tool 7, for example): the parts are kept in the draft, put in the
+# order the person gives (check), and read as one text. A translation numbered [n] lands on its paragraphs whatever the order.
+MULTI = ('MODERATION', 'TTS')
+MAX_FILES = 500
+MAX_TOTAL = 64 * 1024 ** 2
 
 
 def root(): return storage.DATA / 'imports'
@@ -129,24 +134,118 @@ def prepare(job_id, step, upload, name, mime=''):
                 report = {'mode': 'zh', 'found': len(paras), 'rows': len(rows), 'blocked': [], 'preview': [{'n': p['n'], 'zh': p['text'][:160], 'vi': ''} for p in paras[:3]],
                           'han_paragraphs': 0, 'missing': [], 'duplicate': [], 'unknown': [], 'empty': [], 'dropped_lines': 0, 'estimated_time': False, 'out_of_order': False, 'expected': None}
             else:
-                key = 'text_vi' if step == 'MODERATION' else 'text_vi_moderated'
-                rows, report = _vietnamese(content, extension, key, directory, job)
-                report.setdefault('blocked', [])
-                if rows is None:
-                    shutil.rmtree(folder, ignore_errors=True)
-                    return {'import_id': None, 'report': report}
-                name_jsonl, name_md = ('transcript.vi.jsonl', 'transcript.vi.md') if step == 'MODERATION' else ('transcript.vi.moderated.jsonl', 'transcript.vi.moderated.md')
-                text.write_rows(folder, name_jsonl, name_md, rows, key)
-                if step == 'TTS':
-                    # The Moderation result the published Moderation step expects: nothing was replaced, the person's text is used as it is.
-                    atomic_json(folder / 'moderation-result.json', {'total_segments': len(rows), 'modified_segments': 0, 'total_replacements': 0, 'imported': True, 'rules': {}})
-                report['rows'] = len(rows)
+                # A Vietnamese text: the first part of a draft that may get more (add_part), checked in order (check).
+                meta['parts'] = []
+                _store_part(folder, meta, upload, name)
+                atomic_json(folder / 'meta.json', meta)
+                return _check(folder, meta, [1], directory, job)
         atomic_json(folder / 'meta.json', meta)
         atomic_json(folder / 'report.json', report)
-        return {'import_id': import_id, 'report': report}
+        return {'import_id': import_id, 'report': report, 'ready': True}
     except BaseException:
         shutil.rmtree(folder, ignore_errors=True)
         raise
+
+
+def _store_part(folder, meta, upload, name):
+    """Keep one uploaded file in the draft as it came (it is read again at every check)."""
+    name = Path(name or '').name[:120]
+    extension = Path(name).suffix.lower()
+    if extension not in TEXT_EXTENSIONS: raise ValueError('Use UTF-8 TXT, MD or segment JSONL')
+    source = Path(upload)
+    if not source.is_file() or not source.stat().st_size: raise ValueError('Empty upload')
+    if len(meta['parts']) >= MAX_FILES: raise ValueError('Too many files; load at most 500')
+    if sum(p['size'] for p in meta['parts']) + source.stat().st_size > MAX_TOTAL: raise ValueError('Upload too large')
+    number = max((p['id'] for p in meta['parts']), default=0) + 1
+    (folder / 'parts').mkdir(exist_ok=True)
+    shutil.copyfile(source, folder / 'parts' / f'{number:03d}{extension}')
+    part = {'id': number, 'name': name, 'size': source.stat().st_size, 'file': f'{number:03d}{extension}'}
+    meta['parts'].append(part)
+    return part
+
+
+def _draft(job_id, import_id):
+    from audio_translate.workflow import results
+    if not isinstance(import_id, str) or not ID.fullmatch(import_id): raise ValueError('The loaded file is no longer available; load it again')
+    folder = root() / import_id
+    try: meta = read_json(folder / 'meta.json')
+    except (OSError, ValueError): raise ValueError('The loaded file is no longer available; load it again')
+    if meta.get('job_id') != job_id: raise ValueError('The loaded file belongs to another stage; load it again')
+    if meta.get('step') not in MULTI or 'parts' not in meta: raise ValueError('That stage takes one file')
+    directory = results.workspace(job_id)
+    return folder, meta, directory, read_json(directory / 'job.json')
+
+
+def add_part(job_id, import_id, upload, name):
+    """One more file for a draft. It is not checked here: the page asks for a check with the order it shows."""
+    folder, meta, _, _ = _draft(job_id, import_id)
+    part = _store_part(folder, meta, upload, name)
+    meta['ready'] = False
+    atomic_json(folder / 'meta.json', meta)
+    return {'import_id': import_id, 'part': {k: part[k] for k in ('id', 'name', 'size')}}
+
+
+def check(job_id, import_id, order):
+    """The draft's files read in `order` (part ids; one left out is not used): the report, and the stage files when they can be used."""
+    folder, meta, directory, job = _draft(job_id, import_id)
+    known = {p['id'] for p in meta['parts']}
+    if not isinstance(order, list) or not order or len(order) != len(set(order)) or any(type(i) is not int or i not in known for i in order):
+        raise ValueError('Invalid file order')
+    return _check(folder, meta, order, directory, job)
+
+
+def _part_report(part, content):
+    """What one file holds: its [n] numbers, the chatbot lines dropped, paragraphs with Chinese characters left."""
+    lines, dropped = text._clean(content.replace('\r\n', '\n').replace('\r', '\n').split('\n'))
+    numbers = [int(m.group(1) or m.group(2)) for m in (text.MARKER.match(line) for line in lines) if m]
+    has_text = any(line.strip() for line in lines)
+    return {'id': part['id'], 'name': part['name'], 'size': part['size'], 'numbers': numbers, 'first': min(numbers) if numbers else None, 'last': max(numbers) if numbers else None,
+            'count': len(numbers), 'dropped_lines': dropped, 'han': bool(text.HAN.search(content)), 'empty': not has_text}
+
+
+def _check(folder, meta, order, directory, job):
+    step = meta['step']
+    key = 'text_vi' if step == 'MODERATION' else 'text_vi_moderated'
+    by_id = {p['id']: p for p in meta['parts']}
+    parts = [by_id[i] for i in order]
+    extensions = {Path(p['name']).suffix.lower() for p in parts}
+    contents = [_read_text(folder / 'parts' / p['file'], p['name']) for p in parts]
+    per_part = [_part_report(p, c) for p, c in zip(parts, contents)]
+    # A number found in two files: usually the same part loaded twice. The first file in the order keeps it.
+    seen = {}
+    for item in per_part:
+        item['repeats'] = sorted({n for n in item['numbers'] if n in seen})
+        item['repeats_of'] = sorted({seen[n] for n in item['numbers'] if n in seen})
+        for n in item['numbers']: seen.setdefault(n, item['name'])
+        del item['numbers']
+    names = ('transcript.vi.jsonl', 'transcript.vi.md') if step == 'MODERATION' else ('transcript.vi.moderated.jsonl', 'transcript.vi.moderated.md')
+    for stale in (*names, 'moderation-result.json'): (folder / stale).unlink(missing_ok=True)
+    extra = []
+    if '.jsonl' in extensions and len(extensions) > 1:
+        rows, report = None, {'mode': 'mixed', 'blocked': []}
+        extra.append('Do not mix JSONL with text files')
+    elif '.jsonl' in extensions:
+        rows, report = _vietnamese('\n'.join(contents), '.jsonl', key, directory, job)
+        if any(b['start_ms'] < a['start_ms'] for a, b in zip(rows, rows[1:])): extra.append('The JSONL files are not in time order')
+    else:
+        numbered = [item for item in per_part if item['count']]
+        if numbered and any(not item['count'] and not item['empty'] for item in per_part): extra.append('Some files have no [n] numbers')
+        # A blank line between two files, so the last paragraph of one never runs into the first of the next.
+        rows, report = _vietnamese('\n\n'.join(contents), '.txt', key, directory, job)
+    report.setdefault('blocked', [])
+    report['blocked'] += extra
+    report['parts'] = per_part
+    ready = rows is not None and not report['blocked']
+    if ready:
+        text.write_rows(folder, names[0], names[1], rows, key)
+        if step == 'TTS':
+            # The Moderation result the published Moderation step expects: nothing was replaced, the person's text is used as it is.
+            atomic_json(folder / 'moderation-result.json', {'total_segments': len(rows), 'modified_segments': 0, 'total_replacements': 0, 'imported': True, 'rules': {}})
+        report['rows'] = len(rows)
+    meta.update(order=order, ready=ready)
+    atomic_json(folder / 'meta.json', meta)
+    atomic_json(folder / 'report.json', report)
+    return {'import_id': meta['id'], 'report': report, 'ready': ready}
 
 
 def load(import_id, job_id, step):
@@ -156,6 +255,7 @@ def load(import_id, job_id, step):
     try: meta = read_json(folder / 'meta.json')
     except (OSError, ValueError): raise ValueError('The loaded file is no longer available; load it again')
     if meta.get('job_id') != job_id or meta.get('step') != step: raise ValueError('The loaded file belongs to another stage; load it again')
+    if meta.get('ready') is False: raise ValueError('The loaded files cannot be used yet')
     return folder, meta
 
 

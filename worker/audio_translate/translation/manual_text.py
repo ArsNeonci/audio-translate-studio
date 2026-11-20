@@ -43,6 +43,18 @@ def validate_split(value):
     return {'max_chars': size, 'prompt': prompt, 'prompt_text': prompt_text.strip() or DEFAULT_PROMPT}
 
 
+def saved_split():
+    """The settings tool 7 was last run with (characters per part, the instruction): a workflow translated by hand cuts its Chinese text with them."""
+    from audio_translate.core import storage
+    try: return validate_split(read_json(storage.DATA / 'config' / 'split-settings.json'))
+    except (OSError, ValueError, TypeError): return validate_split(None)
+
+
+def save_split(settings):
+    from audio_translate.core import storage
+    atomic_json(storage.DATA / 'config' / 'split-settings.json', validate_split(settings))
+
+
 def paragraphs(rows):
     """[{n, start_ms, end_ms, text}] from the Chinese rows. Rows without real time (start == end: a plain text file) are already paragraphs."""
     result, group, last_end = [], None, -1

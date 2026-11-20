@@ -158,6 +158,42 @@ class ManualTranslationRouteTests(UploadTests):
         self.assertEqual(self.post('/api/tools?tool=split&name=zh.txt&max_chars=many', b'x', {'Content-Type': 'text/plain'}).status_code, 400)
 
 
+class RenderToolRouteTests(UploadTests):
+    """Tools 8 (subtitle file + one video) and 9 (one video + a logo template) over HTTP; the worker is faked."""
+    def test_tool_8_sends_the_file_and_the_video_settings(self):
+        self.reply = {'status': 200, 'job': {'id': 'tool-8'}}
+        video = '{"files": [{"path": "C:\\\\clips\\\\a.mp4"}], "resolution": "720", "quality": "high", "overlay": "none"}'
+        r = self.post('/api/tools?tool=subtitle_burn&name=sub.srt&video=' + requests.utils.quote(video), '1\n00:00:00,000 --> 00:00:01,000\nXin chào\n'.encode(), {'Content-Type': 'application/x-subrip'})
+        self.assertEqual(r.status_code, 201, r.text)
+        payload = self.calls[-1]['payload']
+        self.assertEqual((payload['tool'], payload['input_name'], payload['video']['resolution'], payload['video']['overlay']), ('subtitle_burn', 'sub.srt', '720', 'none'))
+        self.assertIn('Xin chào'.encode(), self.calls[-1]['bytes'])
+        self.assertEqual(self.leftovers(), [])
+
+    def test_tool_8_needs_its_video_and_refuses_a_big_or_malformed_request(self):
+        for query in ('?tool=subtitle_burn&name=sub.srt', '?tool=subtitle_burn&name=sub.srt&video=notjson', '?tool=subtitle_burn&name=a%2Fb.srt&video=%7B%7D'):
+            self.assertEqual(self.post('/api/tools' + query, b'x', {'Content-Type': 'text/plain'}).status_code, 400, query)
+        from http.client import HTTPConnection
+        connection = HTTPConnection('127.0.0.1', self.port, timeout=30)
+        connection.putrequest('POST', '/api/tools?tool=subtitle_burn&name=sub.srt&video=%7B%22files%22%3A%5B%5D%7D')
+        for key, value in (('X-Audio-Api-Token', TOKEN), ('Content-Type', 'text/plain'), ('Content-Length', str(5 * 1024 ** 2 + 1))): connection.putheader(key, value)
+        connection.endheaders()
+        self.assertEqual(connection.getresponse().status, 413)
+        connection.close()
+        self.assertEqual((self.calls, self.leftovers()), ([], []))
+
+    def test_tool_9_is_json_with_one_video(self):
+        self.reply = {'status': 200, 'job': {'id': 'tool-9'}}
+        body = '{"tool": "overlay", "video": {"files": [{"path": "C:\\\\clips\\\\a.mp4"}], "overlay": "abc123def456"}}'
+        self.assertEqual(self.post('/api/tools', body, {'Content-Type': 'application/json'}).status_code, 201)
+        payload = self.calls[-1]['payload']
+        self.assertEqual((payload['action'], payload['tool'], payload['video']['overlay']), ('create', 'overlay', 'abc123def456'))
+        self.assertEqual(self.post('/api/tools', '{"tool": "overlay"}', {'Content-Type': 'application/json'}).status_code, 400)
+        self.reply = {'status': 409, 'error': 'Choose a logo template'}
+        r = self.post('/api/tools', body, {'Content-Type': 'application/json'})
+        self.assertEqual((r.status_code, r.json()['error']), (409, 'Choose a logo template'))
+
+
 class YoutubeUrlTests(unittest.TestCase):
     def test_accepted_and_refused_links(self):
         from audio_translate.api.jobs import valid_youtube_url

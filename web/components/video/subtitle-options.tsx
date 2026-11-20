@@ -14,18 +14,17 @@ export const subtitleFromJob = (saved?: Partial<SubtitleSettings> | null): Subti
 export default function SubtitleOptions({ value, onChange, disabled }: { value: SubtitleSettings; onChange: (next: SubtitleSettings) => void; disabled?: boolean }) {
   const { tr } = useLanguage();
   const ok = subtitleValid(value);
-  return <fieldset className="subtitle-options" disabled={disabled}>
-    <legend>{tr("subtitleTitle")}</legend>
+  return <div className="subtitle-options" role="group" aria-label={tr("subtitleTitle")}>
     <label>{tr("subtitleMaxChars")}
-      <input type="number" inputMode="numeric" min={subtitleLimits.max_chars[0]} max={subtitleLimits.max_chars[1]} step={1} value={value.max_chars}
+      <input type="number" inputMode="numeric" min={subtitleLimits.max_chars[0]} max={subtitleLimits.max_chars[1]} step={1} value={value.max_chars} disabled={disabled}
         onChange={e => onChange({ ...value, max_chars: Number(e.target.value) })} />
     </label>
     <label>{tr("subtitleMinSeconds")}
-      <input type="number" inputMode="decimal" min={subtitleLimits.min_seconds[0]} max={subtitleLimits.min_seconds[1]} step={0.5} value={value.min_seconds}
+      <input type="number" inputMode="decimal" min={subtitleLimits.min_seconds[0]} max={subtitleLimits.min_seconds[1]} step={0.5} value={value.min_seconds} disabled={disabled}
         onChange={e => onChange({ ...value, min_seconds: Number(e.target.value) })} />
     </label>
-    <button type="button" className="text-button" onClick={() => onChange(defaultSubtitle())} disabled={value.max_chars === 84 && value.min_seconds === 1}>{tr("subtitleReset")}</button>
+    <button type="button" className="text-button" onClick={() => onChange(defaultSubtitle())} disabled={disabled || (value.max_chars === 84 && value.min_seconds === 1)}>{tr("subtitleReset")}</button>
     <small>{tr("subtitleHelp")}</small>
     {!ok && <small role="alert" className="video-bad">{tr("subtitleInvalid")}</small>}
-  </fieldset>;
+  </div>;
 }

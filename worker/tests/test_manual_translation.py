@@ -136,6 +136,7 @@ class ManualWorkflowTests(unittest.TestCase):
             elif stage == 'subtitle':
                 from audio_translate.video.subtitles import run as build
                 build(d)
+            elif stage == 'split': mt.run_split(d)
             else: raise AssertionError('Unexpected stage ' + stage)
             return Mock(returncode=0)
         return execute
@@ -152,6 +153,24 @@ class ManualWorkflowTests(unittest.TestCase):
     def published(self, d):
         return {f['type']: f for f in read_json(results.destination(d.name) / 'outputs.json')['files']}
 
+    def test_reprocess_switches_a_workflow_to_hand_translation_and_back(self):
+        d = self.workflow(); self.transcribed(d)
+        code, seen = self.go(d)
+        self.assertEqual((code, read_json(d / 'job.json')['status']), (0, 'COMPLETED'))
+        manage.reprocess(d.name, 'TRANSLATION', manual=True, address='drama')            # by hand: the parts are cut, then the run waits
+        saved = read_json(d / 'job.json')
+        self.assertEqual((saved['manual_translation'], saved['selected_address_profile']), (True, None))
+        code, seen = self.go(d)
+        saved = read_json(d / 'job.json')
+        self.assertEqual((code, seen, saved['status']), (0, ['split'], 'COMPLETED'))
+        self.assertEqual(self.published(d)['SPLIT_001']['status'], 'AVAILABLE')
+        manage.reprocess(d.name, 'TRANSLATION', manual=False)                               # the machine translates again
+        self.assertNotIn('manual_translation', read_json(d / 'job.json'))
+        code, seen = self.go(d)
+        self.assertEqual((code, seen[0], read_json(d / 'job.json')['status']), (0, 'translation', 'COMPLETED'))
+        for bad in ({'step': 'MODERATION', 'manual': True}, {'step': 'TTS', 'manual': False}, {'step': 'TRANSLATION', 'manual': 'yes'}):
+            with self.assertRaises(ValueError, msg=repr(bad)): manage.reprocess(d.name, bad['step'], manual=bad['manual'])
+
     # --- the workflow that waits ----------------------------------------------------------------------------------------
     def test_a_manual_workflow_stops_after_the_chinese_text_and_waits(self):
         d = self.workflow(manual=True)
@@ -160,9 +179,10 @@ class ManualWorkflowTests(unittest.TestCase):
         self.transcribed(d)
         code, seen = self.go(d)
         saved = read_json(d / 'job.json')
-        self.assertEqual((code, seen, saved['status']), (0, [], 'AWAITING_TRANSLATION'))
-        self.assertEqual(saved['steps']['TRANSLATION']['state'], 'PENDING')
-        self.assertTrue(self.published(d)['ZH_MD']['status'] == 'AVAILABLE')
+        self.assertEqual((code, seen, saved['status'], saved['progress']), (0, ['split'], 'COMPLETED', 100))      # it ENDS here, like tool 7
+        self.assertEqual((saved['steps']['SPLIT']['state'], saved['steps']['TRANSLATION']['state']), ('COMPLETED', 'PENDING'))
+        files = self.published(d)
+        self.assertTrue(files['ZH_MD']['status'] == 'AVAILABLE' and files['SPLIT_001']['status'] == 'AVAILABLE' and files['SPLIT_ZIP']['step'] == 'SPLIT')
         self.assertIsNotNone(saved['completed_at'])
 
     def test_manual_translation_is_for_workflows_with_no_translation_mode(self):
@@ -188,12 +208,87 @@ class ManualWorkflowTests(unittest.TestCase):
         self.assertTrue(files['VOICE_WAV']['status'] == 'AVAILABLE' and files['SUBTITLE_SRT']['status'] == 'AVAILABLE')
         self.assertTrue(saved['manual_translation'] and saved['selected_address_profile'] is None)
 
-    def test_a_translation_with_a_missing_number_is_refused_and_nothing_is_parked(self):
+    def test_a_manual_workflow_takes_no_video_and_ends_like_tool_7_then_gains_one_when_the_translation_is_loaded(self):
+        from audio_translate.workflow.results import output_files
+        d = self.workflow(manual=True, video={'files': [{'path': str(self.data / 'x.mp4')}]})       # a video sent by mistake is ignored, not probed
+        job = read_json(d / 'job.json')
+        self.assertNotIn('video', job); self.assertEqual(manage.effective_steps(job)[-2:], ['TTS', 'SUBTITLE'])
+        self.transcribed(d)
+        code, seen = self.go(d)
+        saved = read_json(d / 'job.json')
+        self.assertEqual((code, seen, saved['status']), (0, ['split'], 'COMPLETED'))
+        files = self.published(d)                                         # the same products as tool 7: one zip and the numbered parts
+        self.assertEqual((files['SPLIT_ZIP']['status'], files['SPLIT_001']['status'], files['SPLIT_ZIP']['path'].endswith('parts.zip')), ('AVAILABLE', 'AVAILABLE', True))
+        self.assertNotIn('VIDEO_MP4', files)
+        prepared = self.load(d, 'MODERATION', '[1] Xin chào. Tạm biệt.\n[2] Đoạn mới. Hết.\n')       # run ended (not waiting): the load is accepted all the same
+        manage.reprocess(d.name, 'MODERATION', import_id=prepared['import_id'])
+        self.assertEqual(self.go(d)[1], ['moderation', 'tts', 'subtitle'])
+        self.assertEqual(read_json(d / 'job.json')['status'], 'COMPLETED')
+
+    def test_a_translation_with_a_missing_number_is_refused_until_the_missing_part_comes(self):
         d = self.workflow(manual=True); self.transcribed(d); self.go(d)
         prepared = self.load(d, 'MODERATION', '[1] Xin chào.\n')
-        self.assertIsNone(prepared['import_id'])
+        self.assertFalse(prepared['ready'])
         self.assertEqual(prepared['report']['blocked'], ['Some paragraphs have no translation'])
-        self.assertFalse(any((self.data / 'imports').iterdir()) if (self.data / 'imports').exists() else False)
+        with self.assertRaisesRegex(ValueError, 'cannot be used yet'): manage.reprocess(d.name, 'MODERATION', import_id=prepared['import_id'])
+        # The missing part arrives as a second file: the draft becomes usable.
+        upload, name = self.text_file('[2] Đoạn mới.\n', 'part-002.md')
+        imports.add_part(d.name, prepared['import_id'], upload, name)
+        checked = imports.check(d.name, prepared['import_id'], [1, 2])
+        self.assertTrue(checked['ready'])
+        self.assertEqual([(p['name'], p['first'], p['last']) for p in checked['report']['parts']], [('vi.md', 1, 1), ('part-002.md', 2, 2)])
+        manage.reprocess(d.name, 'MODERATION', import_id=prepared['import_id'])
+        self.assertEqual(self.go(d), (0, ['moderation', 'tts', 'subtitle']))
+
+    def test_numbered_parts_land_on_their_paragraphs_in_any_order(self):
+        d = self.workflow(manual=True); self.transcribed(d); self.go(d)
+        first = self.load(d, 'MODERATION', '[2] Đoạn mới.\n', 'part-002.md')
+        imports.add_part(d.name, first['import_id'], *self.text_file('Đây là bản dịch:\n[1] Xin chào.\n', 'part-001.md'))
+        for order in ([1, 2], [2, 1]):
+            checked = imports.check(d.name, first['import_id'], order)
+            self.assertTrue(checked['ready'], checked['report'])
+            rows = (imports.root() / first['import_id'] / 'transcript.vi.jsonl').read_text(encoding='utf-8')
+            self.assertLess(rows.index('Xin chào'), rows.index('Đoạn mới'))
+        self.assertEqual({p['name']: p['dropped_lines'] for p in checked['report']['parts']}, {'part-001.md': 1, 'part-002.md': 0})
+
+    def test_text_without_numbers_follows_the_order_of_the_files(self):
+        d = self.workflow(); self.transcribed(d); update_job(d, status='PAUSED')
+        first = self.load(d, 'MODERATION', 'Đoạn hai.\n', 'b.txt')
+        imports.add_part(d.name, first['import_id'], *self.text_file('Đoạn một.\n', 'a.txt'))
+        checked = imports.check(d.name, first['import_id'], [2, 1])
+        rows = (imports.root() / first['import_id'] / 'transcript.vi.jsonl').read_text(encoding='utf-8')
+        self.assertTrue(checked['ready'] and rows.index('Đoạn một') < rows.index('Đoạn hai'))
+        checked = imports.check(d.name, first['import_id'], [1, 2])
+        rows = (imports.root() / first['import_id'] / 'transcript.vi.jsonl').read_text(encoding='utf-8')
+        self.assertLess(rows.index('Đoạn hai'), rows.index('Đoạn một'))
+
+    def test_a_part_loaded_twice_mixed_files_and_bad_orders_are_reported(self):
+        d = self.workflow(manual=True); self.transcribed(d); self.go(d)
+        first = self.load(d, 'MODERATION', '[1] Xin chào.\n[2] Đoạn mới.\n', 'part-001.md')
+        imports.add_part(d.name, first['import_id'], *self.text_file('[2] Lặp lại.\n', 'part-001 (1).md'))
+        checked = imports.check(d.name, first['import_id'], [1, 2])
+        self.assertEqual((checked['report']['parts'][1]['repeats'], checked['report']['parts'][1]['repeats_of']), ([2], ['part-001.md']))
+        imports.add_part(d.name, first['import_id'], *self.text_file('Không có mã.\n', 'c.txt'))
+        checked = imports.check(d.name, first['import_id'], [1, 3])
+        self.assertIn('Some files have no [n] numbers', checked['report']['blocked'])
+        self.assertFalse(checked['ready'])
+        for order in ([], [1, 1], [9], ['1']):
+            with self.assertRaisesRegex(ValueError, 'Invalid file order'): imports.check(d.name, first['import_id'], order)
+        imports.add_part(d.name, first['import_id'], *self.text_file('{"start_ms": 0, "end_ms": 1, "text_vi": "x"}\n', 'd.jsonl'))
+        self.assertIn('Do not mix JSONL with text files', imports.check(d.name, first['import_id'], [1, 4])['report']['blocked'])
+
+    def test_only_the_text_stages_take_several_files(self):
+        d = self.workflow(); self.transcribed(d); update_job(d, status='PAUSED')
+        prepared = self.load(d, 'TRANSLATION', '你好。\n', 'zh.txt')
+        with self.assertRaisesRegex(ValueError, 'takes one file'): imports.add_part(d.name, prepared['import_id'], *self.text_file('再见。\n', 'zh2.txt'))
+
+    def test_a_manual_workflow_cuts_its_text_with_tool_7s_last_settings(self):
+        d = self.workflow(manual=True); self.transcribed(d); self.go(d)
+        manage.create(tool='split', source_job=d.name, split={'max_chars': 700, 'prompt': False, 'prompt_text': ''})
+        self.assertEqual(mt.saved_split()['max_chars'], 700)
+        other = self.workflow(manual=True)
+        self.assertEqual((read_json(other / 'job.json')['split']['max_chars'], read_json(other / 'job.json')['split']['prompt']), (700, False))
+        self.assertEqual(read_json(self.workflow() / 'job.json').get('split'), None)        # a machine-translated workflow does not cut
 
     def test_a_loaded_file_belongs_to_one_run_and_one_stage_and_is_used_once(self):
         d = self.workflow(manual=True); self.transcribed(d); self.go(d)

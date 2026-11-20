@@ -192,8 +192,13 @@ def run_cases(c, ids):
     c.call('video estimate: a moved clip', 'POST', '/api/video/estimate', json_body={'paths': [missing], 'resolution': 'keep', 'quality': 'high'},
            expect=lambda r: assert_eq(r.json()['error'], 'VIDEO_MISSING'))
     c.call('video estimate: burn must be a boolean', 'POST', '/api/video/estimate', json_body={'paths': [missing], 'burn': 'yes'}, status=400)
+    c.call('video estimate: ultra must be a boolean', 'POST', '/api/video/estimate', json_body={'paths': [missing], 'ultra': 'yes'}, status=400)
     c.call('video estimate: unknown resolution', 'POST', '/api/video/estimate', json_body={'paths': [missing], 'resolution': '4k'}, status=400)
     c.call('video estimate from another site', 'POST', '/api/video/estimate', json_body={'paths': [missing]}, headers=EVIL, status=403)
+    c.call('render estimate: a moved video', 'POST', '/api/video/render-estimate', json_body={'path': missing, 'subtitle': True}, expect=lambda r: assert_eq(r.json()['error'], 'VIDEO_MISSING'))
+    c.call('render estimate: subtitle must be a boolean', 'POST', '/api/video/render-estimate', json_body={'path': missing, 'subtitle': 'yes'}, status=400)
+    c.call('render estimate: unknown resolution', 'POST', '/api/video/render-estimate', json_body={'path': missing, 'resolution': '4k'}, status=400)
+    c.call('render estimate from another site', 'POST', '/api/video/render-estimate', json_body={'path': missing}, headers=EVIL, status=403)
     c.call('voices for tool 6', 'GET', '/api/video/voices', expect=lambda r: assert_eq(isinstance(r.json()['voices'], list), True))
     c.call('open a video that does not exist', 'POST', '/api/video/open', json_body={'id': C, 'scope': 'workflows', 'target': 'video'}, status=404)
     c.call('open: bad target', 'POST', '/api/video/open', json_body={'id': C, 'target': 'shell'}, status=400)
@@ -270,6 +275,9 @@ def run_cases(c, ids):
 
     # Manual translation: Chinese runs for tool 7, and the file loaded into a run
     c.call('runs with Chinese text for tool 7', 'GET', '/api/split/sources', expect=lambda r: assert_eq(isinstance(r.json()['sources'], list), True))
+    c.call('tool 7 settings', 'GET', '/api/split/settings', expect=lambda r: assert_eq(r.json()['max_chars'], 3000))
+    c.call('another file for a draft needs a licence', 'POST', '/api/jobs/{id}/import/{importId}/parts', {**v, 'importId': 'a' * 32}, params={'name': 'part-002.md'}, data='[2] b', headers=as_text, status=403)
+    c.call('checking a draft needs a licence', 'POST', '/api/jobs/{id}/import/{importId}/check', {**v, 'importId': 'a' * 32}, json_body={'order': [1]}, status=403)
     c.call('load a file needs a licence', 'POST', '/api/jobs/{id}/import', v, params={'step': 'MODERATION', 'name': 'vi.md'}, data='[1] a', headers=as_text, status=403)
 
     # Voices

@@ -134,6 +134,73 @@ class SubtitleWorkflowTests(unittest.TestCase):
         with self.assertRaises(ValueError): manage.reprocess(self.finished()[0]['id'], 'SUBTITLE', burn=True)     # no video chosen: nothing to burn into
         with self.assertRaises(ValueError): manage.reprocess(self.finished()[0]['id'], 'BURN')
 
+    @unittest.skipUnless(FFMPEG, 'ffmpeg is not on PATH')
+    def test_ultra_fast_folds_the_subtitled_video_into_the_merge_step(self):
+        job, d = self.finished(video={**self.video(1), 'burn': True, 'ultra': True})
+        saved = read_json(d / 'job.json')
+        self.assertTrue(saved['video']['ultra'])
+        self.assertEqual(manage.effective_steps(saved)[-2:], ['SUBTITLE', 'VIDEO'])             # no BURN step
+        self.assertNotIn('BURN', saved['steps'])
+        self.assertEqual((saved['status'], saved['progress'], saved['steps']['VIDEO']['state']), ('COMPLETED', 100, 'COMPLETED'))
+        self.assertEqual((saved['video_plan']['mode'], saved['video_plan']['ultra']), ('encode', True))
+        files = self.files_of(job)
+        self.assertEqual((files['VIDEO_SUB_MP4']['status'], files['VIDEO_SUB_MP4']['step']), ('AVAILABLE', 'VIDEO'))
+        self.assertNotIn('VIDEO_MP4', files)                                                      # one file: the subtitled video
+        out = results.destination(job['id'])
+        self.assertTrue((out / files['VIDEO_SUB_MP4']['path']).is_file())
+        self.assertFalse((d / 'video.vi.sub.mp4').exists()); self.assertFalse((d / 'working' / 'burn-sub.srt').exists())
+        # The same run without the tick of Ultra fast keeps both files and its two steps.
+        both, bd = self.finished(video={**self.video(1), 'burn': True})
+        self.assertEqual(manage.effective_steps(read_json(bd / 'job.json'))[-2:], ['VIDEO', 'BURN'])
+        self.assertEqual({'VIDEO_MP4', 'VIDEO_SUB_MP4'} - set(self.files_of(both)), set())
+
+    @unittest.skipUnless(FFMPEG, 'ffmpeg is not on PATH')
+    def test_ultra_fast_in_reprocess_and_it_is_never_part_of_a_single_purpose_tool(self):
+        job, d = self.finished(video={**self.video(1), 'ultra': True})                           # ultra without the subtitle tick: a plain, faster merge
+        self.assertEqual(manage.effective_steps(read_json(d / 'job.json'))[-1], 'VIDEO')
+        self.assertEqual(self.files_of(job)['VIDEO_MP4']['status'], 'AVAILABLE')
+        plain = self.files_of(job)['VIDEO_MP4']['sha256']
+        manage.reprocess(job['id'], 'SUBTITLE', subtitle={'max_chars': 40}, burn=True)           # the tick on the subtitle stage: the merge makes the subtitled video
+        self.assertEqual(self.run_all(d), ['subtitle', 'video'])
+        files = self.files_of(job)
+        self.assertEqual((files['VIDEO_SUB_MP4']['status'], files['VIDEO_SUB_MP4']['step'], files['VIDEO_MP4']['status']), ('AVAILABLE', 'VIDEO', 'STALE'))
+        self.assertNotIn('BURN', manage.effective_steps(read_json(d / 'job.json')))
+        manage.reprocess(job['id'], 'BURN')                                                        # there is no BURN stage: it is the merge that runs again
+        self.assertEqual(self.run_all(d), ['video'])
+        self.assertEqual(self.files_of(job)['VIDEO_SUB_MP4']['status'], 'AVAILABLE')
+        manage.reprocess(job['id'], 'VIDEO', video={**self.video(1), 'burn': True})              # ultra unticked: back to the two steps and two files
+        self.assertEqual(self.run_all(d), ['video', 'burn'])
+        self.assertEqual({f['type']: f['status'] for f in read_json(results.destination(job['id']) / 'outputs.json')['files']}['VIDEO_MP4'], 'AVAILABLE')
+        self.assertEqual(manage.effective_steps(read_json(d / 'job.json'))[-2:], ['VIDEO', 'BURN'])
+        # Tool 6 is for single purposes: the key is dropped.
+        voice = self.finished()[0]
+        tool = manage.create(tool='video', voice_job=voice['id'], video={**self.video(1), 'burn': True, 'ultra': True}, subtitle={'max_chars': 40})
+        self.assertNotIn('ultra', tool['video']); self.assertEqual(tool['tool_steps'], ['VIDEO', 'BURN'])
+        self.assertEqual(self.run_all(results.workspace(tool['id'])), ['video', 'burn'])
+
+    @unittest.skipUnless(FFMPEG, 'ffmpeg is not on PATH')
+    def test_reprocess_can_drop_the_videos_and_draw_one_burn_with_the_fastest_setting(self):
+        job, d = self.finished(video={**self.video(1), 'burn': True})
+        manage.reprocess(job['id'], 'BURN', ultra=True)                                      # this drawing only: ultrafast, the plain video stays
+        self.assertEqual(self.run_all(d), ['burn'])
+        saved = read_json(d / 'job.json')
+        self.assertTrue(saved['burn_ultra']); self.assertFalse(saved['video'].get('ultra'))
+        files = self.files_of(job)
+        self.assertEqual((files['VIDEO_MP4']['status'], files['VIDEO_SUB_MP4']['status']), ('AVAILABLE', 'AVAILABLE'))
+        import re
+        self.assertEqual(re.search(rb'subme=(\d)', (results.destination(job['id']) / files['VIDEO_SUB_MP4']['path']).read_bytes()).group(1), b'0')
+        for bad in ({'step': 'TTS', 'ultra': True}, {'step': 'VIDEO', 'drop_video': True}, {'step': 'BURN', 'drop_video': True}):
+            with self.assertRaises(ValueError, msg=repr(bad)): manage.reprocess(job['id'], **bad)
+        with self.assertRaises(ValueError): manage.reprocess(job['id'], 'TTS', video=self.video(1), drop_video=True)
+        manage.reprocess(job['id'], 'TTS', drop_video=True)                                  # the run loses its videos
+        self.assertEqual(self.run_all(d), ['tts', 'subtitle'])
+        saved = read_json(d / 'job.json')
+        self.assertNotIn('video', saved); self.assertNotIn('VIDEO', saved['steps']); self.assertNotIn('BURN', saved['steps'])
+        self.assertEqual((saved['status'], manage.effective_steps(saved)[-1]), ('COMPLETED', 'SUBTITLE'))
+        files = self.files_of(job)
+        self.assertEqual((files['VIDEO_MP4']['status'], files['VIDEO_SUB_MP4']['status']), ('STALE', 'STALE'))
+        with self.assertRaises(ValueError): manage.reprocess(job['id'], 'TTS', drop_video=True)            # nothing left to drop
+
 
 if __name__ == '__main__':
     unittest.main()

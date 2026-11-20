@@ -3,13 +3,13 @@ import type { TranscriptionStep } from "@/lib/shared/transcription-progress";
 export type Status = "QUEUED" | "DOWNLOADING" | "VAD" | "TRANSCRIBING" | "MERGING" | "TRANSCRIPTION_COMPLETED" | "TRANSLATING" | "TRANSLATION_COMPLETED" | "MODERATING" | "MODERATION_COMPLETED" | "TTS_GENERATING" | "SUBTITLE_BUILDING" | "VIDEO_MERGING" | "VIDEO_BURNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "PARTIAL" | "AWAITING_TRANSLATION" | "DELETING";
 export type Artifact = "source" | "zh" | "vi" | "moderated" | "voice" | "subtitle" | "video" | "video_subtitled";
 export type Stage = "transcription" | "translation" | "moderation" | "tts" | "subtitle" | "video" | "burn";
-export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS" | "SUBTITLE" | "VIDEO" | "BURN" | "SPLIT";
+export type Step = "DOWNLOAD" | "TRANSCRIPTION" | "TRANSLATION" | "MODERATION" | "TTS" | "SUBTITLE" | "VIDEO" | "BURN" | "SPLIT" | "RENDER";
 export const STEPS: Step[] = ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS"];
 /** The steps a run goes through (worker core/errors.py effective_steps): Subtitles for every workflow made since 3.1.0 and for tool 5,
  *  Video merge only when the run has videos, and Burn (the subtitled video) only when it was ticked. A run without the key never shows the step. */
-export const runSteps = (job: {tool_steps?: Step[]; video?: {burn?: boolean} | unknown; subtitle?: unknown}): Step[] =>
-  job.tool_steps || [...STEPS, ...(job.subtitle ? ["SUBTITLE" as const] : []), ...(job.video ? ["VIDEO" as const] : []), ...((job.video as {burn?: boolean} | undefined)?.burn ? ["BURN" as const] : [])];
-export type VideoSettings = {files: import("@/components/video/video-picker").VideoClip[]; resolution: string; quality: string; burn?: boolean; overlay?: {id: string; name: string; orientation: "landscape" | "portrait"} | null};
+export const runSteps = (job: {tool_steps?: Step[]; video?: {burn?: boolean} | unknown; subtitle?: unknown; manual_translation?: boolean}): Step[] =>
+  job.tool_steps || [...(job.manual_translation ? ["DOWNLOAD", "TRANSCRIPTION", "SPLIT", "TRANSLATION", "MODERATION", "TTS"] as Step[] : STEPS), ...(job.subtitle ? ["SUBTITLE" as const] : []), ...(job.video ? ["VIDEO" as const] : []), ...((job.video as {burn?: boolean; ultra?: boolean} | undefined)?.burn && !(job.video as {ultra?: boolean}).ultra ? ["BURN" as const] : [])];
+export type VideoSettings = {files: import("@/components/video/video-picker").VideoClip[]; resolution: string; quality: string; burn?: boolean; ultra?: boolean; overlay?: {id: string; name: string; orientation: "landscape" | "portrait"} | null};
 export type StepError = { step: Step; error_code: string; error_id?: string; error_message: string; error_type: string; recoverable_manually: boolean; failed_at: string; retry_count: number };
 export type StepState = { state: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED" | "PAUSED" | "SKIPPED"; origin?: "import" | "skipped"; progress?: number | null; started_at?: string | null; completed_at?: string | null; duration_ms?: number | null; retry_count: number; attempt: number; output_manifest?: {status:string}[]; error?: StepError };
 export type Job = {
@@ -25,6 +25,8 @@ export type Job = {
   translation_mode?: "genius";
   /** The person translates by hand: the run stops after the Chinese text (AWAITING_TRANSLATION) and continues when the translation is loaded. */
   manual_translation?: boolean;
+  burn_ultra?: boolean;   // Reprocess tick on the BURN stage: that drawing uses the fastest encoder setting
+  render?: {video: {path: string; name: string}; resolution: string; quality: string; overlay?: {id: string; name: string} | null; subtitle: boolean; subtitle_report?: {cues: number; dropped: number; encoding: string} | null};
   split?: {max_chars: number; prompt: boolean; prompt_text: string; parts?: number; paragraphs?: number};
   pause_reason?: string | null;
   genius_progress?: {chunks_done:number;chunks_total:number;rows_done:number;rows_total:number;flagged_rows:number[];billed_chars:number};

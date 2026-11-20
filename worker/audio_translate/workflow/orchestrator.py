@@ -34,7 +34,7 @@ def run_stage(job_dir, stage):
     device = freeze(job_dir)
     validate(device, [stage])
     os.environ.update(stage_environment(device))
-    if stage in ('download', 'transcription', 'video', 'burn'):
+    if stage in ('download', 'transcription', 'video', 'burn', 'render'):
         required = ['ffprobe'] if stage == 'download' else ['ffmpeg', 'ffprobe']
         for binary in required:
             if not shutil.which(binary):
@@ -65,6 +65,9 @@ def run_stage(job_dir, stage):
             merge(job_dir, chunks)
             if not prepare_transcript(job_dir):
                 raise RuntimeError("Transcription did not produce the canonical Chinese files")
+    elif stage == "render":
+        from audio_translate.video.merge import render
+        render(job_dir)
     elif stage == "split":
         from audio_translate.translation.manual_text import run_split
         run_split(job_dir)
@@ -137,10 +140,11 @@ def run(job_dir):
                     if initial_steps(job)[step].get('origin') != 'skipped': publish_step(job_dir, step)
                     continue
                 if step == 'TRANSLATION' and job.get('manual_translation') and not requested:
-                    # The person translates by hand: the run stops here, holds no model and no lane, and waits for the translation to be loaded
-                    # (Reprocess from Moderation). Nothing is lost: the Chinese text is already published.
-                    end_run(job_dir, 'AWAITING_TRANSLATION')
-                    update_job(job_dir, retry_step=None, active_stage=None, failed_stage=None, error=None)
+                    # The person translates by hand: the run ENDS here (completed, like tool 7: the Chinese text, one zip of the numbered parts and the parts),
+                    # holds no model and no lane. The translation is loaded later (Reprocess from Moderation), which also takes the voice, subtitle and video
+                    # choices. Runs made by 4.0.1 or earlier may still sit in AWAITING_TRANSLATION; that state stays valid.
+                    end_run(job_dir, 'COMPLETED')
+                    update_job(job_dir, progress=100, retry_step=None, active_stage=None, failed_stage=None, error=None)
                     metadata(job_dir)
                     return 0
                 if any(initial_steps(job)[s]['state'] != 'COMPLETED' for s in effective[:effective.index(step)]):
@@ -153,7 +157,7 @@ def run(job_dir):
                         metadata(job_dir)
                         continue
                 transition(job_dir, step, 'RUNNING')
-                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'SUBTITLE': 'SUBTITLE_BUILDING', 'VIDEO': 'VIDEO_MERGING', 'BURN': 'VIDEO_BURNING', 'SPLIT': 'SPLITTING'}
+                statuses = {'DOWNLOAD': 'DOWNLOADING', 'TRANSCRIPTION': 'TRANSCRIBING', 'TRANSLATION': 'TRANSLATING', 'MODERATION': 'MODERATING', 'TTS': 'TTS_GENERATING', 'SUBTITLE': 'SUBTITLE_BUILDING', 'VIDEO': 'VIDEO_MERGING', 'BURN': 'VIDEO_BURNING', 'SPLIT': 'SPLITTING', 'RENDER': 'VIDEO_RENDERING'}
                 update_job(job_dir, active_stage=step.lower(), status=statuses[step])
                 metadata(job_dir)
                 # Genius translation runs on the VPS and holds no local model memory.
@@ -170,7 +174,7 @@ def run(job_dir):
                 publish_step(job_dir, step)
                 transition(job_dir, step, 'COMPLETED')
                 metadata(job_dir)
-                if step == 'VIDEO':
+                if step in ('VIDEO', 'RENDER'):
                     # Opened by the app window if it is open (api/routes_video.py auto_open); otherwise the result shows an Open video button.
                     (job_dir / 'working' / 'video-open.pending').write_text(job['id'], encoding='utf-8')
             job = read_json(job_dir / 'job.json')
@@ -200,7 +204,7 @@ def run(job_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("job_dir", type=Path)
-    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts", "subtitle", "video", "burn", "split"])
+    parser.add_argument("--stage", choices=["download", "transcription", "translation", "moderation", "tts", "subtitle", "video", "burn", "split", "render"])
     args = parser.parse_args()
     try:
         if args.stage:

@@ -956,7 +956,7 @@ button:disabled {
 }
 
 .rule-form {
-  margin-top: 22px;
+  margin: 18px 0 22px;
   max-width: 740px;
 }
 
@@ -1086,6 +1086,20 @@ button:disabled {
 .history-detail .artifact-grid {
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
 }
+
+/* Result files by stage: two stages per row (one stage alone, or with several files, takes the whole row); the text opens under its row. */
+.history-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+  align-items: start;
+}
+.history-row .history-stage { margin-bottom: 24px; min-width: 0; }
+.history-row .artifact-grid { grid-template-columns: minmax(0, 1fr); margin-top: 14px; }
+.history-row.single { grid-template-columns: minmax(0, 1fr); }
+.history-row.single .artifact-grid { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+@media (max-width: 760px) { .history-row { grid-template-columns: minmax(0, 1fr); } }
+.history-detail .history-row + .transcript-panel { margin-bottom: 28px; }
 
 .history-detail .artifact-card small {
   overflow-wrap: anywhere;
@@ -1568,6 +1582,12 @@ button:disabled {
 .split-tool .split-prompt { display: flex; flex-direction: column; gap: 6px; max-width: 880px; }
 .split-tool textarea { width: 100%; min-height: 110px; padding: 10px 12px; border: 1.5px solid #8ca48f; border-radius: 8px; background: #fff; font: inherit; font-size: 13px; line-height: 1.5; resize: vertical; }
 .split-options input { width: 130px; }
+.render-tool .video-picker-head button { padding: 8px 14px; font-size: 13px; }
+.import-drop { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1.5px dashed #c9d2c4; border-radius: 10px; }
+.import-drop.dragging { border-color: #3c6145; background: #e4eee0; }
+.import-drop .video-picker-head button { padding: 8px 14px; font-size: 13px; }
+.manual-split-note { max-width: 640px; margin-top: 4px; }
+.render-clip { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .video-overlay-note { color: #66736a; font-size: 12px; }
 
 /* Logos and pictures on the video: the library, the saved templates and the frame they are placed on. */

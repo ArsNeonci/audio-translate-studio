@@ -102,3 +102,7 @@ Chạy ở đầu Translation, trước bước sửa giới tính. `text_zh` l�
 Đo ngoại tuyến: 000009 bỏ 6 dòng quảng cáo, cắt đuôi 1 dòng, sửa 4 lỗi ASR; 000008 bỏ 7 dòng, cắt đầu 1 dòng. Không dòng truyện nào bị bỏ.
 
 Từ điển thuật ngữ (`genre-lexicon.json`) thêm các mục từ lỗi của 000009: 嫂子, 植物人/变成了植物, 娶媳妇, 老娘, 傻逼, 尿里, 霉运. **Các mục mới chưa được thử trên model thật** (RAM không đủ lúc triển khai); cơ chế thì đã thử với 心虚/大胆的小偷.
+
+## Mặc định (2026-11-19, chưa phát hành)
+
+Xưng hô mặc định trên giao diện là **Drama** (trước là Trung tính): kiểu giọng Mặc định gợi ý Drama, Công cụ 2 mở sẵn Drama (`DEFAULT_ADDRESS` trong `web/lib/shared/address-profiles.ts`). API giữ mặc định cũ (`neutral`) khi không gửi `address`, để client cũ không đổi hành vi.

@@ -22,7 +22,7 @@ management.after_start.append(scheduler.soon)   # reprocess and resume start wor
 VOICE_STYLES = ('default', 'drama', 'survival', 'rebirth')
 ADDRESS_PROFILES = ('neutral', 'drama', 'survival', 'rebirth')
 TRANSLATION_MODES = ('normal', 'genius')
-TOOLS = ('transcription', 'translation', 'moderation', 'tts', 'split')
+TOOLS = ('transcription', 'translation', 'moderation', 'tts', 'split', 'subtitle_burn')
 IMPORT_STEPS = ('TRANSCRIPTION', 'TRANSLATION', 'MODERATION', 'TTS')
 VIDEO_LIMIT = 64 * 1024   # the video settings (up to 50 paths) inside a request
 
@@ -255,6 +255,14 @@ async def create_tool(request: Request):
             status = result.pop('status')
             if status == 200: scheduler.soon()
             return json_response(result, 201 if status == 200 else status)
+        if data.get('tool') == 'overlay':
+            # Tool 9: one video of the person's with a logo template laid on it. Nothing is uploaded.
+            video = video_settings(data.get('video'))
+            if not video: return json_response({'error': 'Choose one video'}, 400)
+            result = await threaded(command, {'action': 'create', 'tool': 'overlay', 'video': video})
+            status = result.pop('status')
+            if status == 200: scheduler.soon()
+            return json_response(result, 201 if status == 200 else status)
         if data.get('tool') == 'split':
             # Tool 7: the Chinese text of a finished run cut into numbered parts. Nothing is uploaded.
             split = video_settings(data.get('split'))
@@ -278,7 +286,9 @@ async def create_tool(request: Request):
     if mode is not None and (tool != 'translation' or mode not in TRANSLATION_MODES): return json_response({'error': 'Invalid translation mode'}, 400)
     address = None if mode == 'genius' else params.get('address') or None
     if address is not None and (tool != 'translation' or address not in ADDRESS_PROFILES): return json_response({'error': 'Invalid address profile'}, 400)
-    limit = 2 * GIB if tool == 'transcription' else 64 * 1024 ** 2
+    limit = 2 * GIB if tool == 'transcription' else 5 * 1024 ** 2 if tool == 'subtitle_burn' else 64 * 1024 ** 2
+    video = video_settings(params.get('video')) if tool == 'subtitle_burn' else None
+    if video is False or (tool == 'subtitle_burn' and not video): return json_response({'error': 'Choose one video'}, 400)
     if _length(request) > limit: return json_response({'error': 'Upload too large'}, 413)
     upload = None
     try:
@@ -289,7 +299,7 @@ async def create_tool(request: Request):
             try: split = {'max_chars': int(params.get('max_chars') or 3000), 'prompt': params.get('prompt') != '0', 'prompt_text': params.get('prompt_text') or ''}
             except ValueError: return json_response({'error': 'Invalid part size'}, 400)
         result = await threaded(command, {'action': 'create', 'tool': tool, 'upload': str(upload), 'input_name': name, 'mime': request.headers.get('content-type', ''),
-                                          'voice': params.get('voice'), 'style': style, 'address': address, 'mode': mode, 'split': split})
+                                          'voice': params.get('voice'), 'style': style, 'address': address, 'mode': mode, 'split': split, 'video': video})
         status = result.pop('status')
         if status == 200: scheduler.soon()
         return json_response(result, 201 if status == 200 else status)
@@ -313,6 +323,49 @@ def zh_sources():
                           'created_at': job.get('created_at') or '', 'chars': size // 3})
     found.sort(key=lambda item: item['created_at'], reverse=True)
     return found
+
+
+@router.get('/api/split/settings')
+async def split_settings():
+    """Tool 7's last settings: shown in tool 7 and used by a workflow translated by hand."""
+    from audio_translate.translation.manual_text import saved_split
+    return json_response(await threaded(saved_split), no_store=True)
+
+
+@router.post('/api/jobs/{job_id}/import/{import_id}/parts')
+async def import_part(job_id: str, import_id: str, request: Request):
+    """One more file for a draft started by /import (the translation of another part). Checked later, in the order the page shows."""
+    denied = await threaded(license_denial)
+    if denied: return denied
+    if not origin_allowed(request): return json_response({'error': 'Origin rejected'}, 403)
+    name = request.query_params.get('name') or ''
+    if not name or len(name) > 255 or any(c in name for c in '\\/\x00'): return json_response({'error': 'Invalid tool or filename'}, 400)
+    if _length(request) > 64 * 1024 ** 2: return json_response({'error': 'Upload too large'}, 413)
+    upload = None
+    try:
+        upload, refusal = await receive_upload(request, 64 * 1024 ** 2)
+        if refusal: return json_response({'error': 'Upload too large'}, 413)
+        result = await threaded(command, {'action': 'import_part', 'id': job_id, 'import_id': import_id, 'upload': str(upload), 'input_name': name})
+        status = result.pop('status')
+        return json_response(result, status, no_store=True)
+    except Exception: return json_response({'error': 'Cannot accept upload; check file and storage permissions.'}, 400)
+    finally:
+        if upload: upload.unlink(missing_ok=True)
+
+
+@router.post('/api/jobs/{job_id}/import/{import_id}/check')
+async def import_check(job_id: str, import_id: str, request: Request):
+    """{order: [part ids]}: the draft's files read in that order; the report, and whether the result can be used."""
+    denied = await threaded(license_denial)
+    if denied: return denied
+    if not origin_allowed(request): return json_response({'error': 'Origin rejected'}, 403)
+    try: data = json.loads(await request.body())
+    except ValueError: return json_response({'error': 'Invalid JSON'}, 400)
+    order = data.get('order') if isinstance(data, dict) else None
+    if not isinstance(order, list) or len(order) > 500: return json_response({'error': 'Invalid file order'}, 400)
+    result = await threaded(command, {'action': 'import_check', 'id': job_id, 'import_id': import_id, 'order': order})
+    status = result.pop('status')
+    return json_response(result, status, no_store=True)
 
 
 @router.get('/api/split/sources')

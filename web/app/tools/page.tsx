@@ -6,15 +6,18 @@ import VoiceSelect from "@/components/voice/voice-select";
 import HistoryList from "@/components/history/history-list";
 import { LeaseOfflineNotice, useLicense } from "@/components/license/license-status";
 import AddressProfileSelect from "@/components/voice/address-profile-select";
+import { DEFAULT_ADDRESS } from "@/lib/shared/address-profiles";
 import TranslationModeSelect from "@/components/voice/translation-mode-select";
 import type { TranslationMode } from "@/lib/shared/translation-modes";
 import { useLanguage } from '@/lib/i18n/language-context';
-import VideoPicker, { emptyVideo, videoPayload, videoReady, type VideoChoice } from "@/components/video/video-picker";
+import VideoPicker, { toolVideo, videoPayload, videoReady, type VideoChoice } from "@/components/video/video-picker";
 import SubtitleOptions, { defaultSubtitle, subtitleValid, type SubtitleSettings } from "@/components/video/subtitle-options";
 import { useEffect } from "react";
 import SplitTool from "@/components/video/split-tool";
+import RenderTool from "@/components/video/render-tool";
 import { runNumber } from "@/lib/shared/format";
-const tools = [{ id: "transcription", label: "Chinese Audio → Chinese Text" }, { id: "translation", label: "Chinese Text → Vietnamese Text" }, { id: "moderation", label: "Vietnamese Text → Moderated Vietnamese" }, { id: "tts", label: "Vietnamese Text → Vietnamese Voice" }, { id: "subtitle", label: "Vietnamese Voice → Subtitles (.srt)" }, { id: "video", label: "Vietnamese Voice + Video → Video" }, { id: "split", label: "Split text" }];
+import FormSection from "@/components/common/form-section";
+const tools = [{ id: "transcription", label: "Chinese Audio → Chinese Text" }, { id: "translation", label: "Chinese Text → Vietnamese Text" }, { id: "moderation", label: "Vietnamese Text → Moderated Vietnamese" }, { id: "tts", label: "Vietnamese Text → Vietnamese Voice" }, { id: "subtitle", label: "Vietnamese Voice → Subtitles (.srt)" }, { id: "video", label: "Vietnamese Voice + Video → Video" }, { id: "split", label: "Split text" }, { id: "subtitle_burn", label: "Video + Subtitle File → Subtitled Video" }, { id: "overlay", label: "Video → Video With Logo" }];
 /** What each single tool takes: the file types and the size the worker accepts (workflow/manage.py normalize_input); checked when the file is chosen. */
 const AUDIO_FILES = ".wav,.mp3,.m4a,.flac,.ogg,.aac,.webm,.mp4", TEXT_FILES = ".txt,.md,.jsonl";
 function toolFiles(tool: string) {
@@ -44,13 +47,16 @@ function SubtitleTool({ allowed, onQueued, onMessage }: { allowed: boolean; onQu
     } catch (error) { onMessage(error instanceof Error ? tr(error.message) : tr("Upload thất bại.")); } finally { setBusy(false); }
   }
   return <form onSubmit={run} className="tool-form">
-    <label>{tr("videoVoice")}<select value={voiceJob} required onChange={e => setVoiceJob(e.target.value)}>
-      <option value="">{tr(voices.length ? "videoVoiceChoose" : "videoVoiceNone")}</option>
-      {voices.map(v => <option key={v.job_id} value={v.job_id}>{tr(v.scope === "tools" ? "Tool #" : "Workflow #")}{runNumber(v.workflow_no ?? undefined)} · {v.name}</option>)}
-    </select></label>
-    <SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} />
-    <small>{tr("subtitleYoutube")}</small>
-    <button disabled={busy || !allowed || !voiceJob || !subtitleValid(subtitle)}>{tr("subtitleRun")}</button>
+    <FormSection step={1} title={tr("fkVoice")} description={tr("fkToolVoiceDesc")}>
+      <label>{tr("videoVoice")}<select value={voiceJob} required onChange={e => setVoiceJob(e.target.value)}>
+        <option value="">{tr(voices.length ? "videoVoiceChoose" : "videoVoiceNone")}</option>
+        {voices.map(v => <option key={v.job_id} value={v.job_id}>{tr(v.scope === "tools" ? "Tool #" : "Workflow #")}{runNumber(v.workflow_no ?? undefined)} · {v.name}</option>)}
+      </select></label>
+    </FormSection>
+    <FormSection step={2} title={tr("fkSubtitle")} description={tr("subtitleYoutube")}>
+      <SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} />
+    </FormSection>
+    <div className="fk-submit"><button disabled={busy || !allowed || !voiceJob || !subtitleValid(subtitle)}>{tr("subtitleRun")}</button></div>
   </form>;
 }
 
@@ -58,31 +64,35 @@ function SubtitleTool({ allowed, onQueued, onMessage }: { allowed: boolean; onQu
 function VideoTool({ allowed, onQueued, onMessage }: { allowed: boolean; onQueued: () => void; onMessage: (text: string) => void }) {
   const { tr } = useLanguage();
   const voices = useVoices();
-  const [voiceJob, setVoiceJob] = useState(""), [video, setVideo] = useState<VideoChoice>(emptyVideo), [subtitle, setSubtitle] = useState<SubtitleSettings>(defaultSubtitle), [busy, setBusy] = useState(false);
+  const [voiceJob, setVoiceJob] = useState(""), [video, setVideo] = useState<VideoChoice>(toolVideo), [subtitle, setSubtitle] = useState<SubtitleSettings>(defaultSubtitle), [busy, setBusy] = useState(false);
   async function run(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); onMessage("");
     try {
       const r = await apiFetch("/api/tools", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tool: "video", voice_job: voiceJob, video: videoPayload(video), ...(video.burn ? { subtitle } : {}) }) });
       const d = await r.json(); if (!r.ok) throw new Error(d.error);
-      onMessage(tr("Tool run đã được thêm vào hàng đợi.")); setVideo(emptyVideo()); onQueued();
+      onMessage(tr("Tool run đã được thêm vào hàng đợi.")); setVideo(toolVideo()); onQueued();
     } catch (error) { onMessage(error instanceof Error ? tr(error.message) : tr("Upload thất bại.")); } finally { setBusy(false); }
   }
   return <form onSubmit={run} className="tool-form">
-    <label>{tr("videoVoice")}<select value={voiceJob} required onChange={e => setVoiceJob(e.target.value)}>
-      <option value="">{tr(voices.length ? "videoVoiceChoose" : "videoVoiceNone")}</option>
-      {voices.map(v => <option key={v.job_id} value={v.job_id}>{tr(v.scope === "tools" ? "Tool #" : "Workflow #")}{runNumber(v.workflow_no ?? undefined)} · {v.name}</option>)}
-    </select></label>
-    <VideoPicker value={video} onChange={setVideo} voiceJob={voiceJob || null} disabled={busy} />
-    {video.burn && <SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} />}
-    <button disabled={busy || !allowed || !voiceJob || !videoReady(video) || (video.burn && !subtitleValid(subtitle))}>{tr("videoRun")}</button>
+    <FormSection step={1} title={tr("fkVoice")} description={tr("fkToolVoiceDesc")}>
+      <label>{tr("videoVoice")}<select value={voiceJob} required onChange={e => setVoiceJob(e.target.value)}>
+        <option value="">{tr(voices.length ? "videoVoiceChoose" : "videoVoiceNone")}</option>
+        {voices.map(v => <option key={v.job_id} value={v.job_id}>{tr(v.scope === "tools" ? "Tool #" : "Workflow #")}{runNumber(v.workflow_no ?? undefined)} · {v.name}</option>)}
+      </select></label>
+    </FormSection>
+    <FormSection step={2} title={tr("fkVideo")} description={tr("fkVideoDesc")}>
+      <VideoPicker value={video} onChange={setVideo} voiceJob={voiceJob || null} disabled={busy} noUltra />
+    </FormSection>
+    {video.burn && <FormSection step={3} title={tr("fkSubtitle")} description={tr("fkSubtitleDesc")}><SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} /></FormSection>}
+    <div className="fk-submit"><button disabled={busy || !allowed || !voiceJob || !videoReady(video) || (video.burn && !subtitleValid(subtitle))}>{tr("videoRun")}</button></div>
   </form>;
 }
 export default function Tools() {
   const { t , tr} = useLanguage();
-  const license = useLicense(); const [tool, setTool] = useState("translation"), [voice, setVoice] = useState(""), [style, setStyle] = useState(""), [address, setAddress] = useState(""), [mode, setMode] = useState<TranslationMode>("normal"), [source, setSource] = useState<"file" | "link">("file"), [link, setLink] = useState(""), [file, setFile] = useState<File | null>(null), [busy, setBusy] = useState(false), [version, setVersion] = useState(0), [splitSource, setSplitSource] = useState(""); const [message, setMessage] = useNotice();
+  const license = useLicense(); const [tool, setTool] = useState("translation"), [voice, setVoice] = useState(""), [style, setStyle] = useState(""), [address, setAddress] = useState<string>(DEFAULT_ADDRESS), [mode, setMode] = useState<TranslationMode>("normal"), [source, setSource] = useState<"file" | "link">("file"), [link, setLink] = useState(""), [file, setFile] = useState<File | null>(null), [busy, setBusy] = useState(false), [version, setVersion] = useState(0), [splitSource, setSplitSource] = useState(""); const [message, setMessage] = useNotice();
   // Studio links here with ?tool=split&source=<workflow>: that tool opens with the run chosen.
   useEffect(() => { const timer = window.setTimeout(() => { const query = new URLSearchParams(window.location.search); if (query.get("tool") === "split") { setTool("split"); setSplitSource(query.get("source") || ""); } }, 0); return () => window.clearTimeout(timer); }, []);
   const byLink = tool === "transcription" && source === "link";
   async function run(e: React.FormEvent) { e.preventDefault(); if (byLink ? !link.trim() : !file) return; setBusy(true); setMessage(""); try { let r: Response; if (byLink) { r = await apiFetch("/api/tools", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tool, url: link.trim() }) }); } else { const f = file as File; const p = new URLSearchParams({ tool, name: f.name, voice, ...(tool === "tts" && style ? { style } : {}),...(tool === "translation" && mode === "genius" ? { mode } : {}), ...(tool === "translation" && mode === "normal" && address ? { address } : {}) }); r = await apiFetch(`/api/tools?${p}`, { method: "POST", headers: { "Content-Type": f.type || "application/octet-stream" }, body: f }); } const d = await r.json(); if (!r.ok) throw new Error(d.error); setMessage(tr("Tool run đã được thêm vào hàng đợi.")); setLink(""); setVersion(v => v + 1); } catch (e) { setMessage(e instanceof Error ? tr(e.message) : tr("Upload thất bại.")); } finally { setBusy(false); } }
-  return <main className="studio"><SiteHeader /><section className="hero"><span className="eyebrow">{t.tools.eyebrow}</span><h1>{t.tools.title}</h1><p>{t.tools.subtitle}</p><LeaseOfflineNotice license={license} onChange={license.setLicense} /><div className="tool-cards">{tools.map(item => <button type="button" className={`tool-card ${tool === item.id ? "selected" : ""}`} aria-pressed={tool === item.id} key={item.id} onClick={() => { setTool(item.id); setFile(null); }}>{tr(item.label)}</button>)}</div>{tool === "split" ? <SplitTool allowed={license.allowed} initialSource={splitSource} onQueued={() => setVersion(v => v + 1)} onMessage={setMessage} /> : tool === "video" ? <VideoTool allowed={license.allowed} onQueued={() => setVersion(v => v + 1)} onMessage={setMessage} /> : tool === "subtitle" ? <SubtitleTool allowed={license.allowed} onQueued={() => setVersion(v => v + 1)} onMessage={setMessage} /> : <form onSubmit={run} className="tool-form">{tool === "transcription" && <div className="source-options" role="radiogroup" aria-label={tr("Nguồn âm thanh")}>{(["file", "link"] as const).map(value => <button key={value} type="button" role="radio" aria-checked={source === value} className={`source-chip${source === value ? " selected" : ""}`} onClick={() => setSource(value)}>{value === "file" ? tr("Tệp âm thanh") : tr("Link YouTube")}</button>)}</div>}{byLink ? <input type="url" className="link-input" value={link} onChange={event => setLink(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." aria-label={tr("Link YouTube")} required /> : <FilePicker key={tool} accept={toolFiles(tool).accept} file={file} onChange={setFile} chooseLabel={t.tools.chooseFile} emptyLabel={t.tools.noFileChosen} inputLabel={t.tools.inputFile} rejectLabel={tr("fileWrongType", { types: toolFiles(tool).names })} maxBytes={toolFiles(tool).maxBytes} tooBigLabel={tr("fileTooBig", { size: toolFiles(tool).sizeName })} />}{tool === "translation" && <TranslationModeSelect value={mode} onChange={setMode} />}{tool === "translation" && mode === "normal" && <AddressProfileSelect value={address} onChange={setAddress} />}{tool === "tts" && <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={setStyle} />}<button disabled={busy || !license.allowed || (byLink ? !link.trim() : !file)}>{busy ? t.tools.uploading : t.tools.run}</button></form>}{message && <p className="alert" role="status">{message}</p>}</section><h2>{t.tools.historyHeading}</h2><HistoryList scope="tools" refreshVersion={version} /></main>;
+  return <main className="studio"><SiteHeader /><section className="hero form-kit"><span className="eyebrow">{t.tools.eyebrow}</span><h1>{t.tools.title}</h1><p>{t.tools.subtitle}</p><LeaseOfflineNotice license={license} onChange={license.setLicense} /><div className="fk-stack"><FormSection title={tr("fkToolsPick")}><div className="tool-cards">{tools.map(item => <button type="button" className={`tool-card ${tool === item.id ? "selected" : ""}`} aria-pressed={tool === item.id} key={item.id} onClick={() => { setTool(item.id); setFile(null); }}>{tr(item.label)}</button>)}</div></FormSection>{tool === "subtitle_burn" || tool === "overlay" ? <RenderTool key={tool} mode={tool} allowed={license.allowed} onQueued={() => setVersion(v => v + 1)} onMessage={setMessage} /> : tool === "split" ? <SplitTool allowed={license.allowed} initialSource={splitSource} onQueued={() => setVersion(v => v + 1)} onMessage={setMessage} /> : tool === "video" ? <VideoTool allowed={license.allowed} onQueued={() => setVersion(v => v + 1)} onMessage={setMessage} /> : tool === "subtitle" ? <SubtitleTool allowed={license.allowed} onQueued={() => setVersion(v => v + 1)} onMessage={setMessage} /> : <form onSubmit={run} className="tool-form"><FormSection step={1} title={tr("fkToolInput")} description={tr("fkToolInputDesc")}>{tool === "transcription" && <div className="source-options" role="radiogroup" aria-label={tr("Nguồn âm thanh")}>{(["file", "link"] as const).map(value => <button key={value} type="button" role="radio" aria-checked={source === value} className={`source-chip${source === value ? " selected" : ""}`} onClick={() => setSource(value)}>{value === "file" ? tr("Tệp âm thanh") : tr("Link YouTube")}</button>)}</div>}{byLink ? <input type="url" className="link-input" value={link} onChange={event => setLink(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." aria-label={tr("Link YouTube")} required /> : <FilePicker key={tool} accept={toolFiles(tool).accept} file={file} onChange={setFile} chooseLabel={t.tools.chooseFile} emptyLabel={t.tools.noFileChosen} inputLabel={t.tools.inputFile} rejectLabel={tr("fileWrongType", { types: toolFiles(tool).names })} maxBytes={toolFiles(tool).maxBytes} tooBigLabel={tr("fileTooBig", { size: toolFiles(tool).sizeName })} />}</FormSection>{tool === "translation" && <FormSection step={2} title={tr("fkTranslate")} description={tr("fkTranslateDesc")}><TranslationModeSelect value={mode} onChange={setMode} />{mode === "normal" && <AddressProfileSelect value={address} onChange={setAddress} />}</FormSection>}{tool === "tts" && <FormSection step={2} title={tr("fkVoice")} description={tr("fkVoiceDesc")}><VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={setStyle} /></FormSection>}<div className="fk-submit"><button disabled={busy || !license.allowed || (byLink ? !link.trim() : !file)}>{busy ? t.tools.uploading : t.tools.run}</button></div></form>}{message && <p className="alert" role="status">{message}</p>}</div></section><h2>{t.tools.historyHeading}</h2><HistoryList scope="tools" refreshVersion={version} /></main>;
 }

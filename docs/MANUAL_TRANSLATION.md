@@ -18,8 +18,16 @@ Từ 3.3.0 (chưa build). Không tính phí. Gồm ba phần dùng chung một n
 - Ô **Lựa chọn dịch thủ công** nằm giữa "Giọng tiếng Việt" và "Chế độ dịch" (`components/voice/manual-translation-toggle.tsx`). Tick thì ẩn Chế độ dịch và Xưng hô; giọng, phụ đề, video vẫn chọn được và dùng lúc chạy tiếp.
 - Gửi `manual: true` (JSON) hoặc `manual=1` (tải tệp âm thanh). `manage.create(manual=True)` ghi `job.manual_translation = true`, `selected_address_profile = None`; không đi cùng `mode` (Genius) và không dùng cho công cụ.
 - `orchestrator.run`: tới bước `TRANSLATION` mà job có `manual_translation` (và không phải Retry đúng bước đó) thì **dừng, không giữ luồng/RAM**: `end_run(job_dir, 'AWAITING_TRANSLATION')`, trả 0. Trạng thái mới **`AWAITING_TRANSLATION`** ("Chờ bản dịch") được coi như đã dừng ở mọi danh sách trạng thái (bộ lập lịch, `manage.py`, `routes_history.EDITABLE`, `workflow_admission`, UI). Xóa, Tạo lại dùng được như workflow đã dừng; Tạm dừng/Tiếp tục không áp dụng.
-- Workflow chờ vẫn nằm ở Studio với hai liên kết: **Tách văn bản →** (`/tools?tool=split&source=<id>`) và **Nạp bản dịch →** (`/reprocess?id=<id>&step=MODERATION`).
+**Từ bản sau 4.0.1:** workflow dịch thủ công **kết thúc** (trạng thái COMPLETED, tiến độ 100) ngay khi có bản chép tiếng Trung và các phần đã tách, giống Công cụ 7: một tệp `SPLIT_ZIP` và các tệp con `SPLIT_001`… Studio ẩn các thẻ Phụ đề và Ghép video khi tick dịch thủ công (server cũng bỏ `video` nếu có gửi); các lựa chọn đó được chọn ở trang Tạo lại khi nạp bản dịch (bắt đầu từ Kiểm duyệt). Run nằm ở Lịch sử, trang chi tiết có liên kết **Nạp bản dịch →**. Run cũ của 4.0.1 trở xuống có thể còn ở trạng thái AWAITING_TRANSLATION; trạng thái này vẫn hợp lệ. Tạo lại nhận cả hai trạng thái.
+
+- (Cũ, đến 4.0.1) Workflow chờ vẫn nằm ở Studio với hai liên kết: **Tách văn bản →** (`/tools?tool=split&source=<id>`) và **Nạp bản dịch →** (`/reprocess?id=<id>&step=MODERATION`).
 - Tạo lại từ `TRANSLATION` **không nạp tệp** trên job thủ công thì xóa cờ: máy dịch thay.
+
+### Tự tách sẵn (từ 2026-11-19, chưa phát hành)
+
+- Workflow dịch thủ công có thêm bước **`SPLIT`** ngay sau Chép lời (`effective_steps`: DOWNLOAD, TRANSCRIPTION, SPLIT, TRANSLATION…). Nó cắt bản tiếng Trung thành các phần như Công cụ 7, **dùng thiết lập của lần chạy Công cụ 7 gần nhất** (`data/config/split-settings.json`, ghi mỗi khi tạo một lần chạy Công cụ 7; chưa có thì 3000 ký tự, có lời nhắc). Thiết lập được chụp vào `job.split` lúc tạo workflow.
+- Các phần được đăng trong kết quả của workflow (`SPLIT_001`…, `SPLIT_ZIP`); hàng của workflow đang chờ ở Studio có liên kết **Tải các phần →** (trang Lịch sử của workflow). Studio hiện dưới ô tick: "tách sẵn thành các phần tối đa N ký tự". `GET /api/split/settings` trả thiết lập này (Công cụ 7 cũng mở với thiết lập đó).
+- Nạp bản dịch ở Tạo lại làm workflow thành "dịch thủ công": nếu bước `SPLIT` chưa chạy thì được tính là `skipped`.
 
 ## 2. Công cụ 7: Tách văn bản (bước `SPLIT`)
 
@@ -41,6 +49,8 @@ Chọn workflow → chọn bước → mục **Nguồn của bước này**: *D�
 | TTS | Văn bản Việt đã hoàn thiện TXT/MD/JSONL | MODERATION (kèm `moderation-result.json` tối giản) |
 
 Các bước còn xa hơn mà chưa xong được đánh `origin: skipped`; orchestrator **không đăng** file của bước `skipped`.
+
+**Nhiều tệp (Kiểm duyệt và Tạo giọng, từ 2026-11-19, chưa phát hành).** Bản dịch có thể nạp thành nhiều tệp (ví dụ bản dịch của từng phần Công cụ 7): chọn hoặc kéo thả nhiều tệp (tối đa 500, tổng 64 MB), danh sách sắp theo tên tự nhiên (`part-2` trước `part-10`), đổi thứ tự bằng ↑ ↓, bỏ bằng ✕, có nút *Sắp theo tên* và *Bỏ hết* (component chung `components/common/ordered-file-list.tsx`, khung Ghép video cũng dùng nó). Tệp đầu tạo **bản nạp nháp** (`/import`), tệp sau thêm vào (`POST /api/jobs/<id>/import/<import_id>/parts`), mỗi lần đổi danh sách thì kiểm lại theo thứ tự (`POST .../check {order}`): các tệp nối liền nhau (chèn dòng trống), chạy cùng bộ kiểm tra; báo cáo có thêm từng tệp (`parts`: khoảng mã, số mã, dòng lời dẫn đã bỏ, còn chữ Hán, tệp trống, mã trùng với tệp nào). Có mã `[n]` thì thứ tự tệp không đổi kết quả; không có mã thì thứ tự quyết định. Chặn thêm khi: trộn tệp có mã với tệp không có mã, trộn JSONL với văn bản, JSONL không theo thứ tự thời gian. Bản nháp chưa dùng được (`ready: false`) thì Tạo lại từ chối `import_id` đó. Chép lời và Dịch vẫn chỉ nhận một tệp.
 
 Hai pha để người dùng thấy kết quả kiểm tra trước khi có gì thay đổi (`workflow/imports.py`):
 1. `POST /api/jobs/<id>/import?step=&name=` (thân là tệp; cần giấy phép): kiểm tra, đổi thành đúng các tệp mà bước đó thường tạo, cất ở `data/imports/<import_id>/` (xóa sau 24 giờ) và trả `{import_id, report}`. `import_id = null` khi `report.blocked` có lý do. Báo cáo: số đoạn, đoạn thiếu/lạ/trống/lặp, số đoạn còn chữ Hán, dòng lời dẫn đã bỏ, thời gian ước lượng, 3 cặp xem trước.

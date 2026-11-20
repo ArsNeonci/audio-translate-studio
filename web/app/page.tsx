@@ -6,7 +6,6 @@ import LicenseBanner from "@/components/license/license-status";
 import { useCallback, useEffect, useState } from "react";
 import type { Job } from "@/lib/shared/job-types";
 import JobDetail from "@/components/workflow/job-detail";
-import RulesPanel from "@/components/rules/rules-panel";
 import VoiceSelect from "@/components/voice/voice-select";
 import AddressProfileSelect from "@/components/voice/address-profile-select";
 import TranslationModeSelect from "@/components/voice/translation-mode-select";
@@ -15,11 +14,14 @@ import type {TranslationMode} from "@/lib/shared/translation-modes";
 import {addressForStyle} from "@/lib/shared/address-profiles";
 import {audioDuration,percent,runNumber} from "@/lib/shared/format";
 import SiteHeader from "@/components/layout/site-header";
+import FormSection, { FormStack } from "@/components/common/form-section";
 import Link from 'next/link';
 import WorkflowActions from '@/components/workflow/workflow-actions';
 import { useLanguage } from "@/lib/i18n/language-context";
 import VideoPicker, { emptyVideo, videoPayload, videoReady, type VideoChoice } from "@/components/video/video-picker";
 import SubtitleOptions, { defaultSubtitle, subtitleValid, type SubtitleSettings } from "@/components/video/subtitle-options";
+import { loadRemembered, saveRemembered } from "@/lib/shared/remembered-settings";
+import { useOverlays } from "@/components/overlay/overlay-types";
 
 const duration = audioDuration;
 const AUDIO_TYPES=".wav,.mp3,.m4a,.flac,.ogg,.aac,.webm,.mp4";
@@ -34,10 +36,30 @@ export default function Home() {
   const [source,setSource]=useState<"link"|"file">("link"),[file,setFile]=useState<File|null>(null);
   const [voice,setVoice]=useState(""),[style,setStyle]=useState(""),[address,setAddress]=useState("");
   const [mode,setMode]=useState<TranslationMode>("normal");
-  const [manual,setManual]=useState(false);   // the person translates by hand: the workflow stops after the Chinese text
+  const [manual,setManual]=useState(false);
+  const [splitChars,setSplitChars]=useState<number|null>(null);   // tool 7's last part size, which a workflow translated by hand uses
+  useEffect(()=>{if(!manual||splitChars!==null)return;void apiFetch("/api/split/settings",{cache:"no-store"}).then(r=>r.json()).then(d=>setSplitChars(d.max_chars)).catch(()=>undefined);},[manual,splitChars]);   // the person translates by hand: the workflow stops after the Chinese text
   const [video,setVideo]=useState<VideoChoice>(emptyVideo);
   const [subtitle,setSubtitle]=useState<SubtitleSettings>(defaultSubtitle);
-  const videoBlocked=(video.files.length>0&&!videoReady(video))||!subtitleValid(subtitle);
+  // The form as the person left it (how to work, never the link, file or clips): applied once after the page opens, saved on every change.
+  // Anything missing or no longer valid is ignored, so a lost or blocked storage just gives the usual defaults.
+  const [restored,setRestored]=useState(false);
+  const {data:overlayLibrary}=useOverlays();
+  useEffect(()=>{
+    const timer=window.setTimeout(()=>{   // (not synchronously: the page is drawn first)
+    const saved=loadRemembered();
+    if(saved){
+      if(saved.style)setStyle(saved.style);if(saved.address)setAddress(saved.address);if(saved.mode)setMode(saved.mode);if(saved.manual!==undefined)setManual(saved.manual);if(saved.subtitle)setSubtitle(saved.subtitle);
+      if(saved.video)setVideo(v=>({...v,...Object.fromEntries(Object.entries(saved.video||{}).filter(([,x])=>x!==undefined))}));
+    }
+    // The voice only if it still exists (a voice pack can be removed).
+    void apiFetch("/api/voices",{cache:"no-store"}).then(r=>r.json()).then(d=>{if(saved?.voice&&(d.voices||[]).some((x:{id:string})=>x.id===saved.voice))setVoice(saved.voice);}).catch(()=>undefined).finally(()=>setRestored(true));
+    },0);
+    return()=>window.clearTimeout(timer);
+  },[]);
+  useEffect(()=>{if(restored)saveRemembered({voice,style,address,mode,manual,subtitle:subtitleValid(subtitle)?subtitle:undefined,video:{resolution:video.resolution,quality:video.quality,overlay:video.overlay,burn:video.burn,ultra:video.ultra}});},[restored,voice,style,address,mode,manual,subtitle,video.resolution,video.quality,video.overlay,video.burn,video.ultra]);
+  useEffect(()=>{if(!restored||!overlayLibrary)return;const id=video.overlay;if(id==="default"||id==="none"||overlayLibrary.templates.some(t=>t.id===id))return;const timer=window.setTimeout(()=>setVideo(v=>({...v,overlay:"default"})),0);return()=>window.clearTimeout(timer);},[restored,overlayLibrary,video.overlay]);   // a deleted template falls back to the default
+  const videoBlocked=!manual&&((video.files.length>0&&!videoReady(video))||!subtitleValid(subtitle));   // by hand: the run ends at the Chinese text, no subtitle or video cards
   const chooseStyle=useCallback((value:string)=>{setStyle(value);setAddress(addressForStyle(value));},[]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [busy, setBusy] = useState(false);
@@ -64,7 +86,7 @@ export default function Home() {
   async function start(event: React.FormEvent) {
     event.preventDefault();
     // Genius handles forms of address itself, so none is sent.
-    const extra={...(source==="file"&&file?{file}:{}),...(video.files.length?{video:videoPayload(video)}:{}),subtitle};
+    const extra={...(source==="file"&&file?{file}:{}),...(!manual&&video.files.length?{video:videoPayload(video)}:{}),...(manual?{}:{subtitle})};
     if(source==="file"&&!file)return;
     const link=source==="file"?"":url;
     if(manual){await convert({url:link,voice:voice||undefined,style:style||undefined,manual:true,...extra});return;}
@@ -90,7 +112,7 @@ export default function Home() {
         setResourceWarning(data.assessment);setPendingConvert(input);return;
       }
       if (!response.ok) throw new Error(data.error || tr("Không tạo được job."));
-      setPendingConvert(null);setUrl("");setFile(null);setVideo(emptyVideo()); await refresh();
+      setPendingConvert(null);setUrl("");setFile(null);setVideo(v=>({...emptyVideo(),resolution:v.resolution,quality:v.quality,burn:v.burn,ultra:v.ultra,overlay:v.overlay})); await refresh();   // the clips go, the choices stay
       setMessage(t.home.queuedNotice);
     } catch (error) { setMessage(error instanceof Error ? tr(error.message) : tr("Không tạo được job.")); }
     finally { setBusy(false); }
@@ -121,28 +143,42 @@ export default function Home() {
 
   return <main className="studio">
     <SiteHeader /><LicenseBanner />
-    <section className="hero">
+    <section className="hero form-kit">
       <div className="eyebrow">{t.home.eyebrow}</div>
       <h1>{t.home.title1}<br />{t.home.title2}</h1>
       <p>{t.home.description}</p>
-      <div className="source-options source-options-studio" role="radiogroup" aria-label={tr("Nguồn âm thanh")}>{(["link","file"] as const).map(value=><button key={value} type="button" role="radio" aria-checked={source===value} className={`source-chip${source===value?" selected":""}`} onClick={()=>{setSource(value);setResourceWarning(null);setPendingConvert(null);}}>{value==="link"?tr("Link YouTube"):tr("Tệp âm thanh tiếng Trung")}</button>)}</div>
-      <form onSubmit={start} className="convert-form">{source==="link"?<><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /></>:<FilePicker accept={AUDIO_TYPES} file={file} onChange={value=>{setFile(value);setResourceWarning(null);setPendingConvert(null);}} chooseLabel={t.tools.chooseFile} emptyLabel={t.tools.noFileChosen} inputLabel={t.tools.inputFile} rejectLabel={tr("fileWrongType", { types: AUDIO_TYPES.split(",").map(item => item.slice(1).toUpperCase()).join(", ") })} maxBytes={2 * 1024 ** 3} tooBigLabel={tr("fileTooBig", { size: "2 GB" })} />}<button type="submit" disabled={busy || !license.allowed || (source==="file"&&!file) || videoBlocked}>{busy ? t.home.checking : t.home.convert} ↗</button></form>
-      {source==="file"&&<p className="source-hint">{tr("Dùng khi YouTube chặn tải: tải audio bằng công cụ khác rồi chọn file ở đây (WAV, MP3, M4A, FLAC, OGG, AAC, WEBM, MP4; tối đa 2 GB). Workflow bỏ qua bước tải YouTube.")}</p>}
-      <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={chooseStyle} />
-      <ManualTranslationToggle value={manual} onChange={setManual} disabled={busy} />
-      {!manual&&<TranslationModeSelect value={mode} onChange={setMode} />}
-      {!manual&&mode==="normal"&&<AddressProfileSelect value={address} onChange={setAddress} />}
-      <details className="video-optional"><summary>{tr("subtitleOptional")}</summary><SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} /></details>
-      <details className="video-optional" open={video.files.length>0||undefined}><summary>{tr("videoOptional")}</summary><VideoPicker value={video} onChange={setVideo} disabled={busy} /></details>
-      {message && <p className="alert" role="alert">{message}</p>}
-      {resourceWarning&&<section role="alert" className="alert">
-        <h3>{t.home.resourceWarningTitle}</h3>
-        <p>{t.home.existingWorkflows.replace("{count}", String(resourceWarning.existing_workflows))}</p>
-        <ul>{resourceWarning.reasons.map(reason=><li key={reason}>{tr(reason)}</li>)}</ul>
-        <p>{tr("Bạn có thể xếp hàng chờ; workflow vẫn xử lý lần lượt, không ép chạy song song.")}</p>
-        <button type="button" disabled={busy||!license.allowed||!pendingConvert} onClick={()=>{if(pendingConvert)void convert(pendingConvert,true);}}>{t.home.queueWait}</button>{' '}
-        <button type="button" disabled={busy} onClick={()=>{setResourceWarning(null);setPendingConvert(null);}}>{t.home.dismiss}</button>
-      </section>}
+      <FormStack>
+        <FormSection step={1} title={tr("fkSource")} description={tr("fkSourceDesc")}>
+          <div className="source-options" role="radiogroup" aria-label={tr("Nguồn âm thanh")}>{(["link","file"] as const).map(value=><button key={value} type="button" role="radio" aria-checked={source===value} className={`source-chip${source===value?" selected":""}`} onClick={()=>{setSource(value);setResourceWarning(null);setPendingConvert(null);}}>{value==="link"?tr("Link YouTube"):tr("Tệp âm thanh tiếng Trung")}</button>)}</div>
+          <form id="convert-form" onSubmit={start} className="convert-form">{source==="link"?<><label htmlFor="youtube-url" className="sr-only">YouTube URL</label><input id="youtube-url" type="url" required placeholder="https://www.youtube.com/watch?v=..." value={url} onChange={(event) => {setUrl(event.target.value);setResourceWarning(null);setPendingConvert(null);}} /></>:<FilePicker accept={AUDIO_TYPES} file={file} onChange={value=>{setFile(value);setResourceWarning(null);setPendingConvert(null);}} chooseLabel={t.tools.chooseFile} emptyLabel={t.tools.noFileChosen} inputLabel={t.tools.inputFile} rejectLabel={tr("fileWrongType", { types: AUDIO_TYPES.split(",").map(item => item.slice(1).toUpperCase()).join(", ") })} maxBytes={2 * 1024 ** 3} tooBigLabel={tr("fileTooBig", { size: "2 GB" })} />}</form>
+          {source==="file"&&<p className="source-hint">{tr("Dùng khi YouTube chặn tải: tải audio bằng công cụ khác rồi chọn file ở đây (WAV, MP3, M4A, FLAC, OGG, AAC, WEBM, MP4; tối đa 2 GB). Workflow bỏ qua bước tải YouTube.")}</p>}
+        </FormSection>
+        <FormSection step={2} title={tr("fkVoice")} description={tr("fkVoiceDesc")}>
+          <VoiceSelect value={voice} onChange={setVoice} style={style} onStyleChange={chooseStyle} />
+        </FormSection>
+        <FormSection step={3} title={tr("fkTranslate")} description={tr("fkTranslateDesc")}>
+          <ManualTranslationToggle value={manual} onChange={setManual} disabled={busy} />
+          {manual&&splitChars!==null&&<small className="manual-hint manual-split-note">{tr("manualSplitNote",{chars:splitChars.toLocaleString()})}</small>}
+          {!manual&&<TranslationModeSelect value={mode} onChange={setMode} />}
+          {!manual&&mode==="normal"&&<AddressProfileSelect value={address} onChange={setAddress} />}
+        </FormSection>
+        {!manual&&<FormSection step={4} title={tr("fkSubtitle")} description={tr("fkSubtitleDesc")}>
+          <SubtitleOptions value={subtitle} onChange={setSubtitle} disabled={busy} />
+        </FormSection>}
+        {!manual&&<FormSection step={5} title={tr("fkVideo")} description={tr("fkVideoDesc")}>
+          <VideoPicker value={video} onChange={setVideo} disabled={busy} />
+        </FormSection>}
+        {message && <p className="alert" role="alert">{message}</p>}
+        {resourceWarning&&<section role="alert" className="alert">
+          <h3>{t.home.resourceWarningTitle}</h3>
+          <p>{t.home.existingWorkflows.replace("{count}", String(resourceWarning.existing_workflows))}</p>
+          <ul>{resourceWarning.reasons.map(reason=><li key={reason}>{tr(reason)}</li>)}</ul>
+          <p>{tr("Bạn có thể xếp hàng chờ; workflow vẫn xử lý lần lượt, không ép chạy song song.")}</p>
+          <button type="button" disabled={busy||!license.allowed||!pendingConvert} onClick={()=>{if(pendingConvert)void convert(pendingConvert,true);}}>{t.home.queueWait}</button>{' '}
+          <button type="button" disabled={busy} onClick={()=>{setResourceWarning(null);setPendingConvert(null);}}>{t.home.dismiss}</button>
+        </section>}
+        <div className="fk-submit"><button type="submit" form="convert-form" className="action-button" disabled={busy || !license.allowed || (source==="file"&&!file) || videoBlocked}>{busy ? t.home.checking : t.home.convert} ↗</button><small>{tr("fkStartHint")}</small></div>
+      </FormStack>
       <div className="hero-foot"><span>{t.home.step1}</span><span>{t.home.step2}</span><span>{t.home.step3}</span><span>{t.home.step4}</span></div>
     </section>
     <section className="jobs-section">
@@ -156,14 +192,13 @@ export default function Home() {
           <td>{new Date(job.created_at).toLocaleString(language === "vi" ? "vi-VN" : "en-US")}</td>
           <td className="output-cell"><button type="button" onClick={() => view(selected === job.id ? null : job.id)}>{selected === job.id ? t.home.closeDetails : t.home.details}</button>
             {job.status === "FAILED" && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.retry}</button>}
-            {job.status === "AWAITING_TRANSLATION" && <><small className="manual-hint">{tr("manualWaiting")}</small><Link className="text-button" href={`/tools?tool=split&source=${job.id}`}>{tr("manualSplitLink")}</Link> <Link className="text-button" href={`/reprocess?id=${job.id}&step=MODERATION`}>{tr("manualLoadLink")}</Link></>}
+            {job.status === "AWAITING_TRANSLATION" && <><small className="manual-hint">{tr("manualWaiting")}</small><Link className="text-button" href={`/history/view?id=${job.id}`}>{tr("manualPartsLink")}</Link> <Link className="text-button" href={`/reprocess?id=${job.id}&step=MODERATION`}>{tr("manualLoadLink")}</Link></>}
             {job.status === "COMPLETED" && job.workflow_version !== 2 && <button type="button" disabled={!license.allowed} onClick={() => void retry(job.id)}>{t.home.continueTranslate}</button>}</td>
           <td><WorkflowActions job={job} onChanged={refresh} onNotice={setMessage} canResume={license.allowed}/></td>
         </tr>)}
       </tbody></table>{!studioJobs.length && <div className="empty"><span>◎</span><strong>{t.home.emptyTitle}</strong><p>{t.home.emptyDesc.replace("{history}", "")} <Link href="/history">{tr("History")}</Link>.</p></div>}</div>
       {studioJobs.filter(job => job.id === selected).map(job => <JobDetail key={job.id} job={job} onClose={() => view(null)} />)}
     </section>
-    <RulesPanel moderating={jobs.some(job => job.status === "MODERATING")} />
     <footer>{t.home.footer}</footer>
   </main>;
 }

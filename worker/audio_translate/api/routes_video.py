@@ -74,7 +74,7 @@ def voice_length(voice_job):
     return merge.voice_ms(path) if path else None
 
 
-def estimate(paths, resolution, quality, voice_job, burn=False, overlay=None):
+def estimate(paths, resolution, quality, voice_job, burn=False, overlay=None, ultra=False):
     clips = check(paths)
     bad = [c for c in clips if c.get('error')]
     if bad: return {'files': clips, 'error': bad[0]['error']}
@@ -87,10 +87,11 @@ def estimate(paths, resolution, quality, voice_job, burn=False, overlay=None):
     except overlays.OverlayError: used = False
     plan = merge.plan(clips, resolution, quality, length, overlay=used)
     # The subtitled video is a second file made after the plain one (the BURN step): its own time and size.
-    burn_plan = merge.plan(clips, resolution, quality, length, True) if burn else None
+    # With Ultra fast the merge draws the subtitles itself: one file, and the time of the single encoding.
+    burn_plan = merge.plan(clips, resolution, quality, length, True, ultra=ultra) if burn else None
     from audio_translate.workflow.results import RESULTS
     free = merge.disk_free(RESULTS)
-    needed = (merge.needed_bytes(plan) + (merge.needed_bytes(burn_plan) if burn_plan else 0)) if length else None
+    needed = ((0 if burn_plan and ultra else merge.needed_bytes(plan)) + (merge.needed_bytes(burn_plan) if burn_plan else 0)) if length else None
     return {'files': clips, 'resolutions': allowed, 'resolution': resolution, 'quality': quality, 'plan': plan, 'burn_plan': burn_plan,
             'free_bytes': free, 'needed_bytes': needed, 'enough': None if needed is None else free >= needed}
 
@@ -102,11 +103,43 @@ async def video_estimate(request: Request):
     data, refusal = await body_json(request)
     if refusal: return refusal
     paths, resolution, quality, voice_job = data.get('paths'), data.get('resolution', 'keep'), data.get('quality', 'high'), data.get('voice_job')
-    burn, overlay = data.get('burn', False), data.get('overlay')
-    if (not isinstance(paths, list) or (overlay is not None and (not isinstance(overlay, str) or len(overlay) > 40)) or not isinstance(burn, bool) or not 1 <= len(paths) <= merge.MAX_FILES or any(not isinstance(p, str) or len(p) > 1024 for p in paths)
+    burn, overlay, ultra = data.get('burn', False), data.get('overlay'), data.get('ultra', False)
+    if (not isinstance(paths, list) or (overlay is not None and (not isinstance(overlay, str) or len(overlay) > 40)) or not isinstance(burn, bool) or not isinstance(ultra, bool) or not 1 <= len(paths) <= merge.MAX_FILES or any(not isinstance(p, str) or len(p) > 1024 for p in paths)
             or resolution not in merge.RESOLUTIONS or quality not in merge.QUALITIES or (voice_job is not None and not JOB_ID.match(str(voice_job)))):
         return json_response({'error': 'Invalid request'}, 400)
-    return json_response(await threaded(estimate, paths, resolution, quality, voice_job, burn, overlay), no_store=True)
+    return json_response(await threaded(estimate, paths, resolution, quality, voice_job, burn, overlay, ultra), no_store=True)
+
+
+def render_estimate(path, resolution, quality, subtitle, overlay):
+    """Tools 8 and 9: the whole picture of one video is encoded, so the time follows its length. The same disk check as the merge."""
+    clips = check([path])
+    if clips[0].get('error'): return {'files': clips, 'error': clips[0]['error']}
+    clip = clips[0]
+    allowed = merge.resolutions(clips)
+    if resolution not in allowed: resolution = 'keep'
+    from audio_translate.video import overlays
+    try: used = overlays.resolve(overlay, clips, None) is not None
+    except overlays.OverlayError: used = False
+    plan = merge.render_plan(clip, resolution, quality, subtitle, used)
+    from audio_translate.workflow.results import RESULTS
+    free = merge.disk_free(RESULTS)
+    needed = merge.needed_bytes(plan)
+    return {'files': clips, 'resolutions': allowed, 'resolution': resolution, 'quality': quality, 'plan': plan, 'overlay_used': used,
+            'free_bytes': free, 'needed_bytes': needed, 'enough': free >= needed}
+
+
+@router.post('/api/video/render-estimate')
+async def video_render_estimate(request: Request):
+    """Time and size of tool 8 (subtitles) or tool 9 (logo) for one video: {path, resolution, quality, subtitle, overlay}."""
+    if not local_request(request): return json_response({'error': 'Origin rejected'}, 403)
+    data, refusal = await body_json(request)
+    if refusal: return refusal
+    path, resolution, quality = data.get('path'), data.get('resolution', 'keep'), data.get('quality', 'high')
+    subtitle, overlay = data.get('subtitle', False), data.get('overlay')
+    if (not isinstance(path, str) or not path or len(path) > 1024 or resolution not in merge.RESOLUTIONS or quality not in merge.QUALITIES or not isinstance(subtitle, bool)
+            or (overlay is not None and (not isinstance(overlay, str) or len(overlay) > 40))):
+        return json_response({'error': 'Invalid request'}, 400)
+    return json_response(await threaded(render_estimate, path, resolution, quality, subtitle, overlay), no_store=True)
 
 
 def voices():
@@ -166,7 +199,7 @@ def auto_open():
             job_id = marker.parent.parent.name
             try: fresh = time.time() - marker.stat().st_mtime < AUTO_OPEN_MINUTES * 60
             except OSError: continue
-            path = video_file(job_id, scope) if fresh and JOB_ID.match(job_id) else None
+            path = (video_file(job_id, scope) or video_file(job_id, scope, 'VIDEO_SUB_MP4')) if fresh and JOB_ID.match(job_id) else None
             if fresh and not (path and path.is_file()): continue      # not published yet: look again next time
             try: marker.unlink()
             except OSError: continue                                  # another caller took it

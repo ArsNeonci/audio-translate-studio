@@ -1,0 +1,164 @@
+/* Form kit: one look for every form of Studio, Tools and Reprocess (class .form-kit on the page's .hero).
+   Three kinds of text, three sizes everywhere:
+     - a feature's name (.fsec-title)       20 px, bold
+     - a setting's name (.field-label)      16 px, semi-bold; the value typed or chosen is 16 px too
+     - a description    (.fsec-desc, small) 14 px, muted
+   Every feature is one bordered card (.fsec); cards are 32 px apart, the blocks inside a card 20 px apart.
+   Controls are at least 48 px tall with a 2 px border; checkboxes are 28 px and sit in a card that is the whole click target.
+   The colours come from the variables below; dark mode only changes the variables. */
+.form-kit {
+  --fk-card: #ffffff;
+  --fk-card-border: #c5d1c2;
+  --fk-field: #ffffff;
+  --fk-field-border: #6f8a74;
+  --fk-text: #243328;
+  --fk-title: #173822;
+  --fk-muted: #55635a;
+  --fk-primary: #284b37;
+  --fk-primary-border: #1e3a29;
+  --fk-soft: #e4eee0;
+  --fk-soft-border: #3c6145;
+  --fk-focus: rgba(36, 75, 50, 0.25);
+  --fk-section-gap: 32px;
+  --fk-block-gap: 20px;
+}
+:root[data-theme="dark"] .form-kit {
+  --fk-card: var(--dark-surface);
+  --fk-card-border: var(--dark-border);
+  --fk-field: var(--dark-raised);
+  --fk-field-border: #4f7396;
+  --fk-text: var(--foreground);
+  --fk-title: var(--foreground);
+  --fk-muted: var(--dark-muted);
+  --fk-primary: var(--dark-primary);
+  --fk-primary-border: #3684c9;
+  --fk-soft: #143353;
+  --fk-soft-border: var(--dark-accent);
+  --fk-focus: rgb(105 185 255 / 25%);
+}
+
+/* ---------- Layout: cards, equal gaps ---------- */
+.form-kit .fk-stack { display: flex; flex-direction: column; gap: var(--fk-section-gap); margin-top: var(--fk-section-gap); max-width: 880px; }
+.form-kit .fsec { display: flex; flex-direction: column; gap: var(--fk-block-gap); padding: 24px; border: 2px solid var(--fk-card-border); border-radius: 16px; background: var(--fk-card); color: var(--fk-text); }
+.form-kit .fsec-head { display: flex; flex-direction: column; gap: 6px; }
+.form-kit .fsec-title { display: flex; align-items: center; gap: 12px; margin: 0; font-size: 20px; font-weight: 700; line-height: 1.3; color: var(--fk-title); }
+.form-kit .fsec-no { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--fk-primary); color: #fff; font-size: 16px; font-weight: 700; }
+.form-kit .fsec-body { display: flex; flex-direction: column; gap: var(--fk-block-gap); min-width: 0; }
+.form-kit .fsec-body > * { margin-top: 0; margin-bottom: 0; max-width: none; }
+.form-kit .fsec-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--fk-block-gap); }
+.form-kit .fsec-fields > label { margin: 0; max-width: none; }
+.form-kit .fsec-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+/* ---------- Text: three sizes ---------- */
+.form-kit .fsec-desc, .form-kit .hero p.fsec-desc, .form-kit small, .form-kit .source-hint, .form-kit .voice-style-description,
+.form-kit .manual-hint, .form-kit .video-estimate, .form-kit .video-overlay-note {
+  margin: 0; max-width: none; color: var(--fk-muted); font-size: 14px; font-weight: 400; line-height: 1.6; letter-spacing: 0; text-transform: none;
+}
+.form-kit small { display: block; }
+.form-kit .field-label, .form-kit .fsec label, .form-kit .voice-style-select > span, .form-kit .voice-select > span, .form-kit .fsec legend {
+  color: var(--fk-text); font-size: 16px; font-weight: 600; line-height: 1.4;
+}
+.form-kit .fsec label { display: flex; flex-direction: column; gap: 8px; margin: 0; max-width: none; }
+.form-kit .fsec label.auto-tts-toggle { display: grid; }
+
+/* ---------- Fields ---------- */
+.form-kit .fsec :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]), select, textarea),
+.form-kit .convert-form input {
+  box-sizing: border-box; width: 100%; min-height: 48px; padding: 10px 14px; border: 2px solid var(--fk-field-border); border-radius: 10px;
+  background: var(--fk-field); color: var(--fk-text); font: inherit; font-size: 16px; font-weight: 400; max-width: none;
+}
+.form-kit .fsec textarea { min-height: 120px; line-height: 1.5; }
+.form-kit .fsec :is(input, select, textarea):disabled { opacity: 0.6; }
+.form-kit .fsec :is(input, select, textarea):focus, .form-kit .convert-form input:focus { outline: 0; border-color: var(--fk-primary); box-shadow: 0 0 0 4px var(--fk-focus); }
+:root[data-theme="dark"] .form-kit .fsec :is(input, select, textarea):focus, :root[data-theme="dark"] .form-kit .convert-form input:focus { border-color: var(--dark-accent); }
+.form-kit .fsec input[type="number"] { max-width: 200px; }
+.form-kit .convert-form { margin: 0; max-width: none; }
+.form-kit .convert-form input, .form-kit .convert-form .file-picker { min-height: 56px; height: 56px; border: 2px solid var(--fk-field-border); background: var(--fk-field); color: var(--fk-text); }
+.form-kit .fsec .file-picker { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; text-align: left; gap: 8px 16px; width: 100%; box-sizing: border-box; min-height: 56px; border: 2px solid var(--fk-field-border); border-radius: 10px; background: var(--fk-field); margin: 0; font-size: 16px; }
+.form-kit .file-picker-name { font-size: 16px; color: var(--fk-muted); }
+.form-kit .file-picker-button { padding: 8px 18px; font-size: 16px; border-width: 2px; }
+
+/* ---------- Choices (radio chips): one size ---------- */
+.form-kit .source-options, .form-kit .voice-style-options { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; }
+.form-kit .voice-select, .form-kit .voice-style-select { display: flex; flex-direction: column; gap: 10px; margin: 0; max-width: none; font-size: 16px; }
+.form-kit .voice-select { gap: 20px; }
+.form-kit .voice-style-select { margin-bottom: 0; }
+.form-kit .voice-select .voice-style-option, .form-kit .source-options .source-chip {
+  min-height: 48px; padding: 10px 22px; border: 2px solid var(--fk-field-border); border-radius: 999px;
+  background: var(--fk-field); color: var(--fk-text); font-size: 16px; font-weight: 600; line-height: 1.2;
+}
+.form-kit .voice-select .voice-style-option.selected, .form-kit .source-options .source-chip.selected,
+.form-kit .voice-select .voice-style-option.selected.selected, .form-kit .source-options .source-chip.selected.selected {
+  background: var(--fk-primary); border-color: var(--fk-primary-border); color: #fff;
+}
+.form-kit .voice-select .voice-style-option.selected::before, .form-kit .source-options .source-chip.selected::before { content: "✓ "; }
+.form-kit .voice-select .voice-picker-toggle { min-height: 56px; padding: 10px 16px; border: 2px solid var(--fk-field-border); border-radius: 10px; background: var(--fk-field); color: var(--fk-text); font-size: 16px; }
+.form-kit .voice-picker-shell { position: relative; }
+
+/* ---------- Checkbox: a card that is the whole click target ---------- */
+.form-kit .auto-tts-toggle {
+  display: grid; grid-template-columns: 28px 1fr; align-items: start; gap: 4px 16px; margin: 0; padding: 16px 18px; cursor: pointer;
+  border: 2px solid var(--fk-field-border); border-radius: 12px; background: var(--fk-field); font-size: 16px;
+}
+.form-kit .auto-tts-toggle input {
+  grid-row: 1 / span 2; appearance: none; -webkit-appearance: none; width: 28px; height: 28px; margin: 0; cursor: pointer;
+  border: 2px solid var(--fk-field-border); border-radius: 7px; background: var(--fk-card) center / 20px no-repeat;
+}
+.form-kit .auto-tts-toggle input:checked {
+  border-color: var(--fk-primary-border); background-color: var(--fk-primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4 10.5l4 4 8-9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.form-kit .auto-tts-toggle > span { grid-column: 2; font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--fk-text); }
+.form-kit .auto-tts-toggle > small { grid-column: 2; flex-basis: auto; }
+.form-kit .auto-tts-toggle:has(input:checked) { background: var(--fk-soft); border-color: var(--fk-soft-border); }
+.form-kit .auto-tts-toggle:has(input:focus-visible) { box-shadow: 0 0 0 4px var(--fk-focus); }
+
+/* ---------- Blocks that used to be boxes inside boxes ---------- */
+.form-kit .fsec :is(.video-picker, .import-panel, .subtitle-options, .video-burn) { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; max-width: none; }
+.form-kit .fsec .video-picker, .form-kit .fsec .import-panel { display: flex; flex-direction: column; gap: var(--fk-block-gap); }
+.form-kit .fsec .subtitle-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--fk-block-gap); align-items: start; min-width: 0; }
+.form-kit .fsec .subtitle-options > small, .form-kit .fsec .subtitle-options > .text-button { grid-column: 1 / -1; justify-self: start; }
+.form-kit .fsec .subtitle-options input { width: 100%; }
+.form-kit .fsec .video-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--fk-block-gap); }
+.form-kit .fsec .video-options label { font-size: 16px; }
+.form-kit .fsec .video-burn { display: flex; flex-direction: column; gap: var(--fk-block-gap); }
+.form-kit .fsec .import-drop { padding: 16px; border: 2px dashed var(--fk-card-border); border-radius: 12px; gap: 16px; background: transparent; }
+.form-kit .fsec .import-drop.dragging { border-color: var(--fk-soft-border); background: var(--fk-soft); }
+.form-kit .video-picker-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.form-kit .video-list { padding-left: 0; list-style: none; gap: 10px; }
+.form-kit .video-list li { gap: 6px 14px; padding: 12px 14px; border: 2px solid var(--fk-card-border); border-radius: 10px; background: var(--fk-field); font-size: 16px; }
+.form-kit .video-list .video-name { font-size: 16px; }
+.form-kit .video-list .video-actions { gap: 8px; }
+.form-kit .video-list .video-actions button { min-width: 44px; min-height: 44px; padding: 6px 10px; font-size: 16px; }
+.form-kit .import-ok { font-size: 16px; }
+.form-kit .import-notes, .form-kit .import-preview { font-size: 14px; color: var(--fk-muted); }
+
+/* ---------- Buttons ---------- */
+.form-kit .fsec :is(.action-button, .text-button), .form-kit .fk-submit button {
+  min-height: 48px; padding: 10px 22px; border-width: 2px; border-radius: 10px; font-size: 16px; font-weight: 700; line-height: 1.2;
+}
+.form-kit .fsec .text-button { background: var(--fk-field); color: var(--fk-text); border-color: var(--fk-field-border); }
+.form-kit .fk-submit { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+.form-kit .fk-submit button { min-height: 60px; padding: 14px 44px; font-size: 18px; background: var(--fk-primary); color: #fff; border-color: var(--fk-primary-border); }
+.form-kit .fk-submit button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ---------- Tool picker ---------- */
+.form-kit .tool-cards { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin: 0; max-width: none; }
+.form-kit .tool-card { min-height: 72px; padding: 16px 20px; border-width: 2px; font-size: 16px; font-weight: 600; line-height: 1.4; color: var(--fk-text); background: var(--fk-card); }
+.form-kit .tool-card.selected { background: var(--fk-soft); border-color: var(--fk-soft-border); box-shadow: inset 5px 0 0 var(--fk-soft-border); }
+.form-kit .tool-form { display: flex; flex-direction: column; gap: var(--fk-section-gap); margin: 0; max-width: none; }
+
+/* ---------- Messages ---------- */
+.form-kit .alert { font-size: 16px; line-height: 1.6; max-width: 880px; }
+.form-kit .fsec .alert { font-size: 14px; margin: 0; }
+.form-kit .fk-links { font-size: 16px; }
+
+@media (max-width: 640px) {
+  .form-kit .fsec { padding: 18px; }
+  .form-kit .fk-submit button { width: 100%; }
+}
+
+/* Dark mode: the older dark rules of the chips are more specific than the variables, so the unchosen chip is set again here. */
+:root[data-theme="dark"] .form-kit .voice-select .voice-style-option:not(.selected),
+:root[data-theme="dark"] .form-kit .source-options .source-chip:not(.selected) { background: var(--fk-field); border-color: var(--fk-field-border); color: var(--fk-text); }
+:root[data-theme="dark"] .form-kit .voice-select .voice-picker-toggle { background: var(--fk-field); color: var(--fk-text); border-color: var(--fk-field-border); }

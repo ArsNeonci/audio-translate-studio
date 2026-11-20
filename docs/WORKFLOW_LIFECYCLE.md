@@ -5,7 +5,7 @@ Completed workflow rows/details leave the main Studio on its next polling refres
 this does not delete outputs or checkpoints. API enumeration still includes history
 for Reprocess and scheduling compatibility.
 
-A workflow created with "Translate by hand" (job.manual_translation) stops before Translation with status AWAITING_TRANSLATION: it holds no
+A workflow created with "Translate by hand" (job.manual_translation) stops before Translation (after 4.0.1 it ends as COMPLETED, progress 100, like tool 7; runs of 4.0.1 and earlier may still show AWAITING_TRANSLATION): it holds no
 lane or model, counts as stopped everywhere (delete, Reprocess) and continues when the person loads the translation (Reprocess from Moderation,
 `docs/MANUAL_TRANSLATION.md`).
 

@@ -63,22 +63,35 @@ export default function HistoryDetail({id,scope="history"}: {id:string;scope?:"h
   }, [id,scope,tr]);
   return <section className="history-detail"><Link className="text-button" href={`/${scope}`}>{tr("← History")}</Link>{error && <p className="alert" role="alert">{tr(error)}</p>}{!job && !error && <p role="status">{tr("Đang tải kết quả…")}</p>}
     {job && <><div className="history-heading"><span className="eyebrow">{tr("SAVED JOB ·")} {tr(job.status)}</span><h1>#{runNumber(job.workflow_no)} · {job.name}</h1><small>{id}</small><p>{job.url}</p></div>
+      {!job.tool_type && job.manual_translation && job.status === "COMPLETED" && job.steps?.TRANSLATION?.state !== "COMPLETED" && <p role="note"><small className="manual-hint">{tr("manualWaiting")}</small>{" "}<Link className="text-button" href={`/reprocess?id=${job.id}&step=MODERATION`}>{tr("manualLoadLink")}</Link></p>}
       <PipelineStatus job={job} />
       <StepErrors job={job} />
-      {["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS", "SUBTITLE", "VIDEO", "BURN", "SPLIT"].map(step => {
-        const files = job.files.filter(file => file.step === step);
-        if (!files.length) return null;
-        return <section className="history-stage" key={step}><h2>{tr(step)}</h2><div className="artifact-grid">{files.map(file => {
+      {(() => {
+        // The JSON of each stage is for programs, not for people: only the readable files are listed (they stay on disk and in the exports).
+        const shown = (file: HistoryFile) => !/\.jsonl?$/.test(file.path);
+        const stages = ["DOWNLOAD", "TRANSCRIPTION", "TRANSLATION", "MODERATION", "TTS", "SUBTITLE", "VIDEO", "BURN", "SPLIT", "RENDER"]
+          .map(step => ({ step, files: job.files.filter(file => file.step === step && shown(file)) })).filter(stage => stage.files.length);
+        // Two stages per row, in order (text and audio alike). A stage with several files, a video (it needs the width), or one left over, takes a whole row.
+        const pairable = (stage: (typeof stages)[number]) => stage.files.length === 1 && !stage.files.some(file => file.type === "VIDEO_MP4" || file.type === "VIDEO_SUB_MP4");
+        const rows: (typeof stages)[] = [];
+        for (let i = 0; i < stages.length; i++) {
+          if (pairable(stages[i]) && i + 1 < stages.length && pairable(stages[i + 1])) { rows.push([stages[i], stages[i + 1]]); i++; } else rows.push([stages[i]]);
+        }
+        const card = (file: HistoryFile) => {
           const url = apiUrl(`/api/${scope}/${id}/files/${file.id}`);
           const audio = /\.(wav|m4a|mp4|mp3|webm|ogg|opus|flac|aac)$/.test(file.path);
           return <article className="artifact-card ready" key={file.id}><span className="artifact-state">{tr(file.status)} · {size(file.size)}{file.origin === "import" && ` · ${tr("originImport")}`}</span><div className="artifact-file-heading"><h4>{labelOf(tr, file)}</h4>{file.status==='AVAILABLE'&&<a className="rule-icon file-download" href={scope==='tools'?`${url}?download=1`:`${url}/download`} title={tr('Download ↓')} aria-label={`${tr('Download ↓')} ${file.path}`}><DownloadIcon/></a>}</div>
             {file.status!=="AVAILABLE"?<p>{tr(file.status)} · {tr("Kết quả cần được tạo lại.")}</p>:file.type==="VIDEO_MP4"||file.type==="VIDEO_SUB_MP4"?<VideoResult id={id} scope={scope==="tools"?"tools":"workflows"} url={url} subtitled={file.type==="VIDEO_SUB_MP4"} />:file.path.endsWith(".zip") ? <p>{tr("splitZipHelp")}</p> : audio ? (license.allowed ? <AudioPlayer src={url} label={labelOf(tr, file)} /> : <p>{tr("License cần ACTIVE để phát audio.")}</p>) : <button className="text-button" disabled={!license.allowed} onClick={() => setSelected(selected?.id === file.id ? null : file)}>{selected?.id === file.id ? tr("Close view") : tr("View")}</button>}
             {file.type==="SUBTITLE_SRT"&&file.status==="AVAILABLE"&&<small>{tr("subtitleYoutube")}</small>}
             <small>{file.path}</small></article>;
-        })}</div></section>;
-      })}
+        };
+        const previewing = license.allowed && selected && job.files.some(file => file.id === selected.id && file.status === "AVAILABLE") ? selected : null;
+        return rows.map(row => <div key={row[0].step}>
+          <div className={`history-row${row.length === 1 ? " single" : ""}`}>{row.map(stage => <section className="history-stage" key={stage.step}><h2>{tr(stage.step)}</h2><div className="artifact-grid">{stage.files.map(card)}</div></section>)}</div>
+          {previewing && row.some(stage => stage.files.some(file => file.id === previewing.id)) && <FilePreview key={previewing.id} id={id} file={previewing} scope={scope} />}   {/* the text opens right under the row of the file */}
+        </div>);
+      })()}
       {!job.files.length && <div className="empty"><strong>{tr("Chưa có file hoàn thành.")}</strong></div>}
-      {license.allowed && selected && job.files.some(file => file.id === selected.id&&file.status==="AVAILABLE") && <FilePreview key={selected.id} id={id} file={selected} scope={scope} />}
     </>}
   </section>;
 }

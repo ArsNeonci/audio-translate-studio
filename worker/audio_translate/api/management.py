@@ -33,6 +33,8 @@ def management_response(body, job_id, action, scope='workflows'):
         return json_response({'error': 'The loaded file is no longer available; load it again'}, 400)
     if action == 'reprocess' and 'burn' in payload and not isinstance(payload['burn'], bool):
         return json_response({'error': 'Invalid subtitle settings'}, 400)
+    if action == 'reprocess' and any(key in payload and not isinstance(payload[key], bool) for key in ('manual', 'drop_video', 'ultra')):
+        return json_response({'error': 'Invalid settings'}, 400)
     result = worker_command('manage.py', {**payload, 'action': action, 'id': job_id, 'scope': scope})
     status = result.pop('status')
     if status == 200 and action in STARTS_WORK:
