@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request
 from audio_translate.api import billing, license as lease, model
 from audio_translate.api.runtime import license_command
 from audio_translate.api.web import json_response, origin_allowed, threaded
+from audio_translate.core import endpoint as address_book
 
 router = APIRouter()
 ORIGIN_REJECTED = {'error': 'Origin rejected'}
@@ -14,6 +15,7 @@ ORIGIN_REJECTED = {'error': 'Origin rejected'}
 
 @router.get('/api/license')
 async def license_status(request: Request):
+    address_book.refresh_in_background()                                 # opening the app reads the signed address file when it is a day old
     lease.ensure_lease_in_background()                                   # opening the app renews the lease when it is due
     threading.Thread(target=billing.fetch_renewals, daemon=True).start()   # installs a renewal paid for in the Billing portal
     action = 'machine' if request.query_params.get('machine') == '1' else 'status'
@@ -42,7 +44,7 @@ async def license_change(request: Request):
             return json_response({'error': 'Invalid request'}, 400)
         result = await threaded(license_command, {'action': data['action'], 'token': data['token'].strip()})
     except (ValueError, UnicodeDecodeError): return json_response({'error': 'Invalid request'}, 400)
-    if result.get('status') == 'ACTIVE': lease.ensure_lease_in_background(True)   # a fresh licence fetches its lease now
+    if result.get('status') == 'ACTIVE': lease.ensure_lease_in_background(True, fresh=True)   # a fresh licence fetches its lease now
     return json_response(result, result.get('http_status', 503), no_store=True)
 
 

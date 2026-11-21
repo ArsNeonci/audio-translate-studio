@@ -18,6 +18,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+from audio_translate.core import endpoint as address_book
 from audio_translate.core.control import Cancelled, check_cancel, now, stop_mode
 from audio_translate.core.storage import (ROOT, Checkpoints, atomic_json, completed, count_rows, digest, finish,
                                           progress, read_json, rows, text_outputs, update_job, write_row)
@@ -28,8 +29,13 @@ KEY_VERSION = 'genius-v1'
 
 
 def settings():
-    return {'endpoint': '', 'chunk_rows': 100, 'context_rows': 12, 'max_characters': 30,
-            'request_timeout_seconds': 900, 'max_wait_seconds': 600, **read_json(CONFIG)}
+    value = {'endpoint': '', 'chunk_rows': 100, 'context_rows': 12, 'max_characters': 30,
+             'request_timeout_seconds': 900, 'max_wait_seconds': 600, **read_json(CONFIG)}
+    # Where the server is now: the signed address file the app has read (core/endpoint.py) wins over the address it shipped with.
+    for key, role in (('endpoint', 'gateway'), ('billing_url', 'billing')):
+        moved = address_book.cached(role)
+        if moved: value[key] = moved
+    return value
 
 
 def configured():
@@ -54,30 +60,36 @@ def credential():
 USER_AGENT = 'audio-translate-app/1'
 
 
+# A reply of these says the server's side of the network is down (Cloudflare answers 502-504 and 520-530 when the tunnel or the origin is gone).
+DOWN_STATUS = frozenset({502, 503, 504, *range(520, 531)})
+
+
+def _call(build, endpoint, timeout):
+    """One call to the gateway. If it cannot be reached the signed address file is read once (core/endpoint.py) and, when the server has moved,
+    the same call is sent again at the new address. Raises GatewayError like before."""
+    for attempt in (0, 1):
+        try:
+            with urllib.request.urlopen(build(endpoint), timeout=timeout) as response: return json.load(response)
+        except urllib.error.HTTPError as error:
+            try: code = json.load(error).get('error', 'GATEWAY_ERROR')
+            except Exception: code = 'GATEWAY_ERROR'
+            failure, down = GatewayError(error.code, code), error.code in DOWN_STATUS
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
+            failure, down = GatewayError(0, 'UNREACHABLE'), True
+        moved = address_book.failover(endpoint) if attempt == 0 and down else None
+        if not moved: raise failure from None
+        endpoint = moved
+
+
 def post(endpoint, path, body, token, timeout):
-    request = urllib.request.Request(endpoint.rstrip('/') + path, json.dumps(body, ensure_ascii=False).encode(),
-                                     {'Content-Type': 'application/json', 'Authorization': f'License {token}',
-                                      'User-Agent': USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response: return json.load(response)
-    except urllib.error.HTTPError as error:
-        try: code = json.load(error).get('error', 'GATEWAY_ERROR')
-        except Exception: code = 'GATEWAY_ERROR'
-        raise GatewayError(error.code, code) from None
-    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
-        raise GatewayError(0, 'UNREACHABLE') from None
+    data = json.dumps(body, ensure_ascii=False).encode()
+    return _call(lambda base: urllib.request.Request(base.rstrip('/') + path, data, {'Content-Type': 'application/json', 'Authorization': f'License {token}',
+                                                                                  'User-Agent': USER_AGENT}), endpoint, timeout)
 
 
 def get(endpoint, path, token, timeout):
-    request = urllib.request.Request(endpoint.rstrip('/') + path, headers={'Authorization': f'License {token}', 'User-Agent': USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response: return json.load(response)
-    except urllib.error.HTTPError as error:
-        try: code = json.load(error).get('error', 'GATEWAY_ERROR')
-        except Exception: code = 'GATEWAY_ERROR'
-        raise GatewayError(error.code, code) from None
-    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError):
-        raise GatewayError(0, 'UNREACHABLE') from None
+    return _call(lambda base: urllib.request.Request(base.rstrip('/') + path, headers={'Authorization': f'License {token}', 'User-Agent': USER_AGENT}),
+                 endpoint, timeout)
 
 
 def pause(job_dir, reason):

@@ -2,6 +2,10 @@
   "version": 1,
   "endpoint": "https://audio-gateway.arsneonci.space",
   "billing_url": "https://billing.arsneonci.space",
+  "directory": [
+    "https://arsneonci.github.io/audio-endpoint",
+    "https://audio-endpoint.9hstv2fmhh.workers.dev"
+  ],
   "chunk_rows": 100,
   "context_rows": 12,
   "max_characters": 30,

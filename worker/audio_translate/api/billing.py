@@ -14,6 +14,7 @@ from urllib.parse import quote, urlsplit
 
 from audio_translate.api import license as lease
 from audio_translate.api.runtime import license_command
+from audio_translate.core import endpoint as address_book
 from audio_translate.core.storage import DATA
 
 FILE = DATA / 'settings' / 'billing.json'
@@ -29,8 +30,11 @@ class BillingError(Exception):
 def remembered():
     try:
         value = json.loads(FILE.read_text(encoding='utf-8'))
-        return value if isinstance(value, dict) else {}
+        value = value if isinstance(value, dict) else {}
     except (OSError, ValueError): return {}
+    moved = address_book.cached('billing')   # the portal moved to another domain: the saved address is not used any more
+    if moved and isinstance(value.get('portal_url'), str) and value['portal_url'].rstrip('/') != moved: value = {**value, 'portal_url': moved}
+    return value
 
 
 def remember(code, portal_url):

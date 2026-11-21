@@ -215,6 +215,23 @@ const NOW: i64 = 1_800_000_000; // 2027: inside the fixture's lifetime
     assert_eq!(lease::content_key(dir.path(), &root, &machine, NOW).unwrap_err(), "LEASE_REQUIRED");      // any other scope is not accepted
 }
 
+#[test] fn a_block_is_lifted_only_by_a_lease_with_a_higher_counter() {
+    // The payment hold: the owner blocks a licence, the app shuts the vault at once; when he unblocks, the gateway's next lease carries a higher counter.
+    let machine = "a".repeat(64); let dir = tempfile::tempdir().unwrap(); let key = [7u8; 32];
+    let (first, root) = lease_fixture(dir.path(), &machine, PRODUCT, 1, Some("product"), key);
+    lease::install(dir.path(), &first, &root, &machine, NOW).unwrap();
+    lease::mark_revoked(dir.path()).unwrap();
+    assert_eq!(lease::content_key(dir.path(), &root, &machine, NOW).unwrap_err(), "LICENSE_REVOKED");
+    let status = lease::status(dir.path(), &root, &machine, NOW).unwrap();
+    assert_eq!((status["lease"].as_str(), status["renew"].as_bool()), (Some("REVOKED"), Some(true)));   // blocked: the app asks the server again as soon as it can
+    assert_eq!(lease::install(dir.path(), &first, &root, &machine, NOW).unwrap_err(), "SECURE_STATE_INVALID");   // an old copy of the same lease does not lift the block
+    let (second, _) = lease_fixture(dir.path(), &machine, PRODUCT, 2, Some("product"), key);
+    lease::install(dir.path(), &second, &root, &machine, NOW).unwrap();
+    assert_eq!(lease::content_key(dir.path(), &root, &machine, NOW).unwrap(), Some(key));
+    let status = lease::status(dir.path(), &root, &machine, NOW).unwrap();
+    assert_eq!((status["lease"].as_str(), status["renew"].as_bool()), (Some("VALID"), Some(false)));   // a lease to 2099: nothing more to ask
+}
+
 #[test] fn the_counter_is_per_product_and_the_old_shared_lease_is_adopted_once_when_it_is_ours() {
     let machine = "a".repeat(64); let dir = tempfile::tempdir().unwrap(); let key = [7u8; 32];
     // Before 3.2.0: one shared lease.dpapi whose highest counter came from another licence (9).

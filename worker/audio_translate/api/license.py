@@ -7,10 +7,12 @@ import json
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from audio_translate.api.runtime import license_command
 from audio_translate.api.web import json_response
+from audio_translate.core import endpoint as address_book
 from audio_translate.core.storage import ROOT
 
 RECHECK_SECONDS, ERROR_RECHECK_SECONDS = 600, 60
@@ -19,8 +21,8 @@ _state = {'at': 0.0, 'last': None}
 
 
 def _config_url(key):
-    try: value = json.loads((ROOT / 'worker' / 'config' / 'genius.json').read_text(encoding='utf-8')).get(key)
-    except (OSError, ValueError): return None
+    """The gateway's (`endpoint`) or the portal's (`billing_url`) address: from the signed address file when the app has read one, else the shipped config."""
+    value = address_book.address(key)
     return value.rstrip('/') if isinstance(value, str) and (value.startswith('https://') or value.startswith('http://127.0.0.1')) else None
 
 
@@ -40,7 +42,20 @@ def app_version():
 
 
 def gateway_call(method, url, token, body=None, timeout=20):
-    """(status, json body) from the gateway, or None when it cannot be reached."""
+    """(status, json body) from the gateway, or None when it cannot be reached. A call that fails at network level (or is answered by a down
+    tunnel) reads the signed address file once and is sent again if the server has moved."""
+    reply = _gateway_call_once(method, url, token, body, timeout)
+    if reply is not None and reply[0] not in DOWN_STATUS: return reply
+    parts = urllib.parse.urlsplit(url)
+    base = address_book.failover(f'{parts.scheme}://{parts.netloc}')
+    if not base: return reply
+    return _gateway_call_once(method, address_book.swap_origin(url, base), token, body, timeout) or reply
+
+
+DOWN_STATUS = frozenset({502, 503, 504, *range(520, 531)})
+
+
+def _gateway_call_once(method, url, token, body, timeout):
     data = None if body is None else json.dumps(body).encode()
     request = urllib.request.Request(url, data=data, method=method, headers={'Content-Type': 'application/json', 'Authorization': f'License {token}',
                                                                               'User-Agent': 'audio-translate-app/1'})
@@ -53,10 +68,12 @@ def gateway_call(method, url, token, body=None, timeout=20):
     return status, value if isinstance(value, dict) else {}
 
 
-def _renew():
+def _renew(fresh=False):
+    """`fresh`: a licence was just entered or renewed, so ask for its lease even when the lease on the machine says it is not due (a long lease
+    of the licence this one replaced would otherwise stay in place)."""
     status = license_command({'action': 'lease_status'})
     phase = status.get('lease') if isinstance(status.get('lease'), str) else 'UNKNOWN'
-    if status.get('http_status') != 200 or status.get('renew') is not True: return {'lease': phase, 'renewed': False}
+    if status.get('http_status') != 200 or (status.get('renew') is not True and not fresh): return {'lease': phase, 'renewed': False}
     base = gateway_endpoint()
     if not base: return {'lease': phase, 'renewed': False, 'error': 'GATEWAY_NOT_CONFIGURED'}
     credential, key = license_command({'action': 'credential'}), license_command({'action': 'machine_pubkey'})
@@ -80,20 +97,20 @@ def _renew():
     return {'lease': 'VALID', 'renewed': True} if installed.get('status') == 'OK' else {'lease': phase, 'renewed': False, 'error': str(installed.get('status') or 'INVALID')}
 
 
-def ensure_lease(force=False):
+def ensure_lease(force=False, fresh=False):
     """Safe to call often: concurrent callers wait for the one check, and a fresh result is reused for ten minutes."""
     with _lock:
         last, age = _state['last'], time.monotonic() - _state['at']
         if not force and last and 'error' not in last and age < RECHECK_SECONDS: return last
         if not force and last and 'error' in last and age < ERROR_RECHECK_SECONDS: return last
-        try: result = _renew()
+        try: result = _renew(fresh)
         except Exception: result = {'lease': 'UNKNOWN', 'renewed': False, 'error': 'LEASE_CHECK_FAILED'}
         _state.update(last=result, at=time.monotonic())
         return result
 
 
-def ensure_lease_in_background(force=False):
-    threading.Thread(target=ensure_lease, args=(force,), daemon=True).start()
+def ensure_lease_in_background(force=False, fresh=False):
+    threading.Thread(target=ensure_lease, args=(force, fresh), daemon=True).start()
 
 
 PERPETUAL_YEAR = 2100   # the admin's "Perpetual" is 36,500 days; any expiry from this year on is shown as perpetual and has nothing to renew
