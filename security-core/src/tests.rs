@@ -64,14 +64,14 @@ fn fixture(machine: &str, sequence: u64, key_version: u64, product: &str) -> (St
     let temp=tempfile::tempdir().unwrap();let path=temp.path().join("state.dpapi");
     let machine="a".repeat(64);let (token,root)=fixture(&machine,1,1,PRODUCT);
     let state=adopt(None,&token,false,&root,&machine).unwrap();
-    { let store=windows::Store::open(&path).unwrap();store.write(&state).unwrap(); }
+    { let store=platform::Store::open(&path).unwrap();store.write(&state).unwrap(); }
     let raw=std::fs::read(&path).unwrap();assert!(!raw.windows(token.len()).any(|s|s==token.as_bytes()));
-    let store=windows::Store::open(&path).unwrap();let saved=store.read().unwrap().unwrap();
+    let store=platform::Store::open(&path).unwrap();let saved=store.read().unwrap().unwrap();
     assert_eq!(verified(&saved,&root,&machine).unwrap().sequence,1);
     assert_eq!(verified(&saved,&root,&"b".repeat(64)).unwrap_err(),"WRONG_MACHINE");
 }
 #[test] fn fingerprint_is_stable() {
-    let first=windows::machine_id().unwrap();assert_eq!(first.len(),64);assert_eq!(first,windows::machine_id().unwrap());
+    let first=platform::machine_id().unwrap();assert_eq!(first.len(),64);assert_eq!(first,platform::machine_id().unwrap());
 }
 #[test] fn edition_follows_product_id() {
     assert_eq!(license::tier("audio-translate-basic"),"basic");
@@ -167,7 +167,7 @@ fn file_sha(p: &std::path::Path) -> String { use sha2::{Digest, Sha256}; hex::en
     // The machine secret is stored DPAPI-sealed, as machine_secret() does, then the real unwrap path runs.
     let k = &v["content_key"];
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("machine.x25519.dpapi"), windows::seal(&URL_SAFE_NO_PAD.decode(str_of(k, "machine_x25519_private")).unwrap()).unwrap()).unwrap();
+    std::fs::write(dir.path().join("machine.x25519.dpapi"), platform::seal(&URL_SAFE_NO_PAD.decode(str_of(k, "machine_x25519_private")).unwrap()).unwrap()).unwrap();
     assert_eq!(lease::machine_public(dir.path()).unwrap(), str_of(k, "machine_x25519_public"));
     let wrapped: lease::WrappedKey = serde_json::from_value(k["wrapped"].clone()).unwrap();
     assert_eq!(URL_SAFE_NO_PAD.encode(lease::unwrap_content_key(dir.path(), &wrapped).unwrap()), str_of(k, "key"));
@@ -237,7 +237,7 @@ const NOW: i64 = 1_800_000_000; // 2027: inside the fixture's lifetime
     // Before 3.2.0: one shared lease.dpapi whose highest counter came from another licence (9).
     let (ours, root) = lease_fixture(dir.path(), &machine, PRODUCT, 2, None, key);
     let shared = lease::LeaseState { lease: ours.clone(), highest_counter: 9, last_verified_time: NOW, revoked: false };
-    std::fs::write(dir.path().join("lease.dpapi"), windows::seal(&serde_json::to_vec(&shared).unwrap()).unwrap()).unwrap();
+    std::fs::write(dir.path().join("lease.dpapi"), platform::seal(&serde_json::to_vec(&shared).unwrap()).unwrap()).unwrap();
     assert!(lease::status(dir.path(), &root, &machine, NOW).is_ok());
     let own_file = dir.path().join(format!("lease-{PRODUCT}.dpapi"));
     assert!(own_file.exists(), "the lease is adopted into this product's own file");
@@ -251,7 +251,38 @@ const NOW: i64 = 1_800_000_000; // 2027: inside the fixture's lifetime
     let dir2 = tempfile::tempdir().unwrap();
     let (theirs, root2) = lease_fixture(dir2.path(), &machine, "another-product", 5, None, key);
     let state = lease::LeaseState { lease: theirs, highest_counter: 5, last_verified_time: NOW, revoked: false };
-    std::fs::write(dir2.path().join("lease.dpapi"), windows::seal(&serde_json::to_vec(&state).unwrap()).unwrap()).unwrap();
+    std::fs::write(dir2.path().join("lease.dpapi"), platform::seal(&serde_json::to_vec(&state).unwrap()).unwrap()).unwrap();
     assert_eq!(lease::status(dir2.path(), &root2, &machine, NOW).unwrap()["lease"], "NONE");
     assert!(!dir2.path().join(format!("lease-{PRODUCT}.dpapi")).exists());
+}
+
+// The service socket of the Linux build: one framed request, one framed answer, the real dispatch of the core, and the size cap.
+#[cfg(unix)]
+#[test] fn the_unix_socket_serves_the_core_actions_and_caps_the_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("core.sock");
+    std::env::set_var("AUDIO_SECURITY_SOCKET", &socket);
+    ipc::set_dispatch(service_dispatch);
+    std::thread::spawn(|| { let _ = ipc::serve(); });
+    for _ in 0..200 { if socket.exists() { break; } std::thread::sleep(std::time::Duration::from_millis(20)); }
+    let identity = ipc::call(&json!({"action": "identity"})).unwrap();
+    assert_eq!(identity["http_status"], 200); assert_eq!(identity["product_id"], PRODUCT); assert_eq!(identity["protocol"], 1);
+    let refused = ipc::call(&json!({"action": "nothing-like-this"})).unwrap();
+    assert_eq!(refused["http_status"], 403); assert_eq!(refused["status"], "INVALID_ACTION");
+    assert_eq!(ipc::call(&json!({"action": "a".repeat(70000)})).unwrap_err(), "INVALID_ACTION");
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(&socket).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode & 0o007, if cfg!(feature = "dev_fallback") { 0o006 } else { 0 }, "no access for others in a release build: {mode:o}");
+}
+
+// Sealed state is opaque, bound to this machine's identity and refuses a flipped byte.
+#[cfg(unix)]
+#[test] fn sealed_bytes_are_opaque_and_tamper_evident() {
+    let sealed = platform::seal(b"secret state").unwrap();
+    assert!(!sealed.windows(12).any(|w| w == b"secret state"));
+    assert_eq!(platform::unseal(&sealed).unwrap(), b"secret state");
+    let mut flipped = sealed.clone(); let last = flipped.len() - 1; flipped[last] ^= 1;
+    assert_eq!(platform::unseal(&flipped).unwrap_err(), "INVALID");
+    assert_eq!(platform::unseal(&sealed[..10]).unwrap_err(), "INVALID");
+    assert_ne!(platform::seal(b"secret state").unwrap(), sealed, "a fresh nonce each time");
 }

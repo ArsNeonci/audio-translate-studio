@@ -6,7 +6,7 @@
 //! keypair (DPAPI-sealed), unwraps the key into memory only, and stores the lease with the highest
 //! counter it has seen so an older lease restored offline is detected as a rollback.
 use crate::license::{signature as verify_sig, timestamp, Certificate, Result, PRODUCT};
-use crate::windows;
+use crate::platform;
 use aes_gcm::aead::{Aead, KeyInit, OsRng, Payload};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -96,13 +96,13 @@ fn machine_key_file(state_dir: &Path) -> PathBuf { state_dir.join("machine.x2551
 pub fn machine_secret(state_dir: &Path) -> Result<StaticSecret> {
     let path = machine_key_file(state_dir);
     if path.exists() {
-        let bytes: [u8; 32] = windows::unseal(&std::fs::read(&path).map_err(|_| "SECURE_STATE_INVALID")?)?
+        let bytes: [u8; 32] = platform::unseal(&std::fs::read(&path).map_err(|_| "SECURE_STATE_INVALID")?)?
             .try_into().map_err(|_| "SECURE_STATE_INVALID")?;
         return Ok(StaticSecret::from(bytes));
     }
     std::fs::create_dir_all(state_dir).map_err(|_| "SECURE_STATE_INVALID")?;
     let secret = StaticSecret::random_from_rng(OsRng);
-    let sealed = windows::seal(secret.as_bytes())?;
+    let sealed = platform::seal(secret.as_bytes())?;
     let temp = path.with_extension(format!("{}.tmp", std::process::id()));
     std::fs::write(&temp, &sealed).map_err(|_| "SECURE_STATE_INVALID")?;
     let _ = std::fs::rename(&temp, &path);
@@ -138,7 +138,7 @@ fn legacy_lease_file(state_dir: &Path) -> PathBuf { state_dir.join("lease.dpapi"
 pub fn migrate_legacy(state_dir: &Path, root: &str, machine: &str) {
     if lease_file(state_dir).exists() { return; }
     let Ok(raw) = std::fs::read(legacy_lease_file(state_dir)) else { return; };
-    let Ok(plain) = windows::unseal(&raw) else { return; };
+    let Ok(plain) = platform::unseal(&raw) else { return; };
     let Ok(old) = serde_json::from_slice::<LeaseState>(&plain) else { return; };
     let Ok(payload) = verify_lease(&old.lease, root, machine) else { return; };
     // The counter restarts from this lease: the shared file's highest counter may have come from another product's licence.
@@ -149,13 +149,13 @@ pub fn load_state(state_dir: &Path) -> Result<Option<LeaseState>> {
     let path = lease_file(state_dir);
     if !path.exists() { return Ok(None); }
     let raw = std::fs::read(&path).map_err(|_| "SECURE_STATE_INVALID")?;
-    let plain = windows::unseal(&raw)?;
+    let plain = platform::unseal(&raw)?;
     serde_json::from_slice(&plain).map(Some).map_err(|_| "SECURE_STATE_INVALID")
 }
 
 pub fn save_state(state_dir: &Path, state: &LeaseState) -> Result<()> {
     std::fs::create_dir_all(state_dir).map_err(|_| "SECURE_STATE_INVALID")?;
-    let sealed = windows::seal(&serde_json::to_vec(state).map_err(|_| "SECURE_STATE_INVALID")?)?;
+    let sealed = platform::seal(&serde_json::to_vec(state).map_err(|_| "SECURE_STATE_INVALID")?)?;
     let path = lease_file(state_dir);
     let temp = path.with_extension(format!("{}.tmp", std::process::id()));
     std::fs::write(&temp, &sealed).map_err(|_| "SECURE_STATE_INVALID")?;

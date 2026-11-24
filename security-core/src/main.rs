@@ -1,9 +1,12 @@
-#![cfg(windows)]
-mod ipc;
+// One crate for both systems: the Windows service on Windows, a systemd service on Linux. The platform module (machine identity, sealing, state file)
+// and the ipc module (named pipe or unix socket) have the same functions on each side; everything else is shared.
+#[cfg(windows)] #[path = "ipc.rs"] mod ipc;
+#[cfg(unix)] #[path = "ipc_unix.rs"] mod ipc;
 mod lease;
 mod license;
 mod manifest;
-mod windows;
+#[cfg(windows)] #[path = "windows.rs"] mod platform;
+#[cfg(unix)] #[path = "unix.rs"] mod platform;
 #[cfg(test)] mod tests;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -12,10 +15,14 @@ use serde_json::{json, Value};
 use std::{env, io::{Read, Write}, path::{Path, PathBuf}, process::{Command, Stdio}, time::{Duration, SystemTime, UNIX_EPOCH}};
 
 fn now() -> i64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64 }
+#[cfg(windows)]
+fn default_state_root() -> Option<PathBuf> { env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AudioTranslate/license")) }
+#[cfg(unix)]
+fn default_state_root() -> Option<PathBuf> { Some(PathBuf::from("/var/lib/audio-translate/license")) }
 fn state_path() -> Result<PathBuf> {
     // Storage location only; no environment setting changes the embedded anchor.
     let base = env::var_os("AUDIO_LICENSE_STATE_ROOT").map(PathBuf::from)
-        .or_else(|| env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AudioTranslate/license"))).ok_or("INVALID")?;
+        .or_else(default_state_root).ok_or("INVALID")?;
     // Each edition keeps its own license; Basic state never blocks activating Plus.
     Ok(base.join(if PRODUCT == "audio-translate" { "state.dpapi".to_string() } else { format!("state-{PRODUCT}.dpapi") }))
 }
@@ -36,8 +43,8 @@ fn trusted_time() -> Result<i64> {
     Ok((values[(values.len()-1)/2]+values[values.len()/2])/2)
 }
 fn check(internet: bool) -> Result<Value> {
-    let machine = windows::machine_id()?;
-    let store = windows::Store::open(&state_path()?)?;
+    let machine = platform::machine_id()?;
+    let store = platform::Store::open(&state_path()?)?;
     let mut state = store.read()?.ok_or("UNACTIVATED")?;
     let p = license::verified(&state, ROOT, &machine)?;
     license::expiration(&p, now(), state.last_verified_time)?;
@@ -51,8 +58,8 @@ fn check(internet: bool) -> Result<Value> {
 /// The signed license authenticates this machine to the Genius gateway. It is already
 /// the customer's own token; the gateway verifies signature, product and expiry itself.
 fn credential() -> Result<Value> {
-    let machine = windows::machine_id()?;
-    let store = windows::Store::open(&state_path()?)?;
+    let machine = platform::machine_id()?;
+    let store = platform::Store::open(&state_path()?)?;
     let state = store.read()?.ok_or("UNACTIVATED")?;
     let p = license::verified(&state, ROOT, &machine)?;
     license::expiration(&p, now(), state.last_verified_time)?;
@@ -114,7 +121,7 @@ fn authorize(kind: &str, script: &str, action: &str) -> Result<()> {
 /// build with no lease at all is refused too (LEASE_REQUIRED); dev builds without one pass.
 fn lease_gate() -> Result<()> {
     let state = state_path()?;
-    match lease::content_key(state.parent().ok_or("INVALID")?, ROOT, &windows::machine_id()?, now())? {
+    match lease::content_key(state.parent().ok_or("INVALID")?, ROOT, &platform::machine_id()?, now())? {
         Some(_) => Ok(()),
         None if cfg!(feature = "dev_fallback") => Ok(()),
         None => Err("LEASE_REQUIRED"),
@@ -140,8 +147,10 @@ fn service_dispatch(request: &Value) -> Result<Value> {
     }
 }
 fn python(app: &Path) -> Result<PathBuf> {
-    let bundled = app.parent().ok_or("CORE_UNAVAILABLE")?.join("runtime/python/python.exe");
-    let dev = app.join(".venv/Scripts/python.exe");
+    #[cfg(windows)] let (bundled, dev) = ("runtime/python/python.exe", ".venv/Scripts/python.exe");
+    #[cfg(unix)] let (bundled, dev) = ("runtime/python/bin/python3", ".venv/bin/python");
+    let bundled = app.parent().ok_or("CORE_UNAVAILABLE")?.join(bundled);
+    let dev = app.join(dev);
     if bundled.is_file() { Ok(bundled) } else if dev.is_file() { Ok(dev) } else { Err("CORE_UNAVAILABLE") }
 }
 pub fn command_protected(script: &str, action: &str) -> Result<bool> {
@@ -178,8 +187,7 @@ fn launch(request: &Value, workflow: bool) -> Result<i32> {
     let mut command = Command::new(python(&app)?);
     command.arg(app.join("worker").join(script)).args(args).current_dir(&app)
         .stdin(if workflow { Stdio::null() } else { Stdio::piped() }).stdout(Stdio::inherit()).stderr(Stdio::inherit());
-    use std::os::windows::process::CommandExt;
-    command.creation_flags(0x08000000);
+    #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
     let mut child = command.spawn().map_err(|_| "CORE_UNAVAILABLE")?;
     if !workflow {
         let raw = serde_json::to_vec(&request["payload"]).map_err(|_| "INVALID_ACTION")?;
@@ -191,7 +199,7 @@ fn execute(request: &Value) -> Result<Value> {
     match request["action"].as_str().ok_or("INVALID_ACTION")? {
         "identity" => Ok(json!({"product_id":PRODUCT,"tier":tier(PRODUCT),"root_public_key":ROOT,"protocol":1})),
         "credential" => credential(),
-        "machine" => Ok(json!({"machine_id":windows::machine_id()?, "product_id":PRODUCT})),
+        "machine" => Ok(json!({"machine_id":platform::machine_id()?, "product_id":PRODUCT})),
         "integrity" => {
             let scope = if request["scope"].as_str() == Some("runtime") { manifest::Scope::Runtime } else { manifest::Scope::Install };
             app_integrity(&app_root()?, scope)?;
@@ -204,7 +212,7 @@ fn execute(request: &Value) -> Result<Value> {
             check(false)?;
             let state = state_path()?;
             let dir = state.parent().ok_or("INVALID")?;
-            let machine = windows::machine_id()?;
+            let machine = platform::machine_id()?;
             match lease::content_key(dir, ROOT, &machine, now())? {
                 // A lease-wrapped key is machine-bound; expiry/rollback are enforced in lease::content_key.
                 Some(key) => Ok(json!({"status":"OK", "content_key":URL_SAFE_NO_PAD.encode(key), "source":"lease", "product_id":PRODUCT})),
@@ -226,16 +234,16 @@ fn execute(request: &Value) -> Result<Value> {
         }
         "lease_status" => {
             let state = state_path()?;
-            lease::status(state.parent().ok_or("INVALID")?, ROOT, &windows::machine_id()?, now())
+            lease::status(state.parent().ok_or("INVALID")?, ROOT, &platform::machine_id()?, now())
         }
         "machine_pubkey" => {
             let state = state_path()?;
-            Ok(json!({"status":"OK", "machine_pubkey":lease::machine_public(state.parent().ok_or("INVALID")?)?, "machine_id":windows::machine_id()?, "product_id":PRODUCT}))
+            Ok(json!({"status":"OK", "machine_pubkey":lease::machine_public(state.parent().ok_or("INVALID")?)?, "machine_id":platform::machine_id()?, "product_id":PRODUCT}))
         }
         "install_lease" => {
             let state = state_path()?;
             let dir = state.parent().ok_or("INVALID")?;
-            let payload = lease::install(dir, request["token"].as_str().ok_or("INVALID")?, ROOT, &windows::machine_id()?, now())?;
+            let payload = lease::install(dir, request["token"].as_str().ok_or("INVALID")?, ROOT, &platform::machine_id()?, now())?;
             Ok(json!({"status":"OK", "counter":payload.counter, "expires_at":payload.expires_at, "license_id":payload.license_id, "product_id":PRODUCT}))
         }
         "check" => {
@@ -247,14 +255,14 @@ fn execute(request: &Value) -> Result<Value> {
         }
         "status" => {
             let result = (|| {
-                let store = windows::Store::open(&state_path()?)?;
-                license::status(&store.read()?.ok_or("UNACTIVATED")?, ROOT, &windows::machine_id()?, now())
+                let store = platform::Store::open(&state_path()?)?;
+                license::status(&store.read()?.ok_or("UNACTIVATED")?, ROOT, &platform::machine_id()?, now())
             })();
             Ok(result.unwrap_or_else(|code| json!({"status":code,"product_id":PRODUCT})))
         }
         "activate"|"renew" => {
-            let machine = windows::machine_id()?;
-            let store = windows::Store::open(&state_path()?)?;
+            let machine = platform::machine_id()?;
+            let store = platform::Store::open(&state_path()?)?;
             let old = store.read()?;
             let state = license::adopt(old.as_ref(), request["token"].as_str().ok_or("INVALID")?, request["action"] == "renew", ROOT, &machine)?;
             store.write(&state)?;
@@ -268,13 +276,20 @@ fn execute(request: &Value) -> Result<Value> {
 /// builds, so the authority's decisions cannot be single-stepped. Dev builds keep debugging.
 #[cfg(not(feature = "dev_fallback"))]
 fn anti_debug() {
-    if unsafe { windows_sys::Win32::System::Diagnostics::Debug::IsDebuggerPresent() } != 0 {
+    if debugger_present() {
         note_tamper("DEBUGGER_DETECTED");
         std::process::exit(4);
     }
 }
 #[cfg(feature = "dev_fallback")]
 fn anti_debug() {}
+#[cfg(all(windows, not(feature = "dev_fallback")))]
+fn debugger_present() -> bool { unsafe { windows_sys::Win32::System::Diagnostics::Debug::IsDebuggerPresent() != 0 } }
+#[cfg(all(unix, not(feature = "dev_fallback")))]
+fn debugger_present() -> bool {
+    // A tracing process (ptrace) shows as a non-zero TracerPid in the kernel's own view of this process.
+    std::fs::read_to_string("/proc/self/status").ok().and_then(|s| s.lines().find_map(|l| l.strip_prefix("TracerPid:").map(|v| v.trim().to_string()))).map(|v| v != "0").unwrap_or(false)
+}
 
 fn emit_error(code: &str, broker: bool) {
     if broker { println!("{}", json!({"status":403,"error":code,"license_status":code})); }

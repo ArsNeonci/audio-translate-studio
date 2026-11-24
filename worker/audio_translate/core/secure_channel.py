@@ -1,7 +1,7 @@
-"""Named-pipe client to the security service.
+"""Local-socket client to the security service (a named pipe on Windows, a unix socket on Linux).
 
-The service (native Rust core running as a Windows service) is the authority for license,
-identity and integrity. Python talks to it over a local named pipe with the same 4-byte
+The service (native Rust core running as a Windows service or a systemd service) is the authority for license,
+identity and integrity. Python talks to it over a local named pipe (Windows) or unix socket (Linux) with the same 4-byte
 length framing the Rust client uses. The pipe name carries the product id so Basic and Plus
 installs never share a channel; the id comes from the installed public config, which is only a
 rendezvous label, never a trust input.
@@ -9,7 +9,10 @@ rendezvous label, never a trust input.
 import ctypes
 from ctypes import wintypes
 import json
+import os
 from pathlib import Path
+import socket
+import struct
 
 _PIPE_PREFIX = r'\\.\pipe\AudioTranslate.'
 _GENERIC_READ = 0x80000000
@@ -17,6 +20,7 @@ _GENERIC_WRITE = 0x40000000
 _OPEN_EXISTING = 3
 _ERROR_PIPE_BUSY = 231
 _MAX = 65536
+_SOCKET_DIR = '/run/audio-translate'
 
 ROOT = Path(__file__).resolve().parents[3]  # app root: worker/audio_translate/core/secure_channel.py
 
@@ -83,11 +87,49 @@ def _read_exact(k, handle, n):
     return bytes(buf)
 
 
+def _socket_path(product):
+    # AUDIO_SECURITY_SOCKET names another socket for development and tests (the Rust service honours it only in a development build).
+    return os.environ.get('AUDIO_SECURITY_SOCKET') or f'{_SOCKET_DIR}/{product or product_id()}.sock'
+
+
+def _call_unix(body, product, timeout_ms):
+    """The Linux side: one framed request over the unix socket. Unless a development socket was named, only a server running as root is trusted
+    (the kernel reports the peer's uid): a look-alike started by an ordinary user is refused, the counterpart of the LocalSystem check on Windows."""
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.settimeout(timeout_ms / 1000)
+    try:
+        try: sock.connect(_socket_path(product))
+        except OSError: raise ServiceUnavailable('security service socket unavailable') from None
+        if not os.environ.get('AUDIO_SECURITY_SOCKET'):
+            _, uid, _ = struct.unpack('3i', sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))
+            if uid != 0: raise ServiceUnavailable('security service is not run by root')
+        try:
+            sock.sendall(len(body).to_bytes(4, 'big') + body)
+            length = int.from_bytes(_recv_exact(sock, 4), 'big')
+            if length == 0 or length > 16 * 1024 * 1024: raise ServiceUnavailable('invalid response length')
+            return json.loads(_recv_exact(sock, length))
+        except (OSError, ValueError) as error:
+            if isinstance(error, ServiceUnavailable): raise
+            raise ServiceUnavailable('security service did not answer') from None
+    finally:
+        sock.close()
+
+
+def _recv_exact(sock, n):
+    data = b''
+    while len(data) < n:
+        piece = sock.recv(n - len(data))
+        if not piece: raise ServiceUnavailable('connection closed')
+        data += piece
+    return data
+
+
 def call(request, product=None, timeout_ms=6000):
     """Send one request to the service and return its JSON response, or raise ServiceUnavailable."""
     body = json.dumps(request).encode('utf-8')
     if len(body) > _MAX:
         raise ServiceUnavailable('request too large')
+    if os.name != 'nt': return _call_unix(body, product, timeout_ms)
     name = _PIPE_PREFIX + (product or product_id())
     k = _kernel32()
     handle = _open(k, name, timeout_ms)

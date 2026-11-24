@@ -19,7 +19,8 @@ def native_command(payload):
     except Exception:
         pass
     try:
-        process=subprocess.run([str(ROOT/'security-core'/'bin'/'audio-security-core.exe')],
+        from audio_translate.core.platform_info import core_binary
+        process=subprocess.run([str(core_binary(ROOT))],
             input=json.dumps(payload),capture_output=True,text=True,encoding='utf-8',timeout=40,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
         if process.returncode or len(process.stdout)>65536: raise ValueError('CORE_UNAVAILABLE')

@@ -42,8 +42,9 @@ pub fn configured() -> bool { !MANIFEST.is_empty() }
 
 fn safe_relative(p: &str) -> Result<()> {
     if p.is_empty() || p.len() > 1024 { return Err("INTEGRITY_FAILURE"); }
-    // Only ordinary path segments; reject absolute paths, drive prefixes and `..` traversal.
-    if Path::new(p).components().any(|c| !matches!(c, Component::Normal(_))) { return Err("INTEGRITY_FAILURE"); }
+    // Only ordinary path segments; reject absolute paths, drive prefixes and `..` traversal. A manifest is written with forward slashes on every system, so a
+    // colon or a backslash is never part of a legitimate entry: refusing them keeps "C:/x" and "a\..\b" out on Linux too, where `Path` would call them plain names.
+    if p.contains(':') || p.contains('\\') || Path::new(p).components().any(|c| !matches!(c, Component::Normal(_))) { return Err("INTEGRITY_FAILURE"); }
     Ok(())
 }
 

@@ -38,7 +38,8 @@ def worker_env():
 
 
 def security_core_bin():
-    return ROOT / 'security-core' / 'bin' / 'audio-security-core.exe'
+    from audio_translate.core.platform_info import core_binary
+    return core_binary(ROOT)
 
 
 def spawn_security_core(payload, stdout=subprocess.PIPE, stderr=subprocess.PIPE):

@@ -63,6 +63,7 @@ dependencies = [
  "fs2",
  "hex",
  "hkdf",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",

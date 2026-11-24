@@ -1,0 +1,26 @@
+[Unit]
+Description=Audio Translate security core (licence, identity and integrity authority)
+After=network-online.target
+
+[Service]
+# Runs as root on purpose: it is the only process that can read the sealed licence state (core.key) and the machine identity.
+# The app itself runs as the unprivileged user `audio-translate` and reaches the core through /run/audio-translate/<product>.sock (mode 0660, group audio-translate).
+Type=simple
+ExecStart=/opt/audio-translate/app/security-core/bin/audio-security-core service
+Restart=always
+RestartSec=2
+RuntimeDirectory=audio-translate
+RuntimeDirectoryMode=0755
+StateDirectory=audio-translate
+StateDirectoryMode=0700
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/audio-translate
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
