@@ -11,6 +11,7 @@ export default function LicensePage() {
   const { language, t, tr } = useLanguage();
   const [status, setStatus] = useState<LicenseStatus>({ status: "CHECKING" });
   const [machine, setMachine] = useState("");
+  const [device, setDevice] = useState("");
   const [token, setToken] = useState("");
   const [action, setAction] = useState("activate");
   const [message, setMessage] = useNotice();
@@ -30,6 +31,7 @@ export default function LicensePage() {
         if (!disposed) {
           setStatus(s);
           setMachine(m.machine_id || "");
+          setDevice(m.device_code || "");
           if (m.error) setMessage(m.error);
         }
       })
@@ -156,6 +158,13 @@ export default function LicensePage() {
               {t.license.copy}
             </button>
           </div>
+          {device && <>
+            <label htmlFor="device-code">{tr("deviceCode")}</label>
+            <div className="machine-row">
+              <input id="device-code" readOnly value={device} />
+              <button type="button" className="action-button" onClick={() => void navigator.clipboard.writeText(device).then(() => setMessage(t.license.copied)).catch(() => setMessage(t.license.copyPrompt))}>{t.license.copy}</button>
+            </div>
+          </>}
 
           <p>{t.license.instructions}</p>
 

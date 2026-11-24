@@ -19,3 +19,10 @@ Quy tắc khớp **đúng từng ký tự, phân biệt hoa thường** (và kh�
 
 ## Test
 `worker/tests/test_community_rules.py`: nạp lần đầu, sửa/xóa/thêm, không nạp lại sau khi xóa, giữ quy tắc có sẵn, thử lại khi chưa đọc được, danh sách hợp lệ cho bộ thay thế.
+
+## Khớp không phân biệt hoa/thường (2026-11-24)
+
+- `ReplaceEngine` (`worker/audio_translate/moderation/rules.py`) khớp `re.IGNORECASE`; chữ thay thế được chỉnh theo kiểu hoa của đoạn khớp (HOA TOÀN BỘ, Viết hoa đầu, thường). Khớp đúng nguyên văn từ gốc thì dùng nguyên chữ thay thế đã cấu hình.
+- Trùng từ gốc (không phân biệt hoa/thường): quy tắc tạo trước (đứng trước trong danh sách) thắng, các dòng sau bị engine bỏ qua. `list`/`mutate` trả thêm `duplicate: true` (không lưu xuống file) để trang `/rules` hiện cảnh báo và nhãn "Trùng - xóa". Thêm/sửa mới vẫn bị chặn K103.
+- Chữ ký cache kiểm duyệt đổi thành `literal-nfc-leftmost-longest-caseless-v2` nên job cũ chạy lại bước kiểm duyệt.
+- Form thêm/sửa quy tắc nằm trên bảng; bỏ khỏi trang Studio, chỉ còn ở `/rules`.

@@ -51,11 +51,11 @@ class ReplacementRules:
         try:
             shipped = self.seed()
             rules = read_json(self.path) if self.path.exists() else []
-            known = {normalize(rule["source"]) for rule in rules}
+            known = {key(rule["source"]) for rule in rules}
             for item in shipped:
                 source, replacement = normalize(item["source"]).strip(), normalize(item["replacement"])
-                if source and source not in known:
-                    rules.append({"id": str(uuid.uuid4()), "source": source, "replacement": replacement}); known.add(source)
+                if source and key(source) not in known:
+                    rules.append({"id": str(uuid.uuid4()), "source": source, "replacement": replacement}); known.add(key(source))
             atomic_json(self.path, rules)
             atomic_json(self.seeded_path, {"version": 1, "rules": len(shipped)})
         except Exception:
@@ -72,9 +72,9 @@ class ReplacementRules:
     def list(self):
         try:
             with self.locked():
-                return {"rules": self.read(), "locked": False}
+                return {"rules": annotate(self.read()), "locked": False}
         except LockedError:
-            return {"rules": self.read(seed=False), "locked": True}
+            return {"rules": annotate(self.read(seed=False)), "locked": True}
 
     def mutate(self, action, payload):
         # Lock covers the read/validate/write transaction. Moderation holds this
@@ -88,8 +88,8 @@ class ReplacementRules:
                 source, replacement = normalize(source), normalize(replacement)
                 if len(source) > 1000 or len(replacement) > 10000:
                     raise RuleError("Nội dung quá dài: từ gốc tối đa 1.000 ký tự, từ thay thế tối đa 10.000 ký tự. Mã lỗi: K102.")
-                if any(normalize(r["source"]) == source and r["id"] != payload.get("id") for r in rules):
-                    raise RuleError("Từ gốc đã có trong danh sách. Hãy sửa quy tắc đã có. Mã lỗi: K103.")
+                if any(key(r["source"]) == key(source) and r["id"] != payload.get("id") for r in rules):
+                    raise RuleError("Từ gốc đã có trong danh sách (không phân biệt chữ hoa/thường). Hãy sửa quy tắc đã có. Mã lỗi: K103.")
             if action == "add":
                 rules.append({"id": str(uuid.uuid4()), "source": source, "replacement": replacement})
             elif action in ("edit", "delete"):
@@ -103,28 +103,65 @@ class ReplacementRules:
             else:
                 raise RuleError("Unknown rule action")
             atomic_json(self.path, rules)
-            return {"rules": rules, "locked": False}
+            return {"rules": annotate(rules), "locked": False}
+
+
+def key(value):
+    """Matching key: NFC, case-insensitive."""
+    return normalize(normalize(value).lower())
+
+
+def duplicate_ids(rules):
+    """Ids of rules whose source repeats an earlier rule (ignoring case); the earliest one is the one that counts."""
+    seen, duplicates = set(), set()
+    for rule in rules:
+        k = key(rule["source"])
+        if k in seen: duplicates.add(rule["id"])
+        else: seen.add(k)
+    return duplicates
+
+
+def annotate(rules):
+    """Copy of the list for display: later duplicates get "duplicate": True so the UI can warn and offer deleting them."""
+    duplicates = duplicate_ids(rules)
+    return [{**rule, "duplicate": True} if rule["id"] in duplicates else dict(rule) for rule in rules]
+
+
+def fit_case(matched, rule):
+    """Replacement adapted to the case of the text that matched (ALL CAPS, Capitalised, lower)."""
+    source, replacement = rule["source"], rule["replacement"]
+    if matched == source or not replacement: return replacement
+    letters = [c for c in matched if c.isalpha()]
+    if len(letters) > 1 and matched.isupper(): return replacement.upper()
+    if matched[:1].isupper(): return replacement[:1].upper() + replacement[1:]
+    # lower-case text matched a rule written with a capital: the replacement's capital is only for the start of a sentence
+    if source[:1].isupper() and replacement[:1].isupper() and not replacement[1:2].isupper():
+        return replacement[:1].lower() + replacement[1:]
+    return replacement
 
 
 class ReplaceEngine:
     def __init__(self, rules):
-        self.rules = [{**rule, "source": normalize(rule["source"]), "replacement": normalize(rule["replacement"])} for rule in rules]
-        if any(not rule["source"] for rule in self.rules):
+        rules = [{**rule, "source": normalize(rule["source"]), "replacement": normalize(rule["replacement"])} for rule in rules]
+        if any(not rule["source"] for rule in rules):
             raise RuleError("Empty replacement source")
-        self.lookup = {r["source"]: r for r in self.rules}
-        if len(self.lookup) != len(self.rules):
-            raise RuleError("Duplicate normalized replacement source")
+        # Case-insensitive; when the same word appears more than once the earliest rule wins and later ones are ignored.
+        self.lookup = {}
+        for rule in rules:
+            self.lookup.setdefault(key(rule["source"]), rule)
+        self.rules = list(self.lookup.values())
         # At each position the longest literal wins; output is never re-matched.
         alternatives = sorted(self.lookup, key=len, reverse=True)
-        self.pattern = re.compile("|".join(re.escape(s) for s in alternatives)) if alternatives else None
+        self.pattern = re.compile("|".join(re.escape(s) for s in alternatives), re.IGNORECASE) if alternatives else None
 
     def apply(self, text):
         text = normalize(text)
         counts = {}
         def replace(match):
-            rule = self.lookup[match.group(0)]
+            matched = match.group(0)
+            rule = self.lookup[key(matched)]
             counts[rule["id"]] = counts.get(rule["id"], 0) + 1
-            return rule["replacement"]
+            return fit_case(matched, rule)
         output = self.pattern.sub(replace, text) if self.pattern else text
         return normalize(output), counts
 

@@ -27,6 +27,7 @@ export default function RulesPanel({ moderating }: { moderating: boolean }) {
     const timer = setInterval(() => void refresh(), 3000);
     return () => { clearTimeout(first); clearInterval(timer); };
   }, [refresh]);
+  const duplicates = rules.filter(rule => rule.duplicate).length;
   const disabled = busy || locked || moderating || !loaded;
   function edit(rule?: Rule) {
     setEditing(rule?.id || "new"); setSource(rule?.source || ""); setReplacement(rule?.replacement || ""); setError("");
@@ -48,6 +49,7 @@ export default function RulesPanel({ moderating }: { moderating: boolean }) {
       <button className="action-button" disabled={disabled} onClick={() => edit()}>{tr("Add Rule")}</button></div>
     <p className="section-description">{tr("Thay từ và cụm từ trong bản dịch trước khi tạo giọng đọc. Mỗi job giữ danh sách rules tại thời điểm bắt đầu moderation.")}</p>
     {(locked || moderating) && <p className="lock-notice" role="status">{tr("Replacement rules are locked while moderation is running.")}</p>}
+    {duplicates > 0 && <p className="lock-notice" role="status">{tr("Có quy tắc trùng từ gốc (không phân biệt hoa/thường). Chỉ quy tắc tạo trước được áp dụng, hãy xóa các dòng trùng.")} ({duplicates})</p>}
     {error && <p className="alert" role="alert">{error}</p>}
     {editing && <form className="rule-form" onSubmit={e => { e.preventDefault(); void mutate(editing === "new" ? "POST" : "PUT", editing === "new" ? undefined : editing); }}>
       <fieldset disabled={disabled}><legend>{editing === "new" ? tr("Add Rule") : tr("Edit Rule")}</legend>
@@ -58,7 +60,7 @@ export default function RulesPanel({ moderating }: { moderating: boolean }) {
       </fieldset>
     </form>}
     <div className="table-wrap"><table className="rules-table"><thead><tr><th>{tr("Original")}</th><th>{tr("Replacement")}</th><th>{tr("Actions")}</th></tr></thead><tbody>
-      {rules.map(rule => <tr key={rule.id}><td>{rule.source}</td><td>{rule.replacement || <em>{tr("Để trống")}</em>}</td><td className="rule-actions">
+      {rules.map(rule => <tr key={rule.id} className={rule.duplicate ? "rule-duplicate" : undefined}><td>{rule.source}{rule.duplicate && <span className="rule-duplicate-tag" title={tr("Trùng với quy tắc tạo trước; dòng này bị bỏ qua.")}>{tr("Trùng - xóa")}</span>}</td><td>{rule.replacement || <em>{tr("Để trống")}</em>}</td><td className="rule-actions">
         <div className="rule-action-group">
           <button type="button" className="rule-icon" disabled={disabled} aria-label={t.rules.edit} title={t.rules.edit} onClick={() => edit(rule)}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5"/></svg>

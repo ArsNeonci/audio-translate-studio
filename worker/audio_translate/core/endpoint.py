@@ -95,7 +95,9 @@ def current():
 
 
 def cached(role):
-    """'gateway' or 'billing' from the saved signed file, or None when there is none."""
+    """'gateway' or 'billing' from the saved signed file, or None when there is none. With no places listed the feature is off, and a file saved earlier
+    (by a development run, or before the list was emptied) overrides nothing."""
+    if not mirrors(): return None
     value = current()
     return value[role] if value else None
 

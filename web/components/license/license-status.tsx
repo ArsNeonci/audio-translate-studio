@@ -5,7 +5,34 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 /** lease: the short online access token (VALID/GRACE/EXPIRED/NONE/REVOKED); perpetual: the licence never ends (expiry year 2100 or later). */
-export type LicenseStatus = {status: string; expires_at?: string; sequence?: number; lease?: string | null; perpetual?: boolean; update_required?: boolean};
+export type LicenseStatus = {status: string; expires_at?: string; sequence?: number; lease?: string | null; perpetual?: boolean; update_required?: boolean; paid_until?: PaidUntil};
+/** The monthly paid-until date of this device, from the seller's status file (worker/audio_translate/api/paid_until.py). */
+export type PaidUntil = {status: "OK" | "DUE_SOON" | "OVERDUE" | "UNMANAGED"; valid_until?: string | null; days_left?: number | null; message?: string; device_code?: string | null};
+const paidDate = (value?: string | null) => value ? new Date(value).toLocaleString("vi-VN", {day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"}) : "";
+export const paymentOverdue = (license: LicenseStatus) => license.paid_until?.status === "OVERDUE";
+
+/** The reminder in the last days before the paid-until date, and the overdue message with the device code and "Check again". */
+export function PaidUntilNotice({license, onChange}: {license: LicenseStatus; onChange: (next: LicenseStatus) => void}) {
+  const { tr } = useLanguage();
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const paid = license.paid_until;
+  if (!paid || (paid.status !== "DUE_SOON" && paid.status !== "OVERDUE")) return null;
+  async function check() {
+    setBusy(true); setNote("");
+    try { const next = await recheckLease(); onChange(next); if (paymentOverdue(next)) setNote("paidStill"); }
+    catch { setNote("paidStill"); }
+    finally { setBusy(false); }
+  }
+  const date = paidDate(paid.valid_until);
+  if (paid.status === "DUE_SOON") return <p className="license-banner" role="status">{tr("paidDueSoon", {date, days: paid.days_left ?? 0})}{paid.message && <span> {paid.message}</span>}</p>;
+  return <div className="alert lease-offline" role="alert">
+    <span>{tr("paidOverdue", {date})} </span>{paid.message && <span>{paid.message} </span>}
+    {paid.device_code && <span>{tr("paidDevice", {code: paid.device_code})} </span>}
+    <button type="button" className="action-button" disabled={busy} onClick={() => void check()}>{tr(busy ? "leaseChecking" : "leaseRecheck")}</button>
+    {note && <span> {tr(note)}</span>}
+  </div>;
+}
 /** A valid licence whose lease lapsed because the app was offline too long: only going online is needed. */
 export const leaseOffline = (license: LicenseStatus) => license.status === "ACTIVE" && license.lease === "EXPIRED";
 
@@ -32,7 +59,7 @@ export function LeaseOfflineNotice({license, onChange}: {license: LicenseStatus;
   const { tr } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  if (!leaseOffline(license) && !note) return null;
+  if (!leaseOffline(license) && !note) return <PaidUntilNotice license={license} onChange={onChange} />;
   async function check() {
     setBusy(true); setNote("");
     try { const next = await recheckLease(); onChange(next); setNote(leaseOffline(next) ? "leaseStillOffline" : "leaseBack"); }
@@ -50,5 +77,6 @@ export default function LicenseBanner() {
   const { tr } = useLanguage();
   const license = useLicense();
   if (leaseOffline(license)) return <LeaseOfflineNotice license={license} onChange={license.setLicense} />;
+  if (license.paid_until?.status === "DUE_SOON" || paymentOverdue(license)) return <PaidUntilNotice license={license} onChange={license.setLicense} />;
   return <p className={license.allowed ? "license-banner" : "alert"}><span>{tr("License:")} {tr(license.status)}</span><span aria-hidden="true"> · </span><Link href="/license">{tr(license.perpetual ? "Giấy phép" : "Kích hoạt / Gia hạn")}</Link>{!license.allowed && tr(" · Bạn vẫn có thể mở History và tải file đã tạo.")}</p>;
 }

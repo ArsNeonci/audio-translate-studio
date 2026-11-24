@@ -10,6 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from audio_translate.api import paid_until
 from audio_translate.api.runtime import license_command
 from audio_translate.api.web import json_response
 from audio_translate.core import endpoint as address_book
@@ -135,13 +136,43 @@ def update_required():
 
 
 def describe(result):
-    """The licence status plus what the page needs: the lease phase, whether the licence never ends, and whether this release must update."""
+    """The licence status plus what the page needs: the lease phase, whether the licence never ends, whether this release must update, and the
+    monthly paid-until date of this device (paid_until.py)."""
     if result.get('status') != 'ACTIVE': return result
-    return {**result, 'lease': lease_phase(), 'perpetual': perpetual(result.get('expires_at')), 'update_required': update_required()}
+    return {**result, 'lease': lease_phase(), 'perpetual': perpetual(result.get('expires_at')), 'update_required': update_required(), 'paid_until': paid_until.state()}
+
+
+def machine_id():
+    value = license_command({'action': 'machine'})
+    return value.get('machine_id') if value.get('http_status') == 200 else None
+
+
+def refresh_paid_until(force=False):
+    """Read the owner's status.json now (force, e.g. the Check again button) or in the background when it is due."""
+    if not force: return paid_until.refresh_in_background(machine_id)
+    machine = machine_id()
+    return paid_until.refresh(machine) if machine else {'ok': False}
+
+
+def paid_until_denial(internet=True):
+    """The 403 answer when the paid-until date of this device has passed, else None. While locked the file is read again (every 15 minutes at most),
+    so a date the owner has just moved forward opens the app on the next try."""
+    if not internet: return None if paid_until.state().get('status') != 'OVERDUE' else _paid_answer()
+    if paid_until.state().get('status') == 'OVERDUE' and paid_until.due() == 0:
+        try: refresh_paid_until(True)
+        except Exception: pass
+    else: refresh_paid_until()
+    return _paid_answer() if paid_until.state().get('status') == 'OVERDUE' else None
+
+
+def _paid_answer():
+    return json_response({'error': 'PAYMENT_DUE', 'license_status': 'ACTIVE', 'paid_until': paid_until.state()}, 403, no_store=True)
 
 
 def license_denial(internet=True):
     """None when processing is allowed, else the 403 answer. Admission is when the lease matters, so it is refreshed first."""
+    paid = paid_until_denial(internet)
+    if paid: return paid
     if internet: ensure_lease()
     result = license_command({'action': 'check', 'internet': internet})
     if result.get('status') == 'ACTIVE' and result.get('allowed') is True: return None

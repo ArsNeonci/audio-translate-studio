@@ -72,4 +72,4 @@ export type Scope = "workflows" | "tools";
 export type HistoryFile = {id:string;step:string;type:string;path:string;size:number;created_at:string;status:"AVAILABLE"|"STALE"|"PUBLISHING";origin?:"import"};
 export type HistoryJob = Omit<Job,"status"> & {status:string;files:HistoryFile[];storage_scope:Scope;tool_type?:string;input_file?:string};
 
-export type Rule = { id: string; source: string; replacement: string };
+export type Rule = { id: string; source: string; replacement: string; duplicate?: boolean };

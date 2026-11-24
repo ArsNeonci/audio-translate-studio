@@ -4,7 +4,7 @@ import threading
 
 from fastapi import APIRouter, Request
 
-from audio_translate.api import billing, license as lease, model
+from audio_translate.api import billing, license as lease, model, paid_until
 from audio_translate.api.runtime import license_command
 from audio_translate.api.web import json_response, origin_allowed, threaded
 from audio_translate.core import endpoint as address_book
@@ -17,10 +17,12 @@ ORIGIN_REJECTED = {'error': 'Origin rejected'}
 async def license_status(request: Request):
     address_book.refresh_in_background()                                 # opening the app reads the signed address file when it is a day old
     lease.ensure_lease_in_background()                                   # opening the app renews the lease when it is due
+    lease.refresh_paid_until()                                           # reads the owner's status.json when due (4 hours; 15 minutes while locked)
     threading.Thread(target=billing.fetch_renewals, daemon=True).start()   # installs a renewal paid for in the Billing portal
     action = 'machine' if request.query_params.get('machine') == '1' else 'status'
     result = await threaded(license_command, {'action': action})
     if action == 'status': result = await threaded(lease.describe, result)
+    elif result.get('machine_id'): result = {**result, 'device_code': paid_until.device_code(result['machine_id'])}   # what the customer sends the owner
     return json_response(result, result.get('http_status', 503), no_store=True)
 
 
@@ -29,6 +31,8 @@ async def license_lease_check(request: Request):
     """The "Check again" button: asks the gateway for a new lease now (the person has just gone online) and returns the new status."""
     if not origin_allowed(request): return json_response(ORIGIN_REJECTED, 403)
     renewal = await threaded(lease.ensure_lease, True)
+    try: await threaded(lease.refresh_paid_until, True)                 # the owner may have just moved the paid-until date forward
+    except Exception: pass
     result = await threaded(lease.describe, await threaded(license_command, {'action': 'status'}))
     return json_response({**result, 'renewal': renewal}, result.get('http_status', 503), no_store=True)
 

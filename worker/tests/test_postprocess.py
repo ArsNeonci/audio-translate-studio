@@ -76,6 +76,27 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(counts, {"long": 1, "literal": 1})
         self.assertTrue(unicodedata.is_normalized("NFC", text))
 
+    def test_case_insensitive_keeps_case_and_earliest_duplicate_wins(self):
+        engine = ReplaceEngine([
+            {"id": "a", "source": "Hiếp dâm", "replacement": "Xâm hại"},
+            {"id": "b", "source": "hiếp dâm", "replacement": "later"},
+        ])
+        text, counts = engine.apply("Hiếp dâm. hiếp dâm. HIẾP DÂM. Hiếp Dâm")
+        self.assertEqual(text, "Xâm hại. xâm hại. XÂM HẠI. Xâm hại")
+        self.assertEqual(counts, {"a": 4})
+        listed = self.rules.mutate("add", {"source": "Hiếp dâm", "replacement": "x"})["rules"]
+        self.assertFalse(listed[0].get("duplicate"))
+        from audio_translate.moderation.rules import RuleError
+        with self.assertRaises(RuleError):
+            self.rules.mutate("add", {"source": "HIẾP DÂM", "replacement": "y"})
+
+    def test_existing_duplicates_flagged_for_deletion(self):
+        from audio_translate.core.storage import atomic_json
+        atomic_json(self.rules.path, [{"id": "1", "source": "Abc", "replacement": "x"}, {"id": "2", "source": "abc", "replacement": "y"}])
+        self.rules.seeded_path.write_text("{}", encoding="utf-8")
+        flags = {r["id"]: r.get("duplicate", False) for r in self.rules.list()["rules"]}
+        self.assertEqual(flags, {"1": False, "2": True})
+
     def test_translation_resume_no_loss_or_timestamp_changes(self):
         translator = FakeTranslator(fail_after=2)
         with self.assertRaises(RuntimeError):

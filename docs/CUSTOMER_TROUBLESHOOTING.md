@@ -1,6 +1,6 @@
 # Sổ tay xử lý sự cố AudioTranslate trên máy khách
 
-Cập nhật: **17/11/2026**. Dùng cho nhân viên hỗ trợ và người quản lý sản phẩm.
+Cập nhật: **21/11/2026**. Dùng cho nhân viên hỗ trợ và người quản lý sản phẩm.
 
 ## Tra cứu nhanh
 
@@ -8,6 +8,7 @@ Cập nhật: **17/11/2026**. Dùng cho nhân viên hỗ trợ và người qu�
 | --- | --- | --- |
 | Không mở được app, Windows báo thiếu `WebView2Loader.dll` | Bộ cài bỏ sót DLL đi kèm ứng dụng | [AT-001](#at-001-không-mở-được-app-thiếu-webview2loaderdll) |
 | Chép lời hoàn tất, dịch lỗi ngay ở 0%, mã `X900`; log báo không nạp được `llama.dll` | Visual C++ Runtime hoặc DLL phụ thuộc bị thiếu/lỗi | [AT-002](#at-002-dịch-lỗi-ở-0-không-nạp-được-llamadll) |
+| Tải xuống báo 100% rồi lỗi `X900` sau vài giây; `errors.jsonl` có `[WinError 4551] An Application Control policy has blocked this file` | Smart App Control (hoặc chính sách WDAC/AppLocker) chặn `ffprobe.exe`/`ffmpeg.exe` chưa ký số | [AT-003](#at-003-tải-xuống-lỗi-winerror-4551-smart-app-control-chặn-ffprobe) |
 | Không tìm thấy `data\jobs` | Tác vụ hiện tại thường nằm trong `data\tmp` | [Tìm dữ liệu và log](#tìm-dữ-liệu-và-log) |
 | Chỉ có mã `X900`, chưa có log | Mã chung, chưa đủ để kết luận nguyên nhân | [Quy trình chẩn đoán](#quy-trình-chẩn-đoán) |
 
@@ -187,12 +188,66 @@ Nguồn tải và thông tin runtime: [Microsoft — Latest supported Visual C++
 - Kiểm tra nạp thư viện trên Windows sạch để tránh phụ thuộc vô tình vào máy build.
 - Ánh xạ lỗi nạp DLL sang thông báo dễ hiểu thay cho `X900`.
 
+## AT-003: Tải xuống lỗi WinError 4551, Smart App Control chặn ffprobe
+
+**Trạng thái:** nguyên nhân đã xác nhận bằng nhật ký Windows (21/11/2026). Khách báo đã khắc phục; ảnh chi tiết sau đó cho thấy **Tải xuống: Hoàn tất**, **Chép lời 1/4: Đang chạy 41,20%**. Chưa theo dõi đến hết quy trình (dịch, giọng đọc, phụ đề) nên chưa xác nhận các bước sau không bị chặn thêm file nào.
+
+### Dấu hiệu
+
+- Bước **Tải xuống** báo 100% (log tải đủ dung lượng) nhưng tác vụ lỗi sau khoảng 6 giây; mọi tác vụ trên máy đều lỗi giống nhau, Thử lại không qua.
+- Giao diện hiện `X900`.
+- `errors.jsonl`: `step: DOWNLOAD`, `error_type: OSError`, `detail`:
+
+  ```text
+  [WinError 4551] An Application Control policy has blocked this file
+  ```
+
+- `working\worker.log` kết thúc mỗi lần tải bằng đúng dòng `[WinError 4551] ...`.
+
+### Nguyên nhân đã xác nhận
+
+Máy khách bật **Smart App Control** (`VerifiedAndReputablePolicyState = 1`). Nhật ký `Microsoft-Windows-CodeIntegrity/Operational` (sự kiện 3033 và 3077) ghi `runtime\python\python.exe` cố chạy `runtime\ffmpeg\ffprobe.exe` nhưng file không đạt mức chữ ký yêu cầu. Giờ các sự kiện khớp từng lần lỗi trong `errors.jsonl` (đổi múi giờ: 19:52 giờ máy = 12:52 UTC).
+
+`ffmpeg.exe` và `ffprobe.exe` được đóng gói từ máy build và **không có chữ ký số** (`NotSigned`). `ffprobe` là file đầu tiên được gọi sau khi tải xong nên là file duy nhất xuất hiện trong log; `ffmpeg.exe` và các DLL kèm theo cũng chưa ký. Lỗi `OSError` này không được bắt ở bước tải nên tác vụ dừng và hiện mã chung X900.
+
+### Cách chẩn đoán (chỉ đọc)
+
+```powershell
+# 0 = Tắt, 1 = Bật, 2 = Đánh giá
+Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' -Name VerifiedAndReputablePolicyState
+
+Get-WinEvent -LogName 'Microsoft-Windows-CodeIntegrity/Operational' -MaxEvents 200 |
+  Where-Object { $_.Id -in 3033,3034,3076,3077 } |
+  Select-Object -First 10 TimeCreated, Id, Message | Format-List
+```
+
+Nếu `Message` nêu file nằm dưới `AudioTranslate\Plus\runtime\...` thì đúng ca này.
+
+### Cách xử lý
+
+1. Đóng AudioTranslate.
+2. **Windows Security → App & browser control → Smart App Control settings → Off.** Smart App Control không có ngoại lệ theo file/thư mục.
+3. Kiểm tra lại giá trị registry phải là `0`.
+4. Mở app, bấm **Thử lại** tác vụ cũ, theo dõi đến khi hoàn tất.
+5. Nếu vẫn lỗi, chạy lại lệnh `Get-WinEvent` để xem còn file nào bị chặn.
+
+**Báo khách trước khi tắt:** trên nhiều bản Windows 11, sau khi tắt thì không bật lại được nếu không reset hoặc cài lại Windows. Microsoft Defender vẫn hoạt động.
+
+Nếu Smart App Control đang **Tắt** mà vẫn có sự kiện chặn, máy bị chính sách WDAC/AppLocker của tổ chức: nhờ quản trị viên IT cho phép thư mục `%LOCALAPPDATA%\Programs\AudioTranslate`.
+
+### Phòng ngừa trong sản phẩm — đề xuất, chưa triển khai
+
+- Ký số mọi `.exe`, `.dll`, `.pyd` đi kèm bộ cài (ffmpeg, ffprobe, `av*.dll`, `llama.dll`, `ggml*.dll`...) và thêm bước build báo lỗi nếu còn file chưa ký. Đây là cách duy nhất chạy được khi Smart App Control bật.
+- Gán mã lỗi riêng cho `WinError 4551` thay cho X900, kèm hướng dẫn kiểm tra Smart App Control.
+- Kiểm tra `VerifiedAndReputablePolicyState` khi khởi động và cảnh báo trước khi người dùng tạo tác vụ.
+
 ## Những kết luận cần tránh
 
 - Không kết luận lỗi ghép chép lời khi ảnh chi tiết xác nhận chép lời 4/4 hoàn tất và bước dịch mới là bước lỗi.
 - Không khẳng định lỗi vault/license khi chưa có log tương ứng. Ca AT-002 đã xác nhận là lỗi nạp thư viện.
 - File `.md` là bản đọc cho người dùng; quy trình dịch tự động đọc `transcript.zh.jsonl`. File Markdown hợp lệ không chứng minh JSONL đầu vào cũng hợp lệ.
 - Khi đối chiếu file, đảm bảo đúng tác vụ: file mang số `000004` không tự động là đầu vào của tác vụ `000003`.
+- Không kết luận lỗi YouTube/mạng khi log tải đạt 100% rồi mới lỗi; kiểm tra `detail` trong `errors.jsonl` và nhật ký CodeIntegrity (AT-003).
 - Lỗi nhận dạng tên/thuật ngữ có thể làm giảm chất lượng bản dịch nhưng chưa đủ để giải thích lỗi nạp DLL.
 
 ## Mẫu ghi nhận ca mới

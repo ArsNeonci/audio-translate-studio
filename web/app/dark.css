@@ -269,3 +269,6 @@
 :root[data-theme="dark"] .overlay-guide { background: #ff8fb3; }
 :root[data-theme="dark"] .import-drop { border-color: var(--dark-border); }
 :root[data-theme="dark"] .import-drop.dragging { border-color: var(--dark-accent); background: var(--dark-raised); }
+
+:root[data-theme="dark"] .rule-duplicate td { background: #302817; }
+:root[data-theme="dark"] .rule-duplicate-tag { background: #302817; color: #f4d185; border-color: #6c5632; }

@@ -45,7 +45,7 @@ def stage_complete(job_dir, stage):
         source = job_dir / "transcript.vi.jsonl"
         if not snapshot.exists() or not source.exists():
             return False
-        signature = digest([file_digest(source), read_json(snapshot), "literal-nfc-leftmost-longest-v1"])
+        signature = digest([file_digest(source), read_json(snapshot), "literal-nfc-leftmost-longest-caseless-v2"])
     elif stage == "tts":
         source = job_dir / "transcript.vi.moderated.jsonl"
         if not source.exists():
@@ -426,7 +426,7 @@ def moderate(job_dir, service=None, after_segment=None):
             if is_styled(job_dir):
                 from audio_translate.moderation.flow import Flow
                 flow = Flow([row["text_vi"] for _, row in rows(source, "text_vi")], [n["target"] for n in name_glossary(job_dir)])
-            signature = digest([file_digest(source), snapshot, "literal-nfc-leftmost-longest-v1",
+            signature = digest([file_digest(source), snapshot, "literal-nfc-leftmost-longest-caseless-v2",
                                 *([addresser.signature] if addresser else []), *(["flow-v1"] if flow else [])])
             if completed(job_dir, "moderation", signature):
                 progress(job_dir, "moderation", "MODERATION_COMPLETED", total, total)
@@ -445,10 +445,10 @@ def moderate(job_dir, service=None, after_segment=None):
                     if addresser:
                         # Stateful (referent window): runs for every row, cached or not.
                         addressed, address_changes = addresser.apply({**row, "text_vi": flowed})
-                        key = digest([row, snapshot, "literal-nfc-leftmost-longest-v1", addresser.signature, addressed])
+                        key = digest([row, snapshot, "literal-nfc-leftmost-longest-caseless-v2", addresser.signature, addressed])
                     else:
                         addressed, address_changes = flowed, 0
-                        key = digest([row, snapshot, "literal-nfc-leftmost-longest-v1", *(["flow-v1", flowed] if flow else [])])
+                        key = digest([row, snapshot, "literal-nfc-leftmost-longest-caseless-v2", *(["flow-v1", flowed] if flow else [])])
                     cached = checkpoints.get("moderation", index, key)
                     if cached is None:
                         text, counts = engine.apply(addressed)
